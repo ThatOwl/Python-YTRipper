@@ -39,78 +39,21 @@ class PyTubeDownloader:
         """Initialize the PyTubeDownloader."""
         pass
 
-    def _get_video_obj(self, video_url: str) -> ptf.YouTube:
-        """
-        Get a pytubefix.YouTube object for the given video URL.
-
-        Args:
-            video_url (str): The URL of the YouTube video.
-
-        Returns:
-            pytubefix.YouTube: The YouTube video object.
-        """
-        return ptf.YouTube(video_url)
-
-    def _download_stream(self, stream: ptf.Stream, download_dir: str) -> None:
-        """
-        Download a given stream to the specified directory.
-
-        Args:
-            stream (pytubefix.Stream): The stream to download.
-            download_dir (str): The directory to save the downloaded file.
-        """
-        stream.download(
-            output_path=download_dir,
-            skip_existing=True,
-            timeout=5,
-            max_retries=3
-        )
-
-    def download_videos_from_playlist(self, playlist_url: str, download_dir: str) -> None:
-        """
-        Download all videos from a YouTube playlist as video files.
-
-        Args:
-            playlist_url (str): The URL of the YouTube playlist.
-            download_dir (str): The directory to save the downloaded videos.
-        """
-        playlist_obj = ptf.Playlist(playlist_url)
-        playlist_obj._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
-        print(f"Found {len(playlist_obj.video_urls)} videos in the playlist.")
-
-        if not os.path.exists(download_dir):
-            os.makedirs(download_dir)
-
-        for i, video in enumerate(playlist_obj.videos):
-            print(f'Downloading video {i + 1}/{len(playlist_obj.videos)}: {video.title}')
-            stream = video.streams.filter(type='video', progressive=True, file_extension='mp4') \
-                                  .order_by('resolution').desc().first()
-            if stream:
-                self._download_stream(stream, download_dir)
-        print("Download completed.")
-
-    def download_playlist_as_audio(self, playlist_url: str, download_dir: str) -> None:
-        """
-        Download all videos from a YouTube playlist as audio files.
-
-        Args:
-            playlist_url (str): The URL of the YouTube playlist.
-            download_dir (str): The directory to save the downloaded audio files.
-        """
-        playlist_obj = ptf.Playlist(playlist_url)
-        playlist_obj._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
-        print(f"Found {len(playlist_obj.video_urls)} videos in the playlist.")
-
-        if not os.path.exists(download_dir):
-            os.makedirs(download_dir)
-
-        for i, video in enumerate(playlist_obj.videos):
-            print(f'Downloading audio {i + 1}/{len(playlist_obj.videos)}: {video.title}')
-            stream = video.streams.filter(only_audio=True, file_extension='mp4') \
-                                  .order_by('abr').desc().first()
-            if stream:
-                self._download_stream(stream, download_dir)
-        print("Audio download completed.")
+    def _download_stream(self, video: ptf.video, download_dir: str, audio_only: bool) -> None:
+        if audio_only:
+            stream = video.streams.filter(type='audio').order_by('abr').desc().first()
+        else:
+            stream = video.streams.filter(type='video').order_by('resolution').desc().first()
+        if stream:
+            print( f"Selected stream: {stream.resolution} and {stream.abr} and {stream.filesize_mb}" )
+            stream.download(
+                output_path=download_dir,
+                skip_existing=True,
+                timeout=5,
+                max_retries=3
+            )
+        else :
+            print("No suitable stream available for this video.")
 
     def single_video_info(self, video_url: str) -> None:
         """
@@ -124,97 +67,53 @@ class PyTubeDownloader:
         print(f'Video length: {video_obj.length} seconds')
         print(f'Video views: {video_obj.views}')
         print(f'Video author: {video_obj.author}')
-        print(f'Video description: {video_obj.description[:100]}...')
+        print(f'Video description: {video_obj.description[:200]}...')
         print("Available streams:")
         
-        print(video_obj.streams.all())
-        
-        for stream in video_obj.streams.filter(type='video', progressive=True, file_extension='mp4') \
-                                       .order_by('resolution').desc():
+        print("  Video:")
+        for stream in video_obj.streams.filter(type='video').order_by('resolution').desc():
             print(f'- {stream.resolution}, {stream.mime_type}, {stream.fps}fps')
 
-    def download_single_video(self, video_url: str, download_dir: str) -> None:
+        print("  Audio:")
+        for stream in video_obj.streams.filter(type='audio').order_by('abr').desc():
+            print(f'- {stream.mime_type}, {stream.abr}')    
+    
+    def download_playlist(self, playlist_url: str, download_dir: str, audio_only: bool = False) -> None:
         """
-        Download a single YouTube video as a video file.
+        Download all videos from a YouTube playlist as video or audio files.
 
         Args:
-            video_url (str): The URL of the YouTube video.
-            download_dir (str): The directory to save the downloaded video.
+            playlist_url (str): The URL of the YouTube playlist.
+            download_dir (str): The directory to save the downloaded files.
+            audio_only (bool): If True, download audio only. If False, download video.
         """
-        video_obj = self._get_video_obj(video_url)
-        print(f'Downloading video: {video_obj.title}')
-        stream = video_obj.streams.filter(type='video', progressive=True, file_extension='mp4') \
-                                 .order_by('resolution').desc().first()
-        if stream:
-            self._download_stream(stream, download_dir)
-        print("Download completed.")
         
-    def download_single_audio(self, video_url: str, download_dir: str) -> None:
+        playlist_obj = ptf.Playlist(playlist_url)
+        playlist_obj._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
+        print(f"Found {len(playlist_obj.video_urls)} videos in the playlist.")
+
+        if not os.path.exists(download_dir):
+            os.makedirs(download_dir)
+
+        for i, video in enumerate(playlist_obj.videos):
+            print(f'Downloading {"audio" if audio_only else "video"} {i + 1}/{len(playlist_obj.videos)}: {video.title}')
+            self._download_stream(video, download_dir, audio_only)
+            
+        print("Process completed.")
+
+    def download_single(self, video_url: str, download_dir: str, audio_only: bool = False) -> None:
         """
-        Download the audio stream of a single YouTube video.
+        Download a single YouTube video as video or audio.
 
         Args:
             video_url (str): The URL of the YouTube video.
-            download_dir (str): The directory to save the downloaded audio file.
+            download_dir (str): The directory to save the downloaded file.
+            audio_only (bool): If True, download audio only. If False, download video.
         """
-        video_obj = self._get_video_obj(video_url)
-        print(f'Downloading audio for video: {video_obj.title}')
-        stream = video_obj.streams.filter(only_audio=True, file_extension='mp3') \
-                                 .order_by('abr').desc().first()
-        if stream:
-            self._download_stream(stream, download_dir)
-        print("Audio download completed.")
 
+        video_obj = ptf.YouTube(video_url)
+        print(f'Downloading {"audio" if audio_only else "video"}: {video_obj.title}')
+        self._download_stream(video_obj, download_dir, audio_only)
+        
+        print("Process completed.")
 
-
-class PyTubeDownloader_v2:
-        def download_playlist(self, playlist_url: str, download_dir: str, audio_only: bool = False, file_extension: str = 'mp4') -> None:
-            """
-            Download all videos from a YouTube playlist as video or audio files.
-
-            Args:
-                playlist_url (str): The URL of the YouTube playlist.
-                download_dir (str): The directory to save the downloaded files.
-                audio_only (bool): If True, download audio only. If False, download video.
-                file_extension (str): File extension for the download ('mp4' for video/audio, 'mp3' for audio).
-            """
-            playlist_obj = ptf.Playlist(playlist_url)
-            playlist_obj._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
-            print(f"Found {len(playlist_obj.video_urls)} videos in the playlist.")
-
-            if not os.path.exists(download_dir):
-                os.makedirs(download_dir)
-
-            for i, video in enumerate(playlist_obj.videos):
-                print(f'Downloading {"audio" if audio_only else "video"} {i + 1}/{len(playlist_obj.videos)}: {video.title}')
-                if audio_only:
-                    stream = video.streams.filter(only_audio=True, file_extension=file_extension) \
-                                          .order_by('abr').desc().first()
-                else:
-                    stream = video.streams.filter(type='video', progressive=True, file_extension=file_extension) \
-                                          .order_by('resolution').desc().first()
-                if stream:
-                    self._download_stream(stream, download_dir)
-            print("Download completed.")
-
-        def download_single(self, video_url: str, download_dir: str, audio_only: bool = False, file_extension: str = 'mp4') -> None:
-            """
-            Download a single YouTube video as video or audio.
-
-            Args:
-                video_url (str): The URL of the YouTube video.
-                download_dir (str): The directory to save the downloaded file.
-                audio_only (bool): If True, download audio only. If False, download video.
-                file_extension (str): File extension for the download ('mp4' for video/audio, 'mp3' for audio).
-            """
-            video_obj = self._get_video_obj(video_url)
-            print(f'Downloading {"audio" if audio_only else "video"}: {video_obj.title}')
-            if audio_only:
-                stream = video_obj.streams.filter(only_audio=True, file_extension=file_extension) \
-                                         .order_by('abr').desc().first()
-            else:
-                stream = video_obj.streams.filter(type='video', progressive=True, file_extension=file_extension) \
-                                         .order_by('resolution').desc().first()
-            if stream:
-                self._download_stream(stream, download_dir)
-            print("Download completed.")
