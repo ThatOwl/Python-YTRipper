@@ -2,7 +2,7 @@ import pytubefix as ptf
 from pytubefix import exceptions as ptf_ex
 import os
 import re
-
+import ffmpeg as fpg
 
 #TODO: Add logging instead of print statements
 # Add error handling for network issues, invalid URLs, etc.
@@ -39,7 +39,7 @@ class PyTubeDownloader:
         """Initialize the PyTubeDownloader."""
         pass
 
-    def _download_stream(self, video: ptf.video, download_dir: str, audio_only: bool) -> None:
+    def _download_stream(self, video: ptf.YouTube, download_dir: str, audio_only: bool) -> None:
         if audio_only:
             stream = video.streams.filter(type='audio').order_by('abr').desc().first()
         else:
@@ -62,7 +62,7 @@ class PyTubeDownloader:
         Args:
             video_url (str): The URL of the YouTube video.
         """
-        video_obj = self._get_video_obj(video_url)
+        video_obj = ptf.YouTube(video_url)
         print(f'Video title: {video_obj.title}')
         print(f'Video length: {video_obj.length} seconds')
         print(f'Video views: {video_obj.views}')
@@ -117,3 +117,93 @@ class PyTubeDownloader:
         
         print("Process completed.")
 
+
+class PyTubeDownloader2:
+    """
+    trying to get ffmpeg to combine video and audio streams"""
+
+    def __init__(self):
+        """Initialize the PyTubeDownloader."""
+        pass
+    
+    
+    def download_single(self, video_url: str, download_dir: str, audio_only: bool = False) -> None:
+        """
+        Download a single YouTube video as video or audio.
+
+        Args:
+            video_url (str): The URL of the YouTube video.
+            download_dir (str): The directory to save the downloaded file.
+            audio_only (bool): If True, download audio only. If False, download video.
+        """
+
+        video_obj = ptf.YouTube(video_url)
+        print(f'Downloading {"audio" if audio_only else "video"}: {video_obj.title}')
+        self._download_stream(video_obj, download_dir, audio_only)
+        
+        print("Process completed.")
+
+    def _download_stream(self, video: ptf.YouTube, download_dir: str, audio_only: bool) -> None:
+        if audio_only:
+            # Download best audio only
+            audio_stream = video.streams.filter(type='audio').order_by('abr').desc().first()
+            if audio_stream:
+                print(f"Selected audio stream: {audio_stream.abr}, {audio_stream.mime_type}")
+                audio_stream.download(
+                    output_path=download_dir,
+                    skip_existing=True,
+                    timeout=5,
+                    max_retries=3
+                )
+            else:
+                print("No suitable audio stream available for this video.")
+        else:
+            # Download best video and best audio separately
+            video_stream = video.streams.filter(type='video', progressive=False).order_by('resolution').desc().first()
+            audio_stream = video.streams.filter(type='audio').order_by('abr').desc().first()
+
+            if not video_stream or not audio_stream:
+                print("No suitable video or audio stream available for this video.")
+                return
+
+            print(f"Selected video stream: {video_stream.resolution}, {video_stream.mime_type}")
+            print(f"Selected audio stream: {audio_stream.abr}, {audio_stream.mime_type}")
+
+            # Prepare file paths
+            base_filename = re.sub(r'[\\/*?:"<>|]', "", video.title)
+            video_path = os.path.join(download_dir, f"{base_filename}_video.{video_stream.subtype}")
+            audio_path = os.path.join(download_dir, f"{base_filename}_audio.{audio_stream.subtype}")
+            output_path = os.path.join(download_dir, f"{base_filename}_merged.mp4")
+
+            # Download streams
+            video_stream.download(
+                output_path=download_dir,
+                filename=f"{base_filename}_video.{video_stream.subtype}",
+                skip_existing=True,
+                timeout=5,
+                max_retries=3
+            )
+            audio_stream.download(
+                output_path=download_dir,
+                filename=f"{base_filename}_audio.{audio_stream.subtype}",
+                skip_existing=True,
+                timeout=5,
+                max_retries=3
+            )
+
+            # Combine using ffmpeg
+            print("Combining video and audio with ffmpeg...")
+            try:
+                (
+                    fpg
+                    .input(video_path)
+                    .output(audio_path)
+                    .output(output_path, vcodec='copy', acodec='aac', strict='experimental')
+                    .run(overwrite_output=True, quiet=True)
+                )
+                print(f"Merged file saved to: {output_path}")
+                # Optionally, remove the separate files
+                os.remove(video_path)
+                os.remove(audio_path)
+            except Exception as e:
+                print(f"Error combining video and audio: {e}")
