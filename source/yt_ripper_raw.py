@@ -2,6 +2,8 @@ import re
 import os
 import pytube
 from pytube_interface import PyTubeDownloader as PTD
+from url_handler import URLHandler as URLH
+
 
 if __name__ == "__main__":
     os.environ['PYTHONIOENCODING'] = 'utf-8'
@@ -10,12 +12,23 @@ if __name__ == "__main__":
     # Replace the playlist URL with your desired playlist URL
     
     ptd = PTD()
-
+    urlh = URLH()
+    
     playlist_url ='https://www.youtube.com/playlist?list=PLK-wX9rC-lPPgFaXPQuyVX-WfW8EWHA_3'
     DOWNLOAD_DIR = '/home/localuser/Videos'
-    video_url = 'https://www.youtube.com/watch?v=AFnp28QasHE'
+    video_url = 'https://www.youtube.com/watch?v=W9NRUznftt8'
     
-    #PTD.download_playlist_as_audio(PTD, playlist_url, DOWNLOAD_DIR)
-    # PTD.download_videos_from_playlist(PTD, playlist_url, DOWNLOAD_DIR)
-    # PTD.download_audio_from_video(PTD, video_url, DOWNLOAD_DIR)
     ptd.single_video_info(video_url)
+    
+    if urlh.is_youtube_url(playlist_url):
+        ptd.download_playlist(playlist_url, DOWNLOAD_DIR)
+    else:
+        print("Invalid YouTube URL")
+        
+    
+    if urlh.is_youtube_url(video_url):
+        ptd.download_single(video_url, DOWNLOAD_DIR)
+    else:
+        print("Invalid YouTube URL")    
+    
+    #ptd2.download_playlist(playlist_url, DOWNLOAD_DIR, audio_only=True)
