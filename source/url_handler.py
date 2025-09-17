@@ -1,4 +1,5 @@
 import urllib.parse
+from logger import get_logger
 
 #TODO Add unit tests for this class
 #TODO Add logging instead of print statements
@@ -8,6 +9,11 @@ import urllib.parse
 
 
 #TODO look at: https://www.youtube.com/watch?v=W9NRUznftt8  &list=RDW9NRUznftt8 &start_radio=1 !!!
+
+
+
+logger = get_logger(__name__, 'uh_debug.log')
+
 
 class URLHandler:
     """ 
@@ -36,7 +42,7 @@ class URLHandler:
             domain = parsed_url.netloc.lower()
             return any(youtube_domain in domain for youtube_domain in URLHandler.YOUTUBE_DOMAINS)
         except Exception as e:
-            print(f"Error parsing URL: {e}")
+            logger.exception(f"Error parsing URL: {e}")
             return False
     
     @staticmethod
@@ -58,6 +64,6 @@ class URLHandler:
                 return query_params.get('v', [None])[0]
             return None
         except Exception as e:
-            print(f"Error extracting video ID: {e}")
+            logger.exception(f"Error extracting video ID: {e}")
             return None
         
