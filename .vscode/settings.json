@@ -1,4 +1,5 @@
 {
+    "python.testing.cwd": "/media/SharedStorage/GitRepos/Python-YTRipper",
     "python.testing.unittestArgs": [
         "-v",
         "-s",

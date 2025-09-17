@@ -2,3 +2,7 @@ pip-tools
 pytube
 pytubefix
 os
+ffmpeg
+ffmpeg-python
+requests
+urllib

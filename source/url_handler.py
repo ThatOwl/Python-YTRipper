@@ -1,15 +1,11 @@
 import urllib.parse
-from logger import get_logger
+from source.logger import get_logger
 
 #TODO Add unit tests for this class
 #TODO Add logging instead of print statements
 #TODO Add error handling for invalid URLs, etc.
 #TODO Reinforce URL validation in other parts of the code using this class
 #TODO Review code for efficiency and correctness
-
-
-#TODO look at: https://www.youtube.com/watch?v=W9NRUznftt8  &list=RDW9NRUznftt8 &start_radio=1 !!!
-
 
 
 logger = get_logger(__name__, 'uh_debug.log')
