@@ -34,7 +34,7 @@ import requests
 
 logger = get_logger(__name__, 'pti_debug.log')
 
-class PyTubeDownloader3:
+class PyTubeDownloader:
     """
     A class to handle downloading YouTube videos and playlists using pytubefix.
     Supports downloading single videos, playlists, audio streams, and displaying video info.
@@ -52,36 +52,27 @@ class PyTubeDownloader3:
         """Initialize the PyTubeDownloader."""
         pass
 
-    def single_video_info(self, video_url: str) -> None:
-        """
-        Print information about a single YouTube video.
-
-        Args:
-            video_url (str): The URL of the YouTube video.
-        """
-        video_obj = ptf.YouTube(video_url)
-        logger.debug(f'Video title: {video_obj.title}')
-        logger.debug(f'Video length: {video_obj.length} seconds')
-        logger.debug(f'Video views: {video_obj.views}')
-        logger.debug(f'Video author: {video_obj.author}')
-        logger.debug(f'Video description: {video_obj.description[:200]}...')
-        logger.debug(f"Thumbnail: {video_obj.thumbnail_url}")
-        logger.debug("Available streams:")
-        
-        logger.debug("  Video:")
-        for stream in video_obj.streams.filter(type='video').order_by('resolution').desc():
-            logger.debug(f'- {stream.resolution}, {stream.mime_type}, {stream.fps}fps')
-        logger.info(video_obj.streams.filter(type='video').order_by('resolution').desc().first())
-        
-        logger.debug("  Audio:")
-        for stream in video_obj.streams.filter(type='audio').order_by('abr').desc():
-            logger.debug(f'- {stream.mime_type}, {stream.abr}')    
-        logger.info(video_obj.streams.filter(type='audio').order_by('abr').desc().first())
-   
+    def _get_video_obj(self, video_url: str) -> ptf.YouTube:
+        try:
+            video_obj = ptf.YouTube(video_url)
+            return video_obj
+        except ptf_ex.VideoUnavailable:
+            logger.error(f"Video unavailable: {video_url}")
+            raise
+        except ptf_ex.AgeRestrictedError:
+            logger.error(f"Age-restricted video: {video_url}")
+            raise
+        except ptf_ex.LiveStreamError:
+            logger.error(f"Live stream video (not supported): {video_url}")
+            raise
+        except Exception as e:
+            logger.error(f"An error occurred while fetching the video: {e}")
+            raise
+    
     def _sanitize_filename(self, title: str) -> str:
         return re.sub(r'[\\/*?:"<>|]', "", title)
     
-    def _download_stream_type(self, video: ptf.YouTube, download_dir: str, base_filename: str, type: int) -> str:
+    def _download_stream_type(self, video: ptf.YouTube, download_dir: str, base_filename: str, type: StreamType) -> str:
         """
         Downloads either the highest quality audio or video stream from a YouTube video object.
         Args:
@@ -95,7 +86,7 @@ class PyTubeDownloader3:
             - Selected stream details (audio bitrate or video resolution and mime type).
             - If no suitable stream is available.
         """
-        if type:  # audio:
+        if type == self.StreamType.AUDIO:  # audio:
             stream = video.streams.filter(type='audio').order_by('abr').desc().first()
             logger.debug(f"Selected audio stream: {stream.abr}, {stream.mime_type}")
         else:
@@ -106,7 +97,7 @@ class PyTubeDownloader3:
             logger.debug(f"No suitable {self.stream_type_map[type]} stream available for this video.")
             return ""
         ext = stream.subtype
-        file_path = os.path.join(download_dir, f"{base_filename}_{self.stream_type_map[type]}.{ext}")
+        #file_path = os.path.join(download_dir, f"{base_filename}_{self.stream_type_map[type]}.{ext}")
         downloaded_path = stream.download(
             output_path=download_dir,
             filename=f"{base_filename}_{self.stream_type_map[type]}.{ext}",
@@ -132,15 +123,21 @@ class PyTubeDownloader3:
                 (
                     fpg
                     .input(audio_path)
-                    .output(output_path,acodec='mp3',
+                    .output(
+                        output_path,
+                        acodec='mp3',
                         **{'id3v2_version': '3'},
-                        map='0:a',
-                        vf='scale=320:320',
-                        # Attach the thumbnail as cover art
-                        **{'attach': thumbnail_path, 'metadata:s:v': 'title=Album cover', 'metadata:s:v': 'comment=Cover (front)'}
+                        extra_args=[
+                            '-i', thumbnail_path,
+                            '-map', '0:a',
+                            '-map', '1:v',
+                            '-metadata:s:v', 'title=Album cover',
+                            '-metadata:s:v', 'comment=Cover (front)'
+                        ]
                     )
                     .run(overwrite_output=True, quiet=True)
                 )
+                os.remove(thumbnail_path)
             else:
                 (
                     fpg
@@ -183,32 +180,35 @@ class PyTubeDownloader3:
             logger.exception(f"Error during ffmpeg audio conversion: {e.stderr.decode() if hasattr(e, 'stderr') else e}")
             logger.info("Keeping original audio file.")
             
-        def _download_thumbnail(self, video: ptf.YouTube, download_dir: str, base_filename: str) -> str:
-            """
-            Downloads the thumbnail image of a YouTube video.
+    def _download_thumbnail(self, video: ptf.YouTube, download_dir: str, base_filename: str) -> str:
+        """
+        Downloads the thumbnail image of a YouTube video.
 
-            Args:
-                video (ptf.YouTube): The YouTube video object from which to download the thumbnail.
-                download_dir (str): The directory where the thumbnail will be saved.
-                base_filename (str): The base filename to use for the thumbnail file.
-            Returns:
-                str: The file path of the downloaded thumbnail image.
-            Logs:
-                - Thumbnail download status.
-            """
-            thumbnail_url = video.thumbnail_url
-            response = requests.get(thumbnail_url)
-            if response.status_code == 200:
-                ext = thumbnail_url.split('.')[-1].split('?')[0]
-                thumbnail_path = os.path.join(download_dir, f"{base_filename}_thumbnail.{ext}")
-                with open(thumbnail_path, 'wb') as f:
-                    f.write(response.content)
-                logger.info(f"Thumbnail downloaded to: {thumbnail_path}")
-                return thumbnail_path
-            else:
-                logger.warning("Failed to download thumbnail.")
-                return ""
+        Args:
+            video (ptf.YouTube): The YouTube video object from which to download the thumbnail.
+            download_dir (str): The directory where the thumbnail will be saved.
+            base_filename (str): The base filename to use for the thumbnail file.
+        Returns:
+            str: The file path of the downloaded thumbnail image.
+        Logs:
+            - Thumbnail download status.
+        """
+        thumbnail_url = video.thumbnail_url
+        logger.debug(f"Downloading thumbnail from: {thumbnail_url}")
+        #TODO use urllib to download the thumbnail in max quality and handle errors
+        response = requests.get(thumbnail_url)
+        if response.status_code == 200:
+            ext = thumbnail_url.split('.')[-1].split('?')[0]
+            thumbnail_path = os.path.join(download_dir, f"{base_filename}_thumbnail.{ext}")
+            with open(thumbnail_path, 'wb') as f:
+                f.write(response.content)
+            logger.info(f"Thumbnail downloaded to: {thumbnail_path}")
+            return thumbnail_path
+        else:
+            logger.warning("Failed to download thumbnail.")
+            return ""
 
+    #FIXME: seems to fail with some videos
     def _combine_streams(self, audio_path: str, video_path: str, output_path: str) -> None:
         """
         Combines separate audio and video files into a single output file using ffmpeg.
@@ -236,7 +236,34 @@ class PyTubeDownloader3:
             logger.exception(f"Error during ffmpeg merging: {e.stderr.decode() if hasattr(e, 'stderr') else e}")
             logger.info("Keeping original files.")
 
-    def download_single(self, video_url: str, download_dir: str, audio_only: bool = False) -> None:
+    def single_video_info(self, video_url: str = None, video_obj: ptf.YouTube = None) -> None:
+        """
+        Print information about a single YouTube video.
+
+        Args:
+            video_url (str): The URL of the YouTube video.
+        """
+        if video_obj is None: video_obj = self._get_video_obj(video_url)
+
+        logger.debug(f'Video title: {video_obj.title}')
+        logger.debug(f'Video length: {video_obj.length} seconds')
+        logger.debug(f'Video views: {video_obj.views}')
+        logger.debug(f'Video author: {video_obj.author}')
+        logger.debug(f'Video description: {video_obj.description[:200]}...')
+        logger.debug(f"Thumbnail: {video_obj.thumbnail_url}")
+        logger.debug("Available streams:")
+        
+        logger.debug("  Video:")
+        for stream in video_obj.streams.filter(type='video').order_by('resolution').desc():
+            logger.debug(f'- {stream.resolution}, {stream.mime_type}, {stream.fps}fps')
+        logger.info(video_obj.streams.filter(type='video').order_by('resolution').desc().first())
+        
+        logger.debug("  Audio:")
+        for stream in video_obj.streams.filter(type='audio').order_by('abr').desc():
+            logger.debug(f'- {stream.mime_type}, {stream.abr}')    
+        logger.info(video_obj.streams.filter(type='audio').order_by('abr').desc().first())
+    
+    def download_single(self, download_dir: str, audio_only: bool = False, video_url: str = None, video_obj: ptf.YouTube = None) -> None:
         """
         Download a single YouTube video as video or audio.
 
@@ -245,23 +272,24 @@ class PyTubeDownloader3:
             download_dir (str): The directory to save the downloaded file.
             audio_only (bool): If True, download audio only. If False, download video.
         """
-        video_obj = ptf.YouTube(video_url)
+        if video_obj is None: video_obj = self._get_video_obj(video_url)
+
         base_filename = self._sanitize_filename(video_obj.title)
-        logger.debug(f'Downloading {"audio" if audio_only else "video"}: {video_obj.title}')
+        logger.info(f'Downloading {"soundtrack" if audio_only else "video"}: {video_obj.title}')
         
         if audio_only:
             audio_path = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.AUDIO)
-            thumbnail_path = self._download_thumbnail(video_obj, download_dir, base_filename)
+            thumbnail_path = None #FIXME = self._download_thumbnail(video_obj, download_dir, base_filename)
             output_path = os.path.join(download_dir, f"{base_filename}.mp3")
             if audio_path:
-                self._convert_to_mp3(audio_path, output_path, audio_only=True)
+                self._convert_to_mp3(audio_path, output_path, thumbnail_path)
         else:
             video_path = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.VIDEO)
             audio_path = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.AUDIO)
             output_path = os.path.join(download_dir, f"{base_filename}.mp4")
             if video_path and audio_path:
-                self._combine_streams(audio_path, video_path, output_path, audio_only=False)
-        logger.debug("Process completed.")
+                self._combine_streams(audio_path, video_path, output_path)
+        logger.debug(f"Download of {"soundtrack" if audio_only else "video"} completed.")
 
     def download_playlist(self, playlist_url: str, download_dir: str, audio_only: bool = False) -> None:
         """
@@ -281,7 +309,7 @@ class PyTubeDownloader3:
             os.makedirs(download_dir)
 
         for i, video in enumerate(playlist_obj.videos): # types: int, ptf.YouTube
-            logger.debug(f'Downloading {"audio" if audio_only else "video"} {i + 1}/{len(playlist_obj.videos)}: {video.title}')
-            self._download_stream(video, download_dir, audio_only)
+            logger.info(f'At {"soundtrack" if audio_only else "video"} {i + 1}/{len(playlist_obj.videos)}: ')
+            self.download_single(download_dir=download_dir, audio_only=audio_only, video_obj=video)
             
-        logger.debug("Process completed.")
+        logger.info("Playlist download completed.")
