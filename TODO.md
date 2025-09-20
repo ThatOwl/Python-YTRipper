@@ -1,7 +1,7 @@
 ## Small
 - Add thumbnail (reachable via youtube.thumbnail_url) to audio files using ffmeg
 - Add logger stream for removing print/statements => keeping  optional terminal out
-- Vary testing URLs for better robustness ... mayube search for specific codecs and paring them togehher
+- Vary testing URLs for better robustness ... maybe search for specific codecs and paring them together
 - check ffmpeg output for sync and playback errors
 
 ## 1. Pasting link is not well-defined

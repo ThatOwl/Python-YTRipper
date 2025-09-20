@@ -14,7 +14,11 @@ def get_logger(name: str, debug_logfile: str):
     if getattr(logger, "_custom_handlers_added", False):
         return logger
 
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(module)s.%(funcName)s - %(message)s'
+    )
+    
     if not os.path.exists('./logs'):
         os.makedirs('./logs')
 
