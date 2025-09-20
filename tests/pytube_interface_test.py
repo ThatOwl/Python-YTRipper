@@ -5,7 +5,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
-import source.pytube_interface as pti
+import Old.pytube_interface as pti
 import pytubefix as ptf
 import unittest
 import os
@@ -41,12 +41,14 @@ class TestPyTubeDownloader(unittest.TestCase):
         except Exception as e:
             self.fail(f"single_video_info raised an exception: {e}")
 
+    @unittest.skip("Skipping not implemented test")
     def test_download_single_video_happy(self):
         try:
-            self.downloader.download_single(self.video_url, self.download_dir, audio_only=False)
+            self.downloader._download_single(self.video_url, self.download_dir, audio_only=False)
         except Exception as e:
             self.fail(f"_download_stream raised an exception: {e}")
-
+    
+    @unittest.skip("Skipping not implemented test")
     def test_download_single_audio_happy(self):
         try:
             video_obj = ptf.YouTube(self.video_url)

@@ -4,35 +4,42 @@
 # for manual testing of pytube_interface functions
 import sys
 import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import shutil
 
-from source.pytube_interface import PyTubeDownloader as PTD
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from source.logger import get_logger
+from source.pytube_interface_v2 import YouTubeDownloader as YTD
 from source.url_handler import URLHandler as URLH
+
+logger = get_logger(__name__, 'man_test_debug.log')
+
+
+def clear_directory(dir_path):
+    """Utility function to clear all files in a directory."""
+    for filename in os.listdir(dir_path):
+        file_path = os.path.join(dir_path, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+        except Exception as e:
+            print(f'Failed to delete {file_path}. Reason: {e}')
+
 
 if __name__ == "__main__":
     #os.environ['PYTHONIOENCODING'] = 'utf-8'
-    print(" ------ Manual test script for pytube_interface and url_handler ------ \n\n\n")
-    ptd = PTD()
+    logger.info(" ------ Manual test script for pytube_interface and url_handler ------ \n\n\n")
+    ytd = YTD()
     urlh = URLH()
     
     playlist_url ='https://www.youtube.com/playlist?list=PLK-wX9rC-lPPgFaXPQuyVX-WfW8EWHA_3'
     DOWNLOAD_DIR = './temp_test_download'
     video_url = 'https://www.youtube.com/watch?v=W9NRUznftt8'
     
-    if not os.path.exists("temp_test_download"):
-        os.mkdir("temp_test_download")
-    
-    #ptd.single_video_info(video_url=video_url)
-    
-    """if urlh.is_youtube_url(playlist_url):
-        ptd.download_playlist(playlist_url, DOWNLOAD_DIR)
-    else:
-        print("Invalid YouTube URL")"""
+    ytd.download(url=playlist_url, download_dir=DOWNLOAD_DIR, audio_only=True)
+    ytd.download(url=video_url, download_dir=DOWNLOAD_DIR, audio_only=False)
 
-    
-    if urlh.is_youtube_url(video_url):
-        ptd.download_single(DOWNLOAD_DIR, audio_only=False, video_url=video_url)
-    else:
-        print("Invalid YouTube URL")
-    
-    #ptd2.download_playlist(playlist_url, DOWNLOAD_DIR, audio_only=True)
+    #clear_directory('./logs')
+    #clear_directory(DOWNLOAD_DIR)
+    logger.info("\n\n\n ------ End of manual test script for pytube_interface and url_handler ------ ")

@@ -62,4 +62,19 @@ class URLHandler:
         except Exception as e:
             logger.exception(f"Error extracting video ID: {e}")
             return None
-        
+    
+    def is_youtube_playlist(self, url: str) -> bool:
+        """
+        Check if the given URL is a YouTube playlist URL.
+
+        Args:
+            url (str): The URL to check.
+        Returns:
+            bool: True if the URL contains '&list=' indicating a playlist, False otherwise.
+        """
+        try:
+            # Check for '&list=' or '?list=' in the URL string (case-insensitive)
+            return '&list=' in url.lower() or '?list=' in url.lower()
+        except Exception as e:
+            logger.exception(f"Error parsing URL for playlist: {e}")
+            return False

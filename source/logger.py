@@ -25,13 +25,17 @@ def get_logger(name: str, debug_logfile: str):
     filehandler_specific = logging.FileHandler(f'./logs/{debug_logfile}')
     filehandler_specific.setLevel(logging.DEBUG)
     filehandler_specific.setFormatter(formatter)
+    logger.addHandler(filehandler_specific)
 
     filehandler_general = logging.FileHandler('./logs/general.log')
     filehandler_general.setLevel(logging.INFO)
     filehandler_general.setFormatter(formatter)
-
-    logger.addHandler(filehandler_specific)
     logger.addHandler(filehandler_general)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.INFO)
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
 
     logger._custom_handlers_added = True
     return logger
