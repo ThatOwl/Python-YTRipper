@@ -1,6 +1,6 @@
 ## Small
 - Add thumbnail (reachable via youtube.thumbnail_url) to audio files using ffmeg
-
+- Add logger stream for removing print/statements => keeping  optional terminal out
 
 ## 1. Pasting link is not well-defined
 - YT may think of video as part of playlist and or radio
