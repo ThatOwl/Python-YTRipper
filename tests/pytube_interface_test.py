@@ -1,18 +1,18 @@
-
-# for manual testing of pytube_interface functions
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
-import Old.pytube_interface as pti
+import Old.pytube_interface as pti #FIXME change to new interface when ready
 import pytubefix as ptf
 import unittest
 import os
 #import re
 import shutil
 
-#TODO: Add more tests for error handling, edge cases, etc.
+#TODO:
+# Implement unit tests for NEW PyTubeDownloader class !!!
+# Add more tests for error handling, edge cases, etc.
 # Only happy path tests are implemented so far
 # Validate behavior using mock objects if possible
 
