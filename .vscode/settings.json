@@ -1,5 +1,6 @@
 {
-    "python.testing.cwd": "/media/SharedStorage/GitRepos/Python-YTRipper",
+    "python.venvPath": "c:/Users/localuser/Anaconda3/envs/py_ripper",
+    "python.testing.cwd": "G:/GitRepos/Python-YTRipper",
     "python.testing.unittestArgs": [
         "-v",
         "-s",
@@ -7,6 +8,6 @@
         "-p",
         "*_test.py"
     ],
-    "python.testing.pytestEnabled": false,
+    "python.testing.pytestEnabled"  : false,
     "python.testing.unittestEnabled": true
 }
