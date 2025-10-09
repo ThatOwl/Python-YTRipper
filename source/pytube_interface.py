@@ -242,6 +242,9 @@ class YouTubeDownloader:
         Side Effects:
             - creates directory as general download target.
         """
+        
+        failed = False #TODO could implement control-flow to accomodate failed downloads later
+        
         if self.urlh.is_youtube_url(url):
             logger.debug(f"Valid YouTube URL: {url}")
 
@@ -251,7 +254,11 @@ class YouTubeDownloader:
 
             if self.urlh.is_youtube_playlist(url):
                 logger.debug("Detected as a playlist URL.")
+                #would be: failed = self._download_playlist(playlist_url=url, download_dir=download_dir, audio_only=audio_only)
                 self._download_playlist(playlist_url=url, download_dir=download_dir, audio_only=audio_only)
             else:
                 logger.debug("Detected as a single video URL.")
                 self._download_single(video_url=url, download_dir=download_dir, audio_only=audio_only)
+                
+        #if failed:
+        #    logger.error("One or more downloads failed.")   
