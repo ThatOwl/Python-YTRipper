@@ -5,5 +5,8 @@ test_urls = [
         "https://youtu.be/W9NRUznftt8",
         "https://www.youtube.com/playlist?list=PLK-wX9rC-lPPgFaXPQuyVX-WfW8EWHA_3",
         "https://www.example.com/watch?v=W9NRUznftt8",
+        "https://www.youtube.com/watch?v=69RdQFDuYPI&list=RD69RdQFDuYPI&start_radio=1",
+        "https://www.youtube.com/watch?v=eo1VWOmLuJM&list=PL_ejXIzP7qOCGCodJyyRF_7GctAn0DUAW",
+        "https://www.youtube.com/watch?v=eo1VWOmLuJM&list=PL_ejXIzP7qOCGCodJyyRF_7GctAn0DUAW&index=2",
         "not a url"
     ]

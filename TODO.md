@@ -40,3 +40,6 @@ TODO
 - write a method based on "yt.streams.all()" to warn user if some formats 
  are not available for a video in a playlist and skip those formats (?)
  or download the next best format available 
+
+Check ext reference:
+025-10-11 16:44:08.266 [info] [CODE REFERENCING] file:///media/SharedStorage/GitRepos/Python-YTRipper/source/cl_interface.py Similar code with 5 license types [Apache-2.0, BSD-3-Clause, GPL-3.0, MIT, unknown] https://github.com/github-copilot/code_referencing?cursor=c1bfb56df0a1d42fe1d04c87549d8753&editor=vscode [Ln 15, Col 24] os.path.join(dir_path, filename)  try:  if os.path.isfile(file_path) or os.path.is...

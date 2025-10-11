@@ -10,13 +10,12 @@ class StreamConverter:
     
     @staticmethod
     def convert_to_m4a(audio_path: str, output_path: str, thumbnail_path: str = None) -> None:
-        """
-        #TODO summary
+        """Converts audio to m4a format.
 
         Args:
-            audio_path (str): _description_
-            output_path (str): _description_
-            thumbnail_path (str, optional): _description_. Defaults to None.
+            audio_path (str): The path to the source audio file.
+            output_path (str): The path where the converted m4a file will be saved.
+            thumbnail_path (str, optional): The path to the thumbnail image file. Defaults to None.
         """
         logger.debug("Converting audio to m4a with ffmpeg...")
         try:
@@ -43,7 +42,7 @@ class StreamConverter:
                 (
                     fpg
                     .input(audio_path)
-                    .output(output_path, acodec='mp3', strict='experimental')
+                    .output(output_path, acodec='m4a', strict='experimental')
                     .run(overwrite_output=True, quiet=True)
                 )
             logger.info(f"Audio file saved to: {output_path}")
@@ -51,6 +50,7 @@ class StreamConverter:
         except Exception as e:
             logger.exception(f"Error during ffmpeg audio conversion: {e.stderr.decode() if hasattr(e, 'stderr') else e}")
             logger.info("Keeping original audio file.")
+            raise e  # Re-raise the exception for upstream handling
 
     @staticmethod
     def convert_to_mp3(audio_path: str, output_path: str) -> None:
@@ -81,7 +81,8 @@ class StreamConverter:
         except Exception as e:
             logger.exception(f"Error during ffmpeg audio conversion: {e.stderr.decode() if hasattr(e, 'stderr') else e}")
             logger.info("Keeping original audio file.")
-
+            raise e  # Re-raise the exception for upstream handling
+        
     @staticmethod
     def combine_streams(audio_path: str, video_path: str, output_path: str) -> None:
         """
@@ -109,3 +110,6 @@ class StreamConverter:
         except Exception as e:
             logger.exception(f"Error during ffmpeg merging: {e.stderr.decode() if hasattr(e, 'stderr') else e}")
             logger.info("Keeping original files.")
+            raise e  # Re-raise the exception for upstream handling
+
+# Add more tests for error handling, edge cases, etc.

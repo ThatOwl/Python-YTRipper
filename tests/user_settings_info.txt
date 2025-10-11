@@ -1,0 +1,10 @@
+{
+    "default_download_directory": "",                   // e.g., "/home/user/downloads"
+    "download_mode": "AUDIO_ONLY",                      // "AUDIO_ONLY", "", "AUDIO_VIDEO"
+    "warn_me": true,                                    // true or false
+    "preferred_quality": "",                            // "HIGH", "LOW", "MEDIUM", or "" for default
+    "preferred_abr": "",                                // e.g., "128k", "192k", or "" for default
+    "preferred_resolution": "",                         // e.g., "1080p", "720p", or "" for default
+    "preferred_mime": "",                               // e.g., "audio/mp3", "video/mp4", or "" for default
+    "loglevel": "INFO"                                  // "DEBUG", "INFO", "WARNING", "ERROR"
+}
