@@ -8,5 +8,18 @@ test_urls = [
         "https://www.youtube.com/watch?v=69RdQFDuYPI&list=RD69RdQFDuYPI&start_radio=1",
         "https://www.youtube.com/watch?v=eo1VWOmLuJM&list=PL_ejXIzP7qOCGCodJyyRF_7GctAn0DUAW",
         "https://www.youtube.com/watch?v=eo1VWOmLuJM&list=PL_ejXIzP7qOCGCodJyyRF_7GctAn0DUAW&index=2",
-        "not a url"
+        "not a url",
+        "https://www.youtube.com/watch?v=W9N"
     ]
+
+what_is_test = [
+    "works ... IS FOR ",
+    "works ... IS FOR ",
+    "works ... IS FOR ",
+    "works ... IS FOR ",
+    "works ... IS FOR ",
+    "works ? ... IS FOR ",
+    "works ? ... IS FOR ",
+    "defect ... IS FOR ",
+    "defect ... IS FOR ",
+]

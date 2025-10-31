@@ -1,4 +1,5 @@
 import urllib.parse
+import requests
 from source.logger import get_logger
 
 #TODO Add unit tests for this class
@@ -40,7 +41,25 @@ class URLHandler:
         except Exception as e:
             logger.exception(f"Error parsing URL: {e}")
             return False
-    
+        
+    @staticmethod
+    def is_accessible(url: str) -> bool:
+        """
+        Check if the given URL is accessible.
+
+        Args:
+            url (str): The URL to check.
+        Returns:
+            bool: True if the URL is accessible, False otherwise.
+        """
+        try:
+            response = requests.head(url, allow_redirects=True)
+            return response.status_code == 200
+        except Exception as e:
+            logger.exception(f"Error checking URL accessibility: {e}")
+            #raise e
+            return False
+
     @staticmethod
     def extract_video_id(url: str) -> str | None:
         """

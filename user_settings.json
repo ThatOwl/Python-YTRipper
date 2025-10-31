@@ -1,6 +1,6 @@
 {
     "default_download_directory": "",
-    "download_mode": "AUDIO_ONLY",
+    "audio_only": true,
     "warn_me": true,
     "preferred_quality": "",
     "preferred_abr": "",

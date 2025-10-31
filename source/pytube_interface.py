@@ -4,6 +4,7 @@ import os
 import re
 from enum import Enum
 import requests
+from datetime import datetime
 from dataclasses import dataclass
 
 # import logger #FIXME does this work better? -> auto testing ! (pwd!)
@@ -38,7 +39,7 @@ from source.url_handler import URLHandler
 # or download the next best format available 
 
 
-logger = get_logger(__name__, 'pti_debug.log')
+logger = get_logger(__name__, 'ytd-th_debug.log')
 
 @dataclass
 class DownloadOptions:
@@ -47,6 +48,7 @@ class DownloadOptions:
     preferred_abr: str = ""
     preferred_resolution: str = ""
     # Add more preferences as needed
+    
 
 # Will be exported to own file later
 class ThumbnailHandler:
@@ -85,7 +87,6 @@ class YouTubeDownloader:
     """
     Handles high-level download logic for YouTube videos and playlists using pytubefix.
     """
-    urlh = URLHandler()
     class StreamType(Enum):
         AUDIO = 1
         VIDEO = 0
@@ -97,6 +98,8 @@ class YouTubeDownloader:
     def __init__(self):
         self.thumbnail_handler = ThumbnailHandler()
         self.stream_converter = StreamConverter()
+        self.urlh = URLHandler()
+
 
     def _get_video_obj(self, video_url: str) -> ptf.YouTube:
         """
@@ -120,9 +123,12 @@ class YouTubeDownloader:
         except ptf_ex.LiveStreamError:
             logger.error(f"Live stream video (not supported): {video_url}")
             raise
+        except ptf_ex.RegexMatchError:
+            logger.error(f"Regex match erro occured for video: {video_url}")
+            raise
         except Exception as e:
             logger.exception(f"An error occurred while fetching the video: {e}")
-            raise
+            raise 
 
     def _get_playlist_obj(self, playlist_url: str) -> ptf.Playlist:
         try:
@@ -185,7 +191,7 @@ class YouTubeDownloader:
             if video_obj is None: video_obj = self._get_video_obj(video_url)
         except Exception as e:
             #FIXME handle error upstream
-            return
+            raise
 
         base_filename = self._sanitize_filename(video_obj.title)
         logger.info(f'Downloading {"soundtrack" if options.audio_only else "video"}: {video_obj.title}')
@@ -215,17 +221,20 @@ class YouTubeDownloader:
         Side Effects:
             - creates directory as playlist download target. 
         """
+        date = datetime.today().strftime('%Y_%m_')
         try:
             playlist_obj = self._get_playlist_obj(playlist_url)
         except Exception as e:
             #FIXME handle error upstream
-            return
+            raise
         
         # Override pytube's video URL regex to capture all videos in the playlist
         playlist_obj._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
         logger.debug(f"Found {len(playlist_obj.video_urls)} videos in the playlist. {playlist_obj.title}")
-        if not os.path.exists(download_dir + '/' + playlist_obj.title): #FIXME: chcek man test
-            os.mkdir(download_dir + '/' + playlist_obj.title)
+        
+        # create new directory for each playlists -> easier for user
+        if not os.path.exists(download_dir + '/' + date + playlist_obj.title): #FIXME: chcek man test
+            os.mkdir(download_dir + '/' + date + playlist_obj.title)
 
         for i, video in enumerate(playlist_obj.videos):
             logger.info(f'At {"soundtrack" if options.audio_only else "video"} {i + 1}/{len(playlist_obj.videos)}: ')
@@ -243,10 +252,10 @@ class YouTubeDownloader:
         
         if self.urlh.is_youtube_playlist(url):
             try: 
-                playlist_obj = ptf.Playlist(url)
+                playlist_obj = self._get_playlist_obj(url)
             except Exception as e:
                 #FIXME handle error upstream
-                return
+                raise
             
             logger.info(f"Playlist Title: {playlist_obj.title}")
             logger.info(f"Number of Videos: {len(playlist_obj.videos)}")
@@ -259,7 +268,7 @@ class YouTubeDownloader:
                 if video_obj is None: video_obj = self._get_video_obj(url)
             except Exception as e:
                 #FIXME handle error upstream
-                return
+                raise
         
             logger.debug(f'Video title: {video_obj.title}')
             logger.debug(f'Video length: {video_obj.length} seconds')
@@ -297,25 +306,29 @@ class YouTubeDownloader:
         failed = False #TODO could implement control-flow to accomodate failed downloads later
         failed_list = []
         
-        if self.urlh.is_youtube_url(url):
+        if self.urlh.is_youtube_url(url) and self.urlh.is_accessible(url):
             logger.debug(f"Valid YouTube URL: {url}")
+            try:
+                if not os.path.exists(download_dir):
+                    os.mkdir(download_dir)
+                    logger.debug(f"Created download directory: {download_dir}")
 
-            if not os.path.exists(download_dir):
-                os.mkdir(download_dir)
-                logger.debug(f"Created download directory: {download_dir}")
-
-            if self.urlh.is_youtube_playlist(url):
-                logger.debug("Detected as a playlist URL.")
-                #would be: failed = self.download_playlist(playlist_url=url, download_dir=download_dir, audio_only=audio_only, failed_list=failed_list)
-                self.download_playlist(playlist_url=url, download_dir=download_dir, options=options)
-            else:
-                logger.debug("Detected as a single video URL.")
-                self.download_single(video_url=url, download_dir=download_dir, options=options)
+                if self.urlh.is_youtube_playlist(url):
+                    logger.debug("Detected as a playlist URL.")
+                    #would be: failed = self.download_playlist(playlist_url=url, download_dir=download_dir, audio_only=audio_only, failed_list=failed_list)
+                    self.download_playlist(playlist_url=url, download_dir=download_dir, options=options)
+                else:
+                    logger.debug("Detected as a single video URL.")
+                    self.download_single(video_url=url, download_dir=download_dir, options=options)
+            except Exception as e:
+                logger.error(f"Download failed: {e}")
+                failed = True
+                failed_list.append(url)
         else:
-            logger.error("The provided URL is not a valid YouTube URL.")
-            raise ValueError("The provided URL is not a valid YouTube URL.")
+            logger.error("The provided URL is not a valid YouTube URL or inaccessible.")
+            raise ValueError("The provided URL is not valid or unreachable.")
             
         if failed:
-            logger.error("One or more downloads failed.")
+            logger.error("One or more download(s) failed.")
             for fail in failed_list:
                 logger.error(f"- {fail}")
