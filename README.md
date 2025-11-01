@@ -139,7 +139,7 @@ Please follow existing code style and add tests for new logic.
 
 ---
 
-## [License] (https://github.com/RF-at-FH-Joanneum/Python-YTRipper/blob/main/LICENSE)
+## [License](https://github.com/RF-at-FH-Joanneum/Python-YTRipper/blob/main/LICENSE)
 
 ---
 
