@@ -105,22 +105,37 @@ class cl_interface:
         """
         parser = argparse.ArgumentParser(description="YouTube Video/Playlist Downloader", add_help=False)
         parser.add_argument('url', help='YouTube video or playlist URL')
-        parser.add_argument('-d', '--dir', default='./temp_ripper_downloads', help='Download directory')
         parser.add_argument('-a', '--audio', action='store_true', help='Download audio only')
         parser.add_argument('-i', '--info', action='store_true', help='Print video/playlist info and exit')
-        parser.add_argument('--clear', action='store_true', help='Clear download directory before downloading')
-        
+        parser.add_argument('-cl', '--clear_logs', action='store_true', help='Clear log files before downloading')
+        parser.add_argument('-c', '--clear', action='store_true', help='Clear download directory before downloading')
+        parser.add_argument('-d', '--dir', default='./temp_ripper_downloads', help='Download directory')
+
         try:
             args = parser.parse_args(command.split())
         except SystemExit:
             logger.error("Invalid command or arguments.")
             return
         
-        if args.audio:
-            self.download_options.audio_only = True
-        
-        if args.clear:
+        # Update download options based on command-line arguments
+        #FIXME: this creates a new object every time ... bad design
+        download_options = DownloadOptions(audio_only= True if args.audio else self.download_options.audio_only, 
+                                               preferred_audio_quality=self.download_options.preferred_audio_quality,
+                                               preferred_video_quality=self.download_options.preferred_video_quality,
+                                               preferred_format=self.download_options.preferred_format,
+                                               preferred_abr=self.download_options.preferred_abr,
+                                               preferred_resolution=self.download_options.preferred_resolution,
+                                               preferred_mime=self.download_options.preferred_mime)
+
+        if args.dir != './temp_ripper_downloads':
+            self.preferences["default_download_directory"] = args.dir
+                
+        if args.clear: #FIXME: not working properly
             self.clear_dialog(args.dir)
+
+        if args.clear_logs: #FIXME: not working properly
+            self.clear_directory('./logs')
+            logger.debug(f"Cleared log files before downloading.")
 
         if args.info:
             print("Fetching video/playlist info...")
@@ -132,7 +147,7 @@ class cl_interface:
         else: 
             print("------ Starting action ------")
             try:
-                self.ytd.download(url=args.url, download_dir=args.dir, options=self.download_options)
+                self.ytd.download(url=args.url, download_dir=args.dir, options=download_options)
             except Exception as e:
                 logger.error(f"Download failed: {e}")
 
@@ -142,10 +157,10 @@ def main():
     cli = cl_interface()
 
     print("YouTube Downloader CLI (type 'exit' or '(q)uit' to leave)")
-    print("Usage: <url> [-i] [-a] [-d <dir>] [--clear]")
-    print("Be aware of --clear it will delete EVERYTHING in <dir> !")
-    print("Be aware in current version created empty directories will not be deleted!")
-        
+    print("Usage: <url> [-a] [-i] [-cl] [-c] [-d <dir>]")
+    print("!! '-c' it will delete EVERYTHING in <dir> !!")
+    print("'-cl' will clear log files in ./logs")
+    
     while True:
         """Prompt for user input and process commands until the user decides to exit."""
         try:

@@ -48,6 +48,7 @@ TODO
 - --//-- is unsafe and needs to check if dir resides in user-space
 - --//-- make default to use new-dir "/PyRipper" -> check if inside this dir => user_settings can disable this -> adapt os-interactions
 - How to test this cli?
+- -d used once behaviour? -> once for current session or only this download?
 
 ### optional TODO: 
 - validate user_saettings file for fields and contet type

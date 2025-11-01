@@ -39,7 +39,7 @@ class ConversionError(DownloadError):
 class CombineError(DownloadError):
     pass
 
-@dataclass(frozen=True)
+@dataclass#(frozen=True)
 class DownloadOptions:
     audio_only: bool = False
     preferred_abr: str = ""
@@ -298,7 +298,7 @@ class YouTubeDownloader:
             if options.audio_only:
                 audio_path = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.AUDIO)
                 thumbnail_path = None #FIXME self.thumbnail_handler.download_thumbnail(video_obj, download_dir, base_filename)
-                output_path = os.path.join(download_dir, f"{base_filename}.mp3")
+                output_path = os.path.join(download_dir, f"{base_filename}.m4a")
                 if not audio_path:
                     msg = "no audio stream available"
                     logger.error(msg)
@@ -352,9 +352,10 @@ class YouTubeDownloader:
         playlist_obj._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
         logger.debug(f"Found {len(playlist_obj.video_urls)} videos in the playlist. {playlist_obj.title}")
         
+        download_dir = download_dir + '/' + date + playlist_obj.title
         # create new directory for each playlists -> easier for user
-        if not os.path.exists(download_dir + '/' + date + playlist_obj.title): #works for one level only
-            os.mkdir(download_dir + '/' + date + playlist_obj.title)
+        if not os.path.exists(download_dir): #works for one level only
+            os.mkdir(download_dir)
 
         for i, video in enumerate(playlist_obj.videos):
             logger.info(f'At {"soundtrack" if options.audio_only else "video"} {i + 1}/{len(playlist_obj.videos)}: ')
