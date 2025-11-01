@@ -3,6 +3,11 @@
 A small, opinionated YouTube downloader toolkit built around pytubefix and ffmpeg.  
 Designed for private use, easy extension, and experimentation — provides a programmatic API, a simple CLI, and a foundation for a future GUI or threaded downloader.
 
+## Disclaimer
+
+- heavily supported by copilot as learning objectives are architecture, unit-testing, API-integration and error handling. (Not primarily coding or efficiency)
+- not all copied/inspired code sections are referenced yet
+
 ---
 
 ## Features
@@ -58,12 +63,13 @@ ytd.download("https://www.youtube.com/watch?v=VIDEO_ID", download_dir="./downloa
 
 ## Configuration
 
-User preferences are read from `user_settings_localuser.json` (located next to the project root by default). The CLI reads `loglevel` and other defaults from that file. If missing, sensible defaults are created.
+User preferences are read from `user_settings.json` (located next to the project root by default). The CLI reads `loglevel` and other defaults from that file. If missing, sensible defaults are created.
 
 Important preferences:
 - `default_download_directory`
 - `audio_only`
 - `loglevel` (e.g. DEBUG, INFO, WARNING)
+- `preferred_[video|audio]_quality`
 
 ---
 
@@ -84,8 +90,9 @@ Important preferences:
 
 - SOLID-inspired: responsibilities are split (downloader vs converters vs thumbnail). This improves testability and concurrency readiness.
 - Download options are represented as an immutable dataclass (`DownloadOptions`, frozen) — safe to share between threads.
-- Temporary filenames use a short UUID suffix to avoid collisions when multiple downloads run concurrently.
 - Low-level helpers log full diagnostics and raise domain-specific exceptions; the CLI/top level logs concise user-facing messages.
+
+- Not yet implemented: _Temporary filenames use a short UUID suffix to avoid collisions when multiple downloads run concurrently._
 
 ---
 
@@ -94,7 +101,7 @@ Important preferences:
 - The library is designed to be safe for multi-threaded use when following the recommended patterns:
   - Keep `DownloadOptions` immutable.
   - Use stateless downloader instance or create one downloader per task.
-  - Avoid sharing mutable state (e.g., per-download temp filenames are generated).
+  - Missing: _Avoid sharing mutable state (e.g., per-download temp filenames are generated)._
 - Coordinate writes to the same directory (unique filenames or per-task temp dirs) to avoid collisions.
 
 ---

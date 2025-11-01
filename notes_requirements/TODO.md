@@ -1,6 +1,6 @@
 ## big
 - move some functions into utility class (os/fs related) -> rm empty folders (e.g. on fatal error)
-- 
+- move preferences to sensible class and defaults
 
 ## Small
 - Add thumbnail (reachable via youtube.thumbnail_url) to audio files using ffmeg
