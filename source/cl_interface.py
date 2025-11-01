@@ -4,6 +4,7 @@ import shutil
 import argparse
 import json
 import logging
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from source.logger import get_logger
 from source.pytube_interface import DownloadOptions, YouTubeDownloader as YTD
