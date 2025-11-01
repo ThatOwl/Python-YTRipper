@@ -139,9 +139,7 @@ Please follow existing code style and add tests for new logic.
 
 ---
 
-## License
-
-Add a `LICENSE` file (MIT recommended for small personal projects). This README does not ship a license by default.
+## [License] (https://github.com/RF-at-FH-Joanneum/Python-YTRipper/blob/main/LICENSE)
 
 ---
 
