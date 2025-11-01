@@ -2,10 +2,15 @@ import logging
 import os
 
 
-def get_logger(name: str, debug_logfile: str):
+def get_logger(name: str, debug_logfile: str) -> logging.Logger:
     """
-    Returns a logger instance that writes DEBUG logs to a specific file
-    and INFO+ logs to a general log file.
+    Get a configured logger that logs DEBUG messages to a specific debug log file
+    and INFO messages to a general log file.
+    Args:
+        name (str): Name of the logger.
+        debug_logfile (str): Filename for the debug log file.
+    Returns:
+        logging.Logger: Configured logger instance.
     """
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)

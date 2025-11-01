@@ -8,37 +8,16 @@ import requests
 from datetime import datetime
 from dataclasses import dataclass
 from typing import List
+import time
+import random
+import functools
 
-# import logger #FIXME does this work better? -> auto testing ! (pwd!)
+#FIXME check import from different locations
 from source.logger import get_logger
 from source.stream_converter import StreamConverter
 from source.url_handler import URLHandler
 
-#TODO:
-# Check interaction for pointing to right directory and path creation !!
-# Add error handling for network issues, invalid URLs, etc. !
-# Add support for different video/audio formats and qualities !!!
-# Add unit tests for the functions !
-
-#TODO mandatory
-# handle ~
-#   age-restricted videos
-#   private videos
-#   deleted videos
-#   region-restricted videos
-
-#TODO optional
-# Add progress bar for downloads
-# look at /.venv/lib/python3.11/site-packages/pytubefix/query.py
-# warn
-#   "video_obj.length" if length is very short or very long
-#   low resolution videos
-#
-# write a method based on "yt.streams.all()" to warn user if some formats 
-# are not available for a video in a playlist 
-#   and skip those formats (?)
-# or download the next best format available 
-
+#- Missing  proper cleanup and logging practices to avoid duplicate logs and maintain clarity.
 
 logger = get_logger(__name__, 'ytd-th_debug.log')
 
@@ -63,15 +42,67 @@ class CombineError(DownloadError):
 @dataclass(frozen=True)
 class DownloadOptions:
     audio_only: bool = False
-    preferred_quality: str = ""
     preferred_abr: str = ""
     preferred_resolution: str = ""
-    # Add more preferences as needed
+    preferred_audio_quality: str = ""
+    preferred_video_quality: str = ""
+    preferred_format: str = ""
+    preferred_mime: str = ""
+    # Add more options as needed
+    
+    @classmethod
+    def from_preferences(cls, prefs: dict) -> 'DownloadOptions':
+        return cls(
+            audio_only=prefs.get("audio_only", False),
+            preferred_abr=prefs.get("preferred_abr", ""),
+            preferred_resolution=prefs.get("preferred_resolution", ""),
+            preferred_audio_quality=prefs.get("preferred_audio_quality", "best"),
+            preferred_video_quality=prefs.get("preferred_video_quality", "best"),
+            preferred_format=prefs.get("preferred_format", ""),
+            preferred_mime=prefs.get("preferred_mime", ""),
+        )
 
 @dataclass
 class DownloadResult:
     success: bool
     errors: List[str]
+
+def retry_call(callable_fn, exceptions=(Exception,), retries: int = 3, backoff: float = 1.0,
+               backoff_factor: float = 2.0, jitter: float = 0.25, logger=None):
+    """
+    Inline retry helper for callables (useful for third-party methods).
+    Retries callable_fn() on specified exception types.
+    Args:
+        callable_fn: The callable to be executed.
+        exceptions: A tuple of exception types that should trigger a retry.
+        retries: Number of retry attempts.
+        backoff: Initial delay between retries in seconds.
+        backoff_factor: Factor by which the delay increases after each retry.
+        jitter: Maximum random jitter to add to the delay in seconds.
+        logger: Optional logger for logging retry attempts.
+    Returns:
+        The result of callable_fn() if successful.
+    Raises:
+        The last exception raised by callable_fn() after exhausting retries.
+    """
+    attempts_left = retries
+    delay = backoff
+    attempt = 1
+    while True:
+        try:
+            return callable_fn()
+        except exceptions as e:
+            if attempts_left <= 0:
+                # no retries left; re-raise
+                raise
+            if logger:
+                #not recognized by pylint ? .warning correct?
+                logger.warning("Transient error (inline) in attempt %d/%d: %s — retrying in %.2fs",
+                               attempt, retries + 1, e, delay)
+            time.sleep(delay + random.uniform(0, jitter))
+            attempts_left -= 1
+            delay *= backoff_factor
+            attempt += 1
 
 # Will be exported to own file later
 class ThumbnailHandler:
@@ -93,7 +124,14 @@ class ThumbnailHandler:
         """
         thumbnail_url = video.thumbnail_url
         logger.debug(f"Downloading thumbnail from: {thumbnail_url}")
-        response = requests.get(thumbnail_url)
+        try:
+            # retry the HTTP GET in case of transient network errors
+            response = retry_call(lambda: requests.get(thumbnail_url, timeout=10),
+                                  exceptions=(requests.RequestException,),
+                                  retries=3, backoff=1.0, backoff_factor=2.0, jitter=0.25, logger=logger)
+        except Exception as e:
+            logger.exception(f"Failed to download thumbnail after retries: {e}")
+            return ""
         
         if response.status_code == 200:
             ext = thumbnail_url.split('.')[-1].split('?')[0]
@@ -139,15 +177,21 @@ class YouTubeDownloader:
         except ptf_ex.VideoUnavailable:
             logger.exception(f"Video unavailable: {video_url}")
             raise VideoFetchError(f"video unavailable: {video_url}") from e
-        except ptf_ex.AgeRestrictedError:
-            logger.exception(f"Age-restricted video: {video_url}")
-            raise VideoFetchError(f"Age-restricted video: {video_url}") from e
         except ptf_ex.LiveStreamError:
             logger.exception(f"Live stream video (not supported): {video_url}")
             raise VideoFetchError(f"Live stream video (not supported): {video_url}") from e
         except ptf_ex.RegexMatchError:
             logger.exception(f"Regex match error occurred for video: {video_url}")
-            raise VideoFetchError(f"Regex match error occurred for video: {video_url}") from e 
+            raise VideoFetchError(f"Regex match error occurred for video: {video_url}") from e
+        except ptf_ex.VideoPrivate:
+            logger.exception(f"Private video: {video_url}")
+            raise VideoFetchError(f"Private video: {video_url}") from e
+        except ptf_ex.VideoRegionBlocked:
+            logger.exception(f"Region-blocked video: {video_url}")
+            raise VideoFetchError(f"Region-blocked video: {video_url}") from e
+        except (ptf_ex.AgeCheckRequiredAccountError, ptf_ex.AgeCheckRequiredError) as e:
+            logger.exception(f"Age check required for video: {video_url}")
+            raise VideoFetchError(f"Age check required for video: {video_url}") from e
         except Exception as e:
             logger.exception(f"An error occurred while fetching the video {video_url}") 
             raise VideoFetchError(f"An error occurred while fetching the video {video_url}: {e}")
@@ -390,7 +434,6 @@ class YouTubeDownloader:
 
                 if self.urlh.is_youtube_playlist(url):
                     logger.debug("Detected as a playlist URL.")
-                    #would be: failed = self.download_playlist(playlist_url=url, download_dir=download_dir, audio_only=audio_only, failed_list=failed_list)
                     results = self.download_playlist(playlist_url=url, download_dir=download_dir, options=options)
                 else:
                     logger.debug("Detected as a single video URL.")

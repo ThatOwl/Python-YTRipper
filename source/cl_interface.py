@@ -10,32 +10,62 @@ from source.logger import get_logger
 from source.pytube_interface import DownloadOptions, YouTubeDownloader as YTD
 from source.url_handler import URLHandler as URLH
 
+DEFAULT_PREFS = {
+    "default_download_directory": "~/Downloads",
+    "audio_only": True,
+    "warn_me": False,
+    "preferred_audio_quality": "",
+    "preferred_video_quality": "",
+    "preferred_format": "",
+    "preferred_abr": "",
+    "preferred_resolution": "",
+    "preferred_mime": "",
+    "loglevel": "WARNING"
+}
+
+
 logger = get_logger(__name__, 'cli_debug.log')
 
-#TODO:  How to test this cli?
-#       currently used manually
-# maybe add data-object for arguments to pass around? (like DownloadOptions)
-# => later GUI to interface with CLI instead of classes? ... facade-pattern instead? 
 
 class cl_interface:
     def __init__(self):
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.DEBUG)
-        logger.addHandler(console_handler)
-        self.ytd = YTD()    
+        self.preferences = self.read_preferences()
+        self.download_options = DownloadOptions.from_preferences(self.preferences)
+        
+        #TODO this does not work as intended ... logging level not set properly
+        prefs = self.preferences if isinstance(self.preferences, dict) else {}
+        level_name = prefs.get("loglevel", "info").upper()
+        print(f"Loglevel set to: {level_name}")
+        #console_handler = logging.StreamHandler(sys.stdout)
+        #console_handler.setLevel(getattr(logging, level_name, logging.INFO))
     
-    def read_preferences(self):
+        #logger.addHandler(console_handler)
+        self.ytd = YTD()
+    
+    def read_preferences(self) -> dict:
+        """Read user preferences from a JSON file. If the file does not exist, create it with default preferences.
+        Returns:
+            dict: A dictionary containing user preferences.
+        """
         path_to_preferences = "./user_settings.json"
         if not os.path.exists(path_to_preferences):
-            print("Path to settings file inaccessible !") #TODO: log + logic
-        else: 
+            logger.warning("Path to settings file inaccessible ! \n Reverting to defaults.")  # TODO:  logic
+            with open(path_to_preferences, 'w') as f:
+                json.dump(DEFAULT_PREFS, f, indent=4)
+                return DEFAULT_PREFS
+        else:
             with open(path_to_preferences, 'r') as f:
-                self.preferences = json.load(f)
-            print(self.preferences)
-        pass
+                data = json.load(f)
+                logger.info(data)
+                return data
 
+    #FIXME: generally unsafe ... error handling, logging, confirmation dialog, permission issues, edge cases
     def clear_directory(self, dir_path: str) -> None:
-        """Utility function to clear all files and subdirectories in a directory."""
+        """
+        Utility function to clear all files and subdirectories in a directory.
+        Args:
+            dir_path (str): Path to the directory to be cleared.
+        """
         for filename in os.listdir(dir_path):
             file_path = os.path.join(dir_path, filename)
             try:
@@ -44,7 +74,28 @@ class cl_interface:
                 elif os.path.isdir(file_path):
                     shutil.rmtree(file_path)
             except Exception as e:
-                logger.warning(f'Failed to delete {file_path}. Reason: {e}')
+                logger.error(f'Failed to delete {file_path}. Reason: {e}')
+    
+    def clear_dialog(self, dir_path: str) -> None:
+        """Prompt the user for confirmation before clearing a directory.
+        Args:
+            dir_path (str): Path to the directory to be cleared.
+        """
+        # discrepacy of print and logger on purpose -> user should only see print
+        if self.preferences.get("warn_me", True):
+            print(f"Are you sure you want to clear the directory: {dir_path} ? (y/n)")
+            confirmation = input().strip().lower()
+            if confirmation.lower() in {'y', 'yes'}:
+                self.clear_directory(dir_path)
+                logger.debug(f"Cleared directory: {dir_path}")
+            else: 
+                logger.debug("Directory clear operation cancelled.")
+        else:
+            self.clear_directory(dir_path)
+            logger.debug(f"Cleared directory without confirmation: {dir_path}")
+        
+        return
+
 
     def process_command(self, command:str) -> None:
         """Process a command string for downloading YouTube videos or playlists.
@@ -65,19 +116,12 @@ class cl_interface:
             logger.error("Invalid command or arguments.")
             return
         
-        print("i was here  ")
-        print(self.preferences)
-        self.preferences.audio_only = args.audio
+        if args.audio:
+            self.download_options.audio_only = True
         
         if args.clear:
-            print(f"Are you sure you want to clear the directory: {args.dir} ? (y/n)")
-            confirmation = input().strip().lower()
-            if confirmation.lower() in {'y', 'yes'}:
-                self.clear_directory(args.dir)
-                logger.info(f"Cleared directory: {args.dir}")
-            else: 
-                logger.info("Directory clear operation cancelled.")
-        
+            self.clear_dialog(args.dir)
+
         if args.info:
             print("Fetching video/playlist info...")
             try:
@@ -88,24 +132,20 @@ class cl_interface:
         else: 
             print("------ Starting action ------")
             try:
-                self.ytd.download(url=args.url, download_dir=args.dir, options=self.preferences)
-                #logger.info("Download completed successfully.")
+                self.ytd.download(url=args.url, download_dir=args.dir, options=self.download_options)
             except Exception as e:
                 logger.error(f"Download failed: {e}")
 
         print("------ End of action ------")
 
 def main():
-    
-
     cli = cl_interface()
 
     print("YouTube Downloader CLI (type 'exit' or '(q)uit' to leave)")
-    print("Usage: <url> [-a] [-d <dir>] [--clear]")
+    print("Usage: <url> [-i] [-a] [-d <dir>] [--clear]")
     print("Be aware of --clear it will delete EVERYTHING in <dir> !")
     print("Be aware in current version created empty directories will not be deleted!")
-    logger.debug("testing: " + os.getcwd())
-    cli.read_preferences()
+        
     while True:
         """Prompt for user input and process commands until the user decides to exit."""
         try:
