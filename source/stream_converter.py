@@ -9,7 +9,7 @@ class StreamConverter:
     """Handles conversion and merging of audio/video streams."""
     
     @staticmethod
-    def convert_to_m4a(audio_path: str, output_path: str, thumbnail_path: str = None) -> None:
+    def convert_to_m4a_old(audio_path: str, output_path: str, thumbnail_path: str = None) -> None:
         """Converts audio to m4a format.
 
         Args:
@@ -35,15 +35,15 @@ class StreamConverter:
                             '-metadata:s:v', 'comment=Cover (front)'
                         ]
                     )
-                    .run(overwrite_output=True, quiet=True)
+                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
                 )
                 os.remove(thumbnail_path)
             else:
                 (
                     fpg
                     .input(audio_path)
-                    .output(output_path, acodec='m4a', strict='experimental')
-                    .run(overwrite_output=True, quiet=True)
+                    .output(output_path, acodec='aac', strict='experimental')
+                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
                 )
             logger.info(f"Audio file saved to: {output_path}")
             os.remove(audio_path)
@@ -51,6 +51,55 @@ class StreamConverter:
             logger.exception(f"Error during ffmpeg audio conversion: {e.stderr.decode() if hasattr(e, 'stderr') else e}")
             logger.info("Keeping original audio file.")
             raise e  # Re-raise the exception for upstream handling
+
+    @staticmethod
+    def convert_to_m4a(audio_path: str, output_path: str, thumbnail_path: str = None) -> None:
+        """Converts audio to m4a format.
+
+        Args:
+            audio_path (str): The path to the source audio file.
+            output_path (str): The path where the converted m4a file will be saved.
+            thumbnail_path (str, optional): The path to the thumbnail image file. Defaults to None.
+        """
+        logger.debug("Converting audio to m4a with ffmpeg...")
+        # ensure output has proper extension so ffmpeg can pick container
+        if not output_path.lower().endswith('.m4a'):
+            output_path = f"{output_path}.m4a"
+
+        try:
+            if thumbnail_path and os.path.exists(thumbnail_path):
+                audio_input = fpg.input(audio_path)
+                image_input = fpg.input(thumbnail_path)
+                (
+                    fpg
+                    .output(
+                        audio_input, image_input, output_path,
+                        acodec='aac',
+                        # map audio + image, set metadata for cover art
+                        extra_args=[
+                            '-map', '0:a',
+                            '-map', '1:v',
+                            '-metadata:s:v', 'title=Album cover',
+                            '-metadata:s:v', 'comment=Cover (front)'
+                        ]
+                    )
+                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
+                )
+                os.remove(thumbnail_path)
+            else:
+                (
+                    fpg
+                    .input(audio_path)
+                    .output(output_path, acodec='aac', strict='experimental')
+                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
+                )
+            logger.info(f"Audio file saved to: {output_path}")
+            os.remove(audio_path)
+        except Exception as e:
+            stderr = getattr(e, 'stderr', None)
+            logger.exception(f"Error during ffmpeg audio conversion: {stderr.decode() if stderr else e}")
+            logger.info("Keeping original audio file.")
+            raise e  # propagate for upstream handling
 
     @staticmethod
     def convert_to_mp3(audio_path: str, output_path: str) -> None:
@@ -102,7 +151,7 @@ class StreamConverter:
             (
                 fpg
                 .output(fpg.input(video_path), fpg.input(audio_path), output_path, vcodec='copy', acodec='aac', strict='experimental')
-                .run(overwrite_output=True, quiet=True)
+                .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
             )
             logger.info(f"Merged file saved to: {output_path}")
             os.remove(video_path)
