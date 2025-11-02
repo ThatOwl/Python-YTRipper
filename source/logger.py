@@ -1,6 +1,8 @@
 import logging
 import os
 
+PATH_TO_LOGS = "./logs/"
+
 
 def get_logger(name: str, debug_logfile: str) -> logging.Logger:
     """
@@ -23,16 +25,16 @@ def get_logger(name: str, debug_logfile: str) -> logging.Logger:
     formatter = logging.Formatter(
         '%(asctime)s - %(levelname)s - %(module)s.%(funcName)s - %(message)s'
     )
-    
-    if not os.path.exists('./logs'):
-        os.makedirs('./logs')
 
-    filehandler_specific = logging.FileHandler(f'./logs/{debug_logfile}')
+    if not os.path.exists(PATH_TO_LOGS):
+        os.makedirs(PATH_TO_LOGS)
+
+    filehandler_specific = logging.FileHandler(f'{PATH_TO_LOGS}/{debug_logfile}')
     filehandler_specific.setLevel(logging.DEBUG)
     filehandler_specific.setFormatter(formatter)
     logger.addHandler(filehandler_specific)
 
-    filehandler_general = logging.FileHandler('./logs/general.log')
+    filehandler_general = logging.FileHandler(f'{PATH_TO_LOGS}/general.log')
     filehandler_general.setLevel(logging.INFO)
     filehandler_general.setFormatter(formatter)
     logger.addHandler(filehandler_general)
@@ -43,6 +45,7 @@ def get_logger(name: str, debug_logfile: str) -> logging.Logger:
     logger.addHandler(stream_handler)
 
     logger._custom_handlers_added = True
+    logger.debug("Logger initialized --------------------------------")
     return logger
 
 # Usage in your modules:

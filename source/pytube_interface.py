@@ -16,6 +16,7 @@ import functools
 from source.logger import get_logger
 from source.stream_converter import StreamConverter
 from source.url_handler import URLHandler
+from source.os_interactions import OSInteractions
 
 #- Missing  proper cleanup and logging practices to avoid duplicate logs and maintain clarity.
 
@@ -156,10 +157,14 @@ class YouTubeDownloader:
         StreamType.VIDEO:'Video'
     }
 
-    def __init__(self):
+    def __init__(self, os_handler: OSInteractions = None):
         self.thumbnail_handler = ThumbnailHandler()
         self.stream_converter = StreamConverter()
         self.urlh = URLHandler()
+        self.os_handler = os_handler
+        if self.os_handler is None:
+            from source.os_interactions import OSInteractions
+            self.os_handler = OSInteractions()
 
     def _get_video_obj(self, video_url: str) -> ptf.YouTube:
         """

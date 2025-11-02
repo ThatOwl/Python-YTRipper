@@ -8,20 +8,7 @@ import logging
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from source.logger import get_logger
 from source.pytube_interface import DownloadOptions, YouTubeDownloader as YTD
-from source.url_handler import URLHandler as URLH
-
-DEFAULT_PREFS = {
-    "default_download_directory": "~/Downloads",
-    "audio_only": True,
-    "warn_me": False,
-    "preferred_audio_quality": "",
-    "preferred_video_quality": "",
-    "preferred_format": "",
-    "preferred_abr": "",
-    "preferred_resolution": "",
-    "preferred_mime": "",
-    "loglevel": "WARNING"
-}
+from source.os_interactions import OSInteractions
 
 
 logger = get_logger(__name__, 'cli_debug.log')
@@ -29,8 +16,8 @@ logger = get_logger(__name__, 'cli_debug.log')
 
 class cl_interface:
     def __init__(self):
-        self.preferences = self.read_preferences()
-        self.download_options = DownloadOptions.from_preferences(self.preferences)
+        self.os = OSInteractions()                  # new helper instance
+        self.preferences = self.os.read_preferences()
         
         #TODO this does not work as intended ... logging level not set properly
         prefs = self.preferences if isinstance(self.preferences, dict) else {}
@@ -40,41 +27,9 @@ class cl_interface:
         #console_handler.setLevel(getattr(logging, level_name, logging.INFO))
     
         #logger.addHandler(console_handler)
-        self.ytd = YTD()
-    
-    def read_preferences(self) -> dict:
-        """Read user preferences from a JSON file. If the file does not exist, create it with default preferences.
-        Returns:
-            dict: A dictionary containing user preferences.
-        """
-        path_to_preferences = "./user_settings.json"
-        if not os.path.exists(path_to_preferences):
-            logger.warning("Path to settings file inaccessible ! \n Reverting to defaults.")  # TODO:  logic
-            with open(path_to_preferences, 'w') as f:
-                json.dump(DEFAULT_PREFS, f, indent=4)
-                return DEFAULT_PREFS
-        else:
-            with open(path_to_preferences, 'r') as f:
-                data = json.load(f)
-                logger.info(data)
-                return data
+        
+        self.ytd = YTD(os_handler=self.os)
 
-    #FIXME: generally unsafe ... error handling, logging, confirmation dialog, permission issues, edge cases
-    def clear_directory(self, dir_path: str) -> None:
-        """
-        Utility function to clear all files and subdirectories in a directory.
-        Args:
-            dir_path (str): Path to the directory to be cleared.
-        """
-        for filename in os.listdir(dir_path):
-            file_path = os.path.join(dir_path, filename)
-            try:
-                if os.path.isfile(file_path) or os.path.islink(file_path):
-                    os.unlink(file_path)
-                elif os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
-            except Exception as e:
-                logger.error(f'Failed to delete {file_path}. Reason: {e}')
     
     def clear_dialog(self, dir_path: str) -> None:
         """Prompt the user for confirmation before clearing a directory.
@@ -86,16 +41,15 @@ class cl_interface:
             print(f"Are you sure you want to clear the directory: {dir_path} ? (y/n)")
             confirmation = input().strip().lower()
             if confirmation.lower() in {'y', 'yes'}:
-                self.clear_directory(dir_path)
+                self.os.clear_directory(dir_path)
                 logger.debug(f"Cleared directory: {dir_path}")
             else: 
                 logger.debug("Directory clear operation cancelled.")
         else:
-            self.clear_directory(dir_path)
+            self.os.clear_directory(dir_path)
             logger.debug(f"Cleared directory without confirmation: {dir_path}")
         
         return
-
 
     def process_command(self, command:str) -> None:
         """Process a command string for downloading YouTube videos or playlists.
@@ -110,31 +64,23 @@ class cl_interface:
         parser.add_argument('-cl', '--clear_logs', action='store_true', help='Clear log files before downloading')
         parser.add_argument('-c', '--clear', action='store_true', help='Clear download directory before downloading')
         parser.add_argument('-d', '--dir', default='./temp_ripper_downloads', help='Download directory')
-
+        parser.add_argument('-h', '--help', action='help', help='Show this help message and exit')
+        
         try:
             args = parser.parse_args(command.split())
         except SystemExit:
             logger.error("Invalid command or arguments.")
             return
-        
-        # Update download options based on command-line arguments
-        #FIXME: this creates a new object every time ... bad design
-        download_options = DownloadOptions(audio_only= True if args.audio else self.download_options.audio_only, 
-                                               preferred_audio_quality=self.download_options.preferred_audio_quality,
-                                               preferred_video_quality=self.download_options.preferred_video_quality,
-                                               preferred_format=self.download_options.preferred_format,
-                                               preferred_abr=self.download_options.preferred_abr,
-                                               preferred_resolution=self.download_options.preferred_resolution,
-                                               preferred_mime=self.download_options.preferred_mime)
 
-        if args.dir != './temp_ripper_downloads':
-            self.preferences["default_download_directory"] = args.dir
+        # Update preferences based on command-line arguments
+        self.preferences["audio_only"] = True if args.audio else self.preferences.get("audio_only", True)
+        self.preferences["default_download_directory"] = args.dir if args.dir else self.preferences.get("default_download_directory", "./temp_ripper_downloads")
                 
         if args.clear: #FIXME: not working properly
             self.clear_dialog(args.dir)
 
         if args.clear_logs: #FIXME: not working properly
-            self.clear_directory('./logs')
+            self.os.clear_logs()
             logger.debug(f"Cleared log files before downloading.")
 
         if args.info:
@@ -147,9 +93,10 @@ class cl_interface:
         else: 
             print("------ Starting action ------")
             try:
-                self.ytd.download(url=args.url, download_dir=args.dir, options=download_options)
+                self.ytd.download(url=args.url, download_dir=self.preferences["default_download_directory"], options=DownloadOptions.from_preferences(self.preferences))
             except Exception as e:
-                logger.error(f"Download failed: {e}")
+                #logger.error(f"Download failed: {e}")
+                return
 
         print("------ End of action ------")
 
@@ -159,7 +106,6 @@ def main():
     print("YouTube Downloader CLI (type 'exit' or '(q)uit' to leave)")
     print("Usage: <url> [-a] [-i] [-cl] [-c] [-d <dir>]")
     print("!! '-c' it will delete EVERYTHING in <dir> !!")
-    print("'-cl' will clear log files in ./logs")
     
     while True:
         """Prompt for user input and process commands until the user decides to exit."""
