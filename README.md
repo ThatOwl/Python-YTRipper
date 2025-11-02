@@ -35,7 +35,7 @@ sudo apt install python3-full python3-venv
 ```
 
 In the directory where this project is clone to do this manually:
-(optionally use [install.sh](https://github.com/RF-at-FH-Joanneum/Python-YTRipper/blob/main/requirements.txt) script)
+(optionally use [install.sh](https://github.com/RF-at-FH-Joanneum/Python-YTRipper/blob/main/install.sh) script)
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
