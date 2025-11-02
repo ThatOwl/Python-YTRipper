@@ -36,9 +36,9 @@ sudo apt install python3-full python3-venv
 
 In the directory where this project is clone to do:
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requests.in
 ```
 IF you are having trouble with externally managed environment do:
 ```bash
@@ -46,7 +46,7 @@ rm -rf .venv
 python3 -m venv --without-pip .venv
 source .venv/bin/activate
 curl -sS https://bootstrap.pypa.io/get-pip.py | python
-python3 -m pip install -r requirements.txt
+python3 -m pip install -r requests.in
 ```
 
 optional install [argcomplete](https://pypi.org/project/argcomplete/) for usage in directory navigation.
@@ -59,7 +59,7 @@ python3 -m pip install argcomplete
 
 Run the interactive CLI (from the project root):
 ```bash
-python -m source.cl_interface
+python3 -m source.cl_interface
 ```
 
 One-shot CLI example (interactive prompt accepts the same arguments):

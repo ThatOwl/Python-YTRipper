@@ -177,27 +177,36 @@ class YouTubeDownloader:
         try:
             video_obj = ptf.YouTube(video_url)
             return video_obj
-        except ptf_ex.VideoUnavailable:
-            logger.exception(f"Video unavailable: {video_url}")
+        except ptf_ex.VideoUnavailable as e:
+            # concise user-facing error
+            logger.error("Video unavailable: %s", video_url)
+            # full diagnostic to debug/file
+            logger.debug("VideoUnavailable exception while fetching %s", video_url, exc_info=True)
             raise VideoFetchError(f"video unavailable: {video_url}") from e
-        except ptf_ex.LiveStreamError:
-            logger.exception(f"Live stream video (not supported): {video_url}")
+        except ptf_ex.LiveStreamError as e:
+            logger.error("Live stream video (not supported): %s", video_url)
+            logger.debug("LiveStreamError while fetching %s", video_url, exc_info=True)
             raise VideoFetchError(f"Live stream video (not supported): {video_url}") from e
-        except ptf_ex.RegexMatchError:
-            logger.exception(f"Regex match error occurred for video: {video_url}")
-            raise VideoFetchError(f"Regex match error occurred for video: {video_url}") from e
-        except ptf_ex.VideoPrivate:
-            logger.exception(f"Private video: {video_url}")
+        except ptf_ex.RegexMatchError as e:
+            logger.error("Invalid or malformed video URL: %s", video_url)
+            logger.debug("RegexMatchError while fetching %s", video_url, exc_info=True)
+            raise VideoFetchError(f"Regex match error for video: {video_url}") from e
+        except ptf_ex.VideoPrivate as e:
+            logger.error("Private video: %s", video_url)
+            logger.debug("VideoPrivate while fetching %s", video_url, exc_info=True)
             raise VideoFetchError(f"Private video: {video_url}") from e
-        except ptf_ex.VideoRegionBlocked:
-            logger.exception(f"Region-blocked video: {video_url}")
+        except ptf_ex.VideoRegionBlocked as e:
+            logger.error("Region-blocked video: %s", video_url)
+            logger.debug("VideoRegionBlocked while fetching %s", video_url, exc_info=True)
             raise VideoFetchError(f"Region-blocked video: {video_url}") from e
         except (ptf_ex.AgeCheckRequiredAccountError, ptf_ex.AgeCheckRequiredError) as e:
-            logger.exception(f"Age check required for video: {video_url}")
+            logger.error("Age check required for video: %s", video_url)
+            logger.debug("Age-check exception while fetching %s", video_url, exc_info=True)
             raise VideoFetchError(f"Age check required for video: {video_url}") from e
         except Exception as e:
-            logger.exception(f"An error occurred while fetching the video {video_url}") 
-            raise VideoFetchError(f"An error occurred while fetching the video {video_url}: {e}")
+            logger.error("Failed to fetch video: %s", video_url)
+            logger.debug("Unexpected exception while fetching %s", video_url, exc_info=True)
+            raise VideoFetchError(f"An error occurred while fetching the video {video_url}: {e}") from e
 
     #TODO improve error handling
     def _get_playlist_obj(self, playlist_url: str) -> ptf.Playlist:
@@ -213,11 +222,13 @@ class YouTubeDownloader:
         try:
             playlist_obj = ptf.Playlist(playlist_url)
             return playlist_obj
-        except ptf_ex.RegexMatchError:
-            logger.exception(f"Regex match error occurred for playlist: {playlist_url}")
-            raise PlaylistFetchError(f"Regex match error occurred for playlist: {playlist_url}") from e
+        except ptf_ex.RegexMatchError as e:
+            logger.error("Invalid or malformed playlist URL: %s", playlist_url)
+            logger.debug("RegexMatchError while fetching playlist %s", playlist_url, exc_info=True)
+            raise PlaylistFetchError(f"Regex match error for playlist: {playlist_url}") from e
         except Exception as e:
-            logger.exception(f"An error occurred while fetching the playlist {playlist_url}: {e}")
+            logger.error("Failed to fetch playlist: %s", playlist_url)
+            logger.debug("Unexpected exception while fetching playlist %s", playlist_url, exc_info=True)
             raise PlaylistFetchError(f"An error occurred while fetching the playlist {playlist_url}: {e}") from e
 
     def _sanitize_filename(self, title: str) -> str:
@@ -348,6 +359,7 @@ class YouTubeDownloader:
         download_dir = download_dir + '/' + date + playlist_obj.title
         # create new directory for each playlists -> easier for user
         if not os.path.exists(download_dir): #works for one level only
+            logger.debug(f"Creating playlist download directory: {download_dir}")
             os.mkdir(download_dir)
 
         for i, video in enumerate(playlist_obj.videos):
