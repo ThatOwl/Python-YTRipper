@@ -137,7 +137,7 @@ class ThumbnailHandler:
             thumbnail_path = os.path.join(download_dir, f"{base_filename}_thumbnail.{ext}")
             with open(thumbnail_path, 'wb') as f:
                 f.write(response.content)
-            logger.info(f"Thumbnail downloaded to: {thumbnail_path}")
+            logger.debug(f"Thumbnail downloaded to: {thumbnail_path}")
             return thumbnail_path
         else:
             logger.warning("Failed to download thumbnail.")
@@ -262,7 +262,7 @@ class YouTubeDownloader:
                 logger.debug(f"Selected video stream: {stream.resolution}, {stream.mime_type}")
 
             if not stream:
-                logger.debug(f"No suitable {self.stream_type_map[type]} stream available for this video.")
+                logger.warning(f"No suitable {self.stream_type_map[type]} stream available for this video.")
                 return ""
             
             ext = stream.subtype
@@ -359,7 +359,7 @@ class YouTubeDownloader:
         download_dir = download_dir + '/' + date + playlist_obj.title
         # create new directory for each playlists -> easier for user
         if not os.path.exists(download_dir): #works for one level only
-            logger.debug(f"Creating playlist download directory: {download_dir}")
+            logger.info(f"Creating playlist download directory: {download_dir}")
             os.mkdir(download_dir)
 
         for i, video in enumerate(playlist_obj.videos):
@@ -436,7 +436,7 @@ class YouTubeDownloader:
             try:
                 if not os.path.exists(download_dir): #works for one level only
                     os.mkdir(download_dir)
-                    logger.debug(f"Created download directory: {download_dir}")
+                    logger.info(f"Created download directory: {download_dir}")
 
                 if self.urlh.is_youtube_playlist(url):
                     logger.debug("Detected as a playlist URL.")
