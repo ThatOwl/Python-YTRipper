@@ -7,7 +7,7 @@ Designed for private use, easy extension, and experimentation — provides a pro
 
 - heavily supported by copilot as learning objectives are architecture, unit-testing, API-integration and error handling. (Not primarily coding or efficiency)
 - not all copied/inspired code sections are referenced yet
-
+- current state many thing do not work properly including [argcomplete](https://pypi.org/project/argcomplete/)
 ---
 
 ## Features
@@ -51,15 +51,8 @@ curl -sS https://bootstrap.pypa.io/get-pip.py | python
 python3 -m pip install -r requirements.txt
 ```
 
-optional install [argcomplete](https://pypi.org/project/argcomplete/) for usage in directory navigation.
-```bash
-# inside venv!
-python3 -m pip install argcomplete
-```
-
-
-
 Run the interactive CLI (from the project root):
+Or use the [star_app.sh](https://github.com/RF-at-FH-Joanneum/Python-YTRipper/blob/main/start_app.sh)
 ```bash
 python3 -m source.cl_interface
 ```

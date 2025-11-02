@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import List
 import time
 import random
-
+from pathlib import Path 
 #FIXME check import from different locations
 from source.logger_a_constants import get_logger
 from source.stream_converter import StreamConverter
@@ -356,15 +356,21 @@ class YouTubeDownloader:
         playlist_obj._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
         logger.debug(f"Found {len(playlist_obj.video_urls)} videos in the playlist. {playlist_obj.title}")
         
-        download_dir = download_dir + '/' + date + playlist_obj.title
+        # Build a Path for the playlist directory and ensure it exists
+        playlist_dir = Path(download_dir) / f"{date}{self._sanitize_filename(playlist_obj.title)}"
+
         # create new directory for each playlists -> easier for user
-        if not os.path.exists(download_dir): #works for one level only
-            logger.info(f"Creating playlist download directory: {download_dir}")
-            os.mkdir(download_dir)
+        try:
+            if not playlist_dir.exists(): #if user retries existing dir, skip creation
+                logger.info(f"Creating playlist download directory: {playlist_dir}")
+                playlist_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Failed to create playlist directory {playlist_dir}: {e}")
+            return results
 
         for i, video in enumerate(playlist_obj.videos):
             logger.info(f'At {"soundtrack" if options.audio_only else "video"} {i + 1}/{len(playlist_obj.videos)}: ')
-            result = self.download_single(download_dir=download_dir, options=options, video_obj=video)
+            result = self.download_single(download_dir=str(playlist_dir), options=options, video_obj=video)
             results.append(result)
 
         logger.info("Playlist download completed.")
@@ -435,7 +441,7 @@ class YouTubeDownloader:
             logger.debug(f"Valid YouTube URL: {url}")
             try:
                 if not os.path.exists(download_dir): #works for one level only
-                    os.mkdir(download_dir)
+                    os.makedirs(download_dir)
                     logger.info(f"Created download directory: {download_dir}")
 
                 if self.urlh.is_youtube_playlist(url):

@@ -22,6 +22,8 @@ source .venv/bin/activate
 # Install dependencies (check your filename)
 pip install -r requirements.txt
 
+deactivate
+
 echo ""
 echo "Setup complete. Virtual environment is activated."
-echo "  | Be aware you just entered a virtual environment! (exit with deactivate)"
+echo "To activate it later, run: source .venv/bin/activate or start_app.sh"

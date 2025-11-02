@@ -11,15 +11,15 @@ from source.os_interactions import OSInteractions
 
 logger = get_logger(__name__, 'cli_debug.log')
 
-class cl_interface:
+class CLInterface:
     def __init__(self):
-        self.os = OSInteractions()                  # new helper instance
+        self.os = OSInteractions()                  # helper instance
         self.preferences = self.os.read_preferences()
         
         #TODO this does not work as intended ... logging level not set properly
         prefs = self.preferences if isinstance(self.preferences, dict) else {}
         level_name = prefs.get("loglevel", "info").upper()
-        print(f"Loglevel set to: {level_name}")
+        #DELETEME print(f"Loglevel set to: {level_name}")
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(getattr(logging, level_name, logging.INFO))
         logger.addHandler(console_handler)
@@ -60,7 +60,7 @@ class cl_interface:
         parser.add_argument('-i', '--info', action='store_true', help='Print video/playlist info and exit')
         parser.add_argument('-cl', '--clear_logs', action='store_true', help='Clear log files before downloading')
         parser.add_argument('-c', '--clear', action='store_true', help='Clear download directory before downloading')
-        parser.add_argument('-o', '--output', type=OSInteractions().expand_path, default='~/Python-YTRipper_Downloads', help='Output directory: supports ~ expansion')
+        parser.add_argument('-o', '--output', type=OSInteractions().expand_path, help='Output directory: supports ~ expansion')
         parser.add_argument('-h', '--help', action='help', help='Show this help message and exit')
         return parser
 
@@ -83,7 +83,7 @@ class cl_interface:
         Args:
             command (str): The command string input by the user.
         """
-        
+
         try:
             args = self.parser.parse_args(command.split())
         except SystemExit:
@@ -93,7 +93,9 @@ class cl_interface:
         # Update preferences based on command-line arguments
         self.preferences["audio_only"] = True if args.audio else self.preferences.get("audio_only", True)
         self.preferences["default_download_directory"] = args.output if args.output else self.preferences.get("default_download_directory", "./temp_ripper_downloads")
-
+        #DELETEME
+        print(f"Download directory set to: {self.preferences['default_download_directory']}")
+        
         if args.clear: #FIXME: not working properly
             self.clear_dialog(args.dir)
 
@@ -111,7 +113,9 @@ class cl_interface:
         else: 
             print("------ Starting action ------")
             try:
-                self.ytd.download(url=args.url, download_dir=self.preferences["default_download_directory"], options=DownloadOptions.from_preferences(self.preferences))
+                # Always expand the download directory before passing to downloader
+                expanded_download_dir = self.os.expand_path(self.preferences["default_download_directory"])
+                self.ytd.download(url=args.url, download_dir=expanded_download_dir, options=DownloadOptions.from_preferences(self.preferences))
             except Exception as e:
                 #logger.error(f"Download failed: {e}")
                 return
@@ -119,7 +123,7 @@ class cl_interface:
         print("------ End of action ------")
 
 def main():
-    cli = cl_interface()
+    cli = CLInterface()
 
     print("YouTube Downloader CLI (type 'exit' or '(q)uit' to leave)")
     print("Usage: <url> [-a] [-i] [-cl] [-c] [-o <dir>]")
