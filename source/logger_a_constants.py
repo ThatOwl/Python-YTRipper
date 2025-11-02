@@ -1,8 +1,32 @@
 import logging
 import os
+from pathlib import Path
 
-PATH_TO_LOGS = "./logs/"
+# ---------- CONSTANTS FOR SETUP & RESTORE -------------------
+# These reside here as the logger gets imported in multiple modules
+# and ALWAYS gets invoked first
 
+CURRENT_DIR = Path(__file__).resolve().parent  # → Python-YTRipper/source
+PROJECT_ROOT = CURRENT_DIR.parent              # → Python-YTRipper
+CONFIG_DIR = PROJECT_ROOT / "config"
+LOGS_DIR = PROJECT_ROOT / "logs"
+
+PATH_TO_LOGS = os.path.join(LOGS_DIR)
+PATH_TO_PREFERENCES = os.path.join(CONFIG_DIR, "user_settings.json")
+
+DEFAULT_PREFS = {
+    "default_download_directory": "~/Downloads",
+    "audio_only": True,
+    "warn_me": False,
+    "preferred_audio_quality": "",
+    "preferred_video_quality": "",
+    "preferred_format": "",
+    "preferred_abr": "",
+    "preferred_resolution": "",
+    "preferred_mime": "",
+    "loglevel": "WARNING"
+}
+# -----------------------------
 
 def get_logger(name: str, debug_logfile: str) -> logging.Logger:
     """

@@ -1,6 +1,6 @@
 import os
 import ffmpeg as fpg
-from source.logger import get_logger
+from source.logger_a_constants import get_logger
 
 
 logger = get_logger(__name__, 'sc_debug.log')

@@ -1,6 +1,6 @@
 import urllib.parse
 import requests
-from source.logger import get_logger
+from source.logger_a_constants import get_logger
 
 #TODO Add unit tests for this class
 #TODO Add logging instead of print statements

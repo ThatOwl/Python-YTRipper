@@ -31,10 +31,31 @@ Prerequisites:
 
 Install project dependencies:
 ```bash
+sudo apt install python3-full python3-venv
+```
+
+In the directory where this project is clone to do:
+```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+IF you are having trouble with externally managed environment do:
+```bash
+rm -rf .venv
+python3 -m venv --without-pip .venv
+source .venv/bin/activate
+curl -sS https://bootstrap.pypa.io/get-pip.py | python
+python3 -m pip install -r requirements.txt
+```
+
+optional install [argcomplete](https://pypi.org/project/argcomplete/) for usage in directory navigation.
+```bash
+# inside venv!
+python3 -m pip install argcomplete
+```
+
+
 
 Run the interactive CLI (from the project root):
 ```bash

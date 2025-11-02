@@ -2,6 +2,8 @@
 - move some functions into utility class (os/fs related) -> rm empty folders (e.g. on fatal error)
 - move preferences to sensible class and defaults
 - option of relative path to home 
+- get path to installation directory from install / launch
+- if single video fails (not playlist!) delete download dir 
 
 ## Small
 - Add thumbnail (reachable via youtube.thumbnail_url) to audio files using ffmeg

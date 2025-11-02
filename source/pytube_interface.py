@@ -1,4 +1,3 @@
-import uuid
 import pytubefix as ptf
 from pytubefix import exceptions as ptf_ex
 import os
@@ -10,10 +9,9 @@ from dataclasses import dataclass
 from typing import List
 import time
 import random
-import functools
 
 #FIXME check import from different locations
-from source.logger import get_logger
+from source.logger_a_constants import get_logger
 from source.stream_converter import StreamConverter
 from source.url_handler import URLHandler
 from source.os_interactions import OSInteractions
@@ -224,16 +222,6 @@ class YouTubeDownloader:
 
     def _sanitize_filename(self, title: str) -> str:
         return re.sub(r'[\\/*?:"<>|]', "", title)
-
-    #currently unused -> do not like "uuid" in filenames ... download collisions should be rare enough (should also already check for existing files)
-    def _unique_filename(base: str, tag: str, ext: str) -> str:
-        """
-        Generate a collision-resistant filename.
-        Example: base="My Video", tag="Audio" -> "My Video_Audio_1a2b3c4d.m4a"
-        """
-        safe_base = re.sub(r'[\\/*?:"<>|]', "", base)
-        uid = uuid.uuid4().hex[:8]
-        return f"{safe_base}_{tag}_{uid}.{ext}"
 
     def _download_stream_type(self, video: ptf.YouTube, download_dir: str, base_filename: str, type: Enum) -> str:
         """

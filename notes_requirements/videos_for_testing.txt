@@ -23,3 +23,5 @@ what_is_test = [
     "defect ... IS FOR ",
     "defect ... IS FOR ",
 ]
+
+argparse pytubefix requests ffmpeg-python urllib3

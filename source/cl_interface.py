@@ -1,18 +1,15 @@
 import sys
 import os
-import shutil
 import argparse
-import json
 import logging
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from source.logger import get_logger
+from source.logger_a_constants import get_logger
 from source.pytube_interface import DownloadOptions, YouTubeDownloader as YTD
 from source.os_interactions import OSInteractions
 
 
 logger = get_logger(__name__, 'cli_debug.log')
-
 
 class cl_interface:
     def __init__(self):
@@ -23,13 +20,14 @@ class cl_interface:
         prefs = self.preferences if isinstance(self.preferences, dict) else {}
         level_name = prefs.get("loglevel", "info").upper()
         print(f"Loglevel set to: {level_name}")
-        #console_handler = logging.StreamHandler(sys.stdout)
-        #console_handler.setLevel(getattr(logging, level_name, logging.INFO))
-    
-        #logger.addHandler(console_handler)
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(getattr(logging, level_name, logging.INFO))
+        logger.addHandler(console_handler)
         
         self.ytd = YTD(os_handler=self.os)
 
+        self.parser = self.build_parser()
+        self.enable_argcomplete(self.parser)
     
     def clear_dialog(self, dir_path: str) -> None:
         """Prompt the user for confirmation before clearing a directory.
@@ -51,11 +49,10 @@ class cl_interface:
         
         return
 
-    def process_command(self, command:str) -> None:
-        """Process a command string for downloading YouTube videos or playlists.
-        #this need to be deleted ... again
-        Args:
-            command (str): The command string input by the user.
+    def build_parser(self) -> argparse.ArgumentParser:
+        """Build and return the argument parser for command-line options.
+        Returns:
+            argparse.ArgumentParser: Configured argument parser.
         """
         parser = argparse.ArgumentParser(description="YouTube Video/Playlist Downloader", add_help=False)
         parser.add_argument('url', help='YouTube video or playlist URL')
@@ -63,19 +60,40 @@ class cl_interface:
         parser.add_argument('-i', '--info', action='store_true', help='Print video/playlist info and exit')
         parser.add_argument('-cl', '--clear_logs', action='store_true', help='Clear log files before downloading')
         parser.add_argument('-c', '--clear', action='store_true', help='Clear download directory before downloading')
-        parser.add_argument('-d', '--dir', default='./temp_ripper_downloads', help='Download directory')
+        parser.add_argument('-o', '--output', type=OSInteractions().expand_path, default='~/Python-YTRipper_Downloads', help='Output directory: supports ~ expansion')
         parser.add_argument('-h', '--help', action='help', help='Show this help message and exit')
+        return parser
+
+    def enable_argcomplete(self, parser):
+        """Attempt to enable argcomplete if installed."""
+        try:
+            import argcomplete
+            from argcomplete.completers import DirectoriesCompleter
+            # Assign completers (once)
+            for action in parser._actions:
+                if action.dest == "output":
+                    action.completer = DirectoriesCompleter()
+            argcomplete.autocomplete(parser)
+        except ImportError:
+            pass
+
+    def process_command(self, command:str) -> None:
+        """Process a command string for downloading YouTube videos or playlists.
+        #this need to be deleted ... again
+        Args:
+            command (str): The command string input by the user.
+        """
         
         try:
-            args = parser.parse_args(command.split())
+            args = self.parser.parse_args(command.split())
         except SystemExit:
             logger.error("Invalid command or arguments.")
             return
 
         # Update preferences based on command-line arguments
         self.preferences["audio_only"] = True if args.audio else self.preferences.get("audio_only", True)
-        self.preferences["default_download_directory"] = args.dir if args.dir else self.preferences.get("default_download_directory", "./temp_ripper_downloads")
-                
+        self.preferences["default_download_directory"] = args.output if args.output else self.preferences.get("default_download_directory", "./temp_ripper_downloads")
+
         if args.clear: #FIXME: not working properly
             self.clear_dialog(args.dir)
 
@@ -104,7 +122,7 @@ def main():
     cli = cl_interface()
 
     print("YouTube Downloader CLI (type 'exit' or '(q)uit' to leave)")
-    print("Usage: <url> [-a] [-i] [-cl] [-c] [-d <dir>]")
+    print("Usage: <url> [-a] [-i] [-cl] [-c] [-o <dir>]")
     print("!! '-c' it will delete EVERYTHING in <dir> !!")
     
     while True:

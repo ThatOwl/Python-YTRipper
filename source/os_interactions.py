@@ -2,35 +2,26 @@ import sys
 import os
 import json
 import shutil
-import logging
 from typing import Dict
+from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import source.logger
+import source.logger_a_constants
 
-logger = source.logger.get_logger(__name__, 'os_interactions.log')
+logger = source.logger_a_constants.get_logger(__name__, 'os_interactions.log')
 
-DEFAULT_PREFS = {
-    "default_download_directory": "~/Downloads",
-    "audio_only": True,
-    "warn_me": False,
-    "preferred_audio_quality": "",
-    "preferred_video_quality": "",
-    "preferred_format": "",
-    "preferred_abr": "",
-    "preferred_resolution": "",
-    "preferred_mime": "",
-    "loglevel": "WARNING"
-}
-PATH_TO_PREFERENCES = "./user_settings.json"
 
 class OSInteractions:
     """Small utility for filesystem / preferences operations. Stateless and easy to mock."""
 
     def __init__(self):
-        self.prefs_path = PATH_TO_PREFERENCES # could be parameterized if needed
-        self.logs_path = source.logger.PATH_TO_LOGS
+        self.prefs_path = source.logger_a_constants.PATH_TO_PREFERENCES # could be parameterized if needed
+        self.logs_path = source.logger_a_constants.PATH_TO_LOGS
 
+
+    def expand_path(self, path_str: str) -> Path:
+        return Path(os.path.expandvars(os.path.expanduser(path_str))).resolve()
+        
     def read_preferences(self) -> Dict:
         """
         Read user preferences from a JSON file. If the file does not exist, create it with default preferences.
@@ -40,8 +31,9 @@ class OSInteractions:
         if not os.path.exists(self.prefs_path):
             logger.warning("Path to settings file inaccessible ! \n Reverting to defaults.")  # TODO:  logic
             try:
+                os.makedirs(os.path.dirname(self.prefs_path), exist_ok=True)
                 with open(self.prefs_path, 'w') as f:
-                    json.dump(DEFAULT_PREFS, f, indent=4)
+                    json.dump(source.logger_a_constants.DEFAULT_PREFS, f, indent=4)
             except Exception as e:
                 logger.exception("Failed to create default preferences file: %s", e)
         try:
@@ -50,8 +42,8 @@ class OSInteractions:
                 return data if isinstance(data, dict) else {}
         except Exception as e:
             logger.exception("Failed to read preferences: %s", e)
-        
-        return DEFAULT_PREFS
+
+        return source.logger_a_constants.DEFAULT_PREFS
 
     def write_preferences(self, prefs: Dict) -> None:
         """
@@ -61,7 +53,7 @@ class OSInteractions:
         """
         try:
             # preferences directory creation if needed
-            #os.makedirs(os.path.dirname(self.prefs_path), exist_ok=True)
+            os.makedirs(os.path.dirname(self.prefs_path), exist_ok=True)
             with open(self.prefs_path, 'w') as fh:
                 json.dump(prefs, fh, indent=4)
         except Exception:
