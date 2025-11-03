@@ -7,7 +7,7 @@ import os
 import shutil
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from source.logger_a_constants import get_logger
+from source.logger import get_logger
 from source.pytube_interface import YouTubeDownloader as YTD
 from source.url_handler import URLHandler as URLH
 

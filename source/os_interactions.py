@@ -6,58 +6,29 @@ from typing import Dict
 from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import source.logger_a_constants
-
-logger = source.logger_a_constants.get_logger(__name__, 'os_interactions.log')
+import source.logger
+import source.preferences as preferences
+logger = source.logger.get_logger(__name__, 'osi_debug.log')
 
 
 class OSInteractions:
     """Small utility for filesystem / preferences operations. Stateless and easy to mock."""
 
     def __init__(self):
-        self.prefs_path = source.logger_a_constants.PATH_TO_PREFERENCES # could be parameterized if needed
-        self.logs_path = source.logger_a_constants.PATH_TO_LOGS
+        self.prefs_path = preferences.PATH_TO_PREFERENCES # could be parameterized if needed
+        self.logs_path = preferences.PATH_TO_LOGS
 
 
     def expand_path(self, path_str: str) -> Path:
         return Path(os.path.expandvars(os.path.expanduser(path_str))).resolve()
         
     def read_preferences(self) -> Dict:
-        """
-        Read user preferences from a JSON file. If the file does not exist, create it with default preferences.
-        Returns:
-            dict: A dictionary containing user preferences.
-        """
-        if not os.path.exists(self.prefs_path):
-            logger.warning("Path to settings file inaccessible ! \n Reverting to defaults.")  # TODO:  logic
-            try:
-                os.makedirs(os.path.dirname(self.prefs_path), exist_ok=True)
-                with open(self.prefs_path, 'w') as f:
-                    json.dump(source.logger_a_constants.DEFAULT_PREFS, f, indent=4)
-            except Exception as e:
-                logger.exception("Failed to create default preferences file: %s", e)
-        try:
-            with open(self.prefs_path, 'r') as fh:
-                data = json.load(fh)
-                return data if isinstance(data, dict) else {}
-        except Exception as e:
-            logger.exception("Failed to read preferences: %s", e)
-
-        return source.logger_a_constants.DEFAULT_PREFS
+        # delegate to single source of truth to avoid duplicate code/import locks
+        return preferences.read_preferences()
 
     def write_preferences(self, prefs: Dict) -> None:
-        """
-        Write user preferences to a JSON file.
-        Args:
-            prefs (dict): A dictionary containing user preferences.
-        """
-        try:
-            # preferences directory creation if needed
-            os.makedirs(os.path.dirname(self.prefs_path), exist_ok=True)
-            with open(self.prefs_path, 'w') as fh:
-                json.dump(prefs, fh, indent=4)
-        except Exception:
-            logger.exception("Failed to write preferences to %s", self.prefs_path)
+        # delegate to single source of truth to avoid duplicate code/import locks
+        preferences.write_preferences(prefs)
 
     #FIXME: a bit unsafe ... permission issues, edge cases
     def clear_directory(self, dir_path: str) -> None:

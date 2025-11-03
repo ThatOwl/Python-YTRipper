@@ -4,7 +4,7 @@ import argparse
 import logging
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from source.logger_a_constants import get_logger
+from source.logger import get_logger
 from source.pytube_interface import DownloadOptions, YouTubeDownloader as YTD
 from source.os_interactions import OSInteractions
 
@@ -14,16 +14,7 @@ logger = get_logger(__name__, 'cli_debug.log')
 class CLInterface:
     def __init__(self):
         self.os = OSInteractions()                  # helper instance
-        self.preferences = self.os.read_preferences()
-        
-        #TODO this does not work as intended ... logging level not set properly
-        prefs = self.preferences if isinstance(self.preferences, dict) else {}
-        level_name = prefs.get("loglevel", "info").upper()
-        #DELETEME print(f"Loglevel set to: {level_name}")
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(getattr(logging, level_name, logging.INFO))
-        logger.addHandler(console_handler)
-        
+        self.preferences = self.os.read_preferences()  # load prefs once
         self.ytd = YTD(os_handler=self.os)
 
         self.parser = self.build_parser()

@@ -3,7 +3,7 @@ from pytubefix import exceptions as ptf_ex
 import os
 import re
 import ffmpeg as fpg
-from source.logger_a_constants import get_logger
+from source.logger import get_logger
 
 from enum import Enum
 

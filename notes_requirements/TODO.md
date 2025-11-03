@@ -1,12 +1,8 @@
 ## big
-- move some functions into utility class (os/fs related) -> rm empty folders (e.g. on fatal error)
-- move preferences to sensible class and defaults
-- option of relative path to home 
-- get path to installation directory from install / launch
 - if single video fails (not playlist!) delete download dir 
+- install.sh if inside repo do not install again
 
 ## Small
-- Add thumbnail (reachable via youtube.thumbnail_url) to audio files using ffmeg
 - check ffmpeg output for sync and playback errors
 - check advantages of converting to different video/audio format
 - Vary testing URLs for better robustness ... maybe search for specific codecs and paring them together
@@ -26,14 +22,8 @@
 ## pytube_interface:
 ### mandatory TODO:
 - Check dataclass DownloadOptions for completness and functionality 
-- Check interaction for pointing to right directory and path creation !!
 - Add support for different video/audio formats and qualities
 - Add unit tests for the functions
-TODO 
-- look at `/.venv/lib/python3.11/site-packages/pytubefix/query.py`
-- warn:
-    * "video_obj.length" if length is very short or very long
-    * low resolution videos
 
 ### optional TODO: 
 - Add progress bar for downloads
@@ -47,14 +37,10 @@ TODO
 
 ## cl_interface:
 ### mandatory TODO:
-- clear_dir could be move to util_class
-- --//-- is unsafe and needs to check if dir resides in user-space
-- --//-- make default to use new-dir "/PyRipper" -> check if inside this dir => user_settings can disable this -> adapt os-interactions
-- How to test this cli?
-- -d used once behaviour? -> once for current session or only this download?
+- How to test cli?
 
 ### optional TODO: 
-- validate user_saettings file for fields and contet type
+- validate user_saettings file for fields and content type
 - => later GUI to interface with CLI instead of classes? ... facade-pattern instead? 
 
 Check ext reference:

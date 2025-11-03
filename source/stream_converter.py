@@ -1,7 +1,6 @@
 import os
 import ffmpeg as fpg
-from source.logger_a_constants import get_logger
-
+from source.logger import get_logger
 
 logger = get_logger(__name__, 'sc_debug.log')
 
@@ -160,5 +159,3 @@ class StreamConverter:
             logger.exception(f"Error during ffmpeg merging: {e.stderr.decode() if hasattr(e, 'stderr') else e}")
             logger.info("Keeping original files.")
             raise e  # Re-raise the exception for upstream handling
-
-# Add more tests for error handling, edge cases, etc.

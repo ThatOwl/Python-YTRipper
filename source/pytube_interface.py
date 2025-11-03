@@ -11,18 +11,16 @@ import time
 import random
 from pathlib import Path 
 #FIXME check import from different locations
-from source.logger_a_constants import get_logger
+from source.logger import get_logger
 from source.stream_converter import StreamConverter
 from source.url_handler import URLHandler
 from source.os_interactions import OSInteractions
+from source.thumbnail_handler import ThumbnailHandler
+from source.utils import DownloadError, DownloadOptions, DownloadResult, retry_call
 
-#- Missing  proper cleanup and logging practices to avoid duplicate logs and maintain clarity.
+logger = get_logger(__name__, 'ytd_debug.log')
 
-logger = get_logger(__name__, 'ytd-th_debug.log')
-
-class DownloadError(Exception):
-    """Base exception for download-related errors."""
-
+# downloader-specific subclasses (keep here for module-local semantics)
 class VideoFetchError(DownloadError):
     pass
 
@@ -37,111 +35,6 @@ class ConversionError(DownloadError):
 
 class CombineError(DownloadError):
     pass
-
-@dataclass#(frozen=True)
-class DownloadOptions:
-    audio_only: bool = False
-    preferred_abr: str = ""
-    preferred_resolution: str = ""
-    preferred_audio_quality: str = ""
-    preferred_video_quality: str = ""
-    preferred_format: str = ""
-    preferred_mime: str = ""
-    # Add more options as needed
-    
-    @classmethod
-    def from_preferences(cls, prefs: dict) -> 'DownloadOptions':
-        return cls(
-            audio_only=prefs.get("audio_only", False),
-            preferred_abr=prefs.get("preferred_abr", ""),
-            preferred_resolution=prefs.get("preferred_resolution", ""),
-            preferred_audio_quality=prefs.get("preferred_audio_quality", "best"),
-            preferred_video_quality=prefs.get("preferred_video_quality", "best"),
-            preferred_format=prefs.get("preferred_format", ""),
-            preferred_mime=prefs.get("preferred_mime", ""),
-        )
-
-@dataclass
-class DownloadResult:
-    success: bool
-    errors: List[str]
-
-def retry_call(callable_fn, exceptions=(Exception,), retries: int = 3, backoff: float = 1.0,
-               backoff_factor: float = 2.0, jitter: float = 0.25, logger=None):
-    """
-    Inline retry helper for callables (useful for third-party methods).
-    Retries callable_fn() on specified exception types.
-    Args:
-        callable_fn: The callable to be executed.
-        exceptions: A tuple of exception types that should trigger a retry.
-        retries: Number of retry attempts.
-        backoff: Initial delay between retries in seconds.
-        backoff_factor: Factor by which the delay increases after each retry.
-        jitter: Maximum random jitter to add to the delay in seconds.
-        logger: Optional logger for logging retry attempts.
-    Returns:
-        The result of callable_fn() if successful.
-    Raises:
-        The last exception raised by callable_fn() after exhausting retries.
-    """
-    attempts_left = retries
-    delay = backoff
-    attempt = 1
-    while True:
-        try:
-            return callable_fn()
-        except exceptions as e:
-            if attempts_left <= 0:
-                # no retries left; re-raise
-                raise
-            if logger:
-                #not recognized by pylint ? .warning correct?
-                logger.warning("Transient error (inline) in attempt %d/%d: %s — retrying in %.2fs",
-                               attempt, retries + 1, e, delay)
-            time.sleep(delay + random.uniform(0, jitter))
-            attempts_left -= 1
-            delay *= backoff_factor
-            attempt += 1
-
-# Will be exported to own file later
-class ThumbnailHandler:
-    """Handles downloading and saving YouTube video thumbnails."""
-    
-    @staticmethod
-    def download_thumbnail(video: ptf.YouTube, download_dir: str, base_filename: str) -> str:
-        """
-        Downloads the thumbnail image of a YouTube video.
-
-        Args:
-            video (ptf.YouTube): The YouTube video object from which to download the thumbnail.
-            download_dir (str): The directory where the thumbnail will be saved.
-            base_filename (str): The base filename to use for the thumbnail file.
-        Returns:
-            str: The file path of the downloaded thumbnail image.
-        Logs:
-            - Thumbnail download status.
-        """
-        thumbnail_url = video.thumbnail_url
-        logger.debug(f"Downloading thumbnail from: {thumbnail_url}")
-        try:
-            # retry the HTTP GET in case of transient network errors
-            response = retry_call(lambda: requests.get(thumbnail_url, timeout=10),
-                                  exceptions=(requests.RequestException,),
-                                  retries=3, backoff=1.0, backoff_factor=2.0, jitter=0.25, logger=logger)
-        except Exception as e:
-            logger.exception(f"Failed to download thumbnail after retries: {e}")
-            return ""
-        
-        if response.status_code == 200:
-            ext = thumbnail_url.split('.')[-1].split('?')[0]
-            thumbnail_path = os.path.join(download_dir, f"{base_filename}_thumbnail.{ext}")
-            with open(thumbnail_path, 'wb') as f:
-                f.write(response.content)
-            logger.debug(f"Thumbnail downloaded to: {thumbnail_path}")
-            return thumbnail_path
-        else:
-            logger.warning("Failed to download thumbnail.")
-            return ""
 
 class YouTubeDownloader:
     """
