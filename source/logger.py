@@ -36,7 +36,7 @@ def get_logger(name: str, logfile: Optional[str] = None, prefs: Optional[Dict] =
       - file formatter that includes timestamps and full tracebacks
     """
     prefs = prefs or _load_preferences()
-    level_name = (prefs.get("loglevel") or os.environ.get("PYTRIPPER_LOGLEVEL") or "INFO").upper()
+    level_name = (prefs.get("loglevel") or "INFO").upper()
     try:
         console_level = getattr(logging, level_name)
     except Exception:
