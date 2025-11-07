@@ -3,11 +3,12 @@ import json
 from pathlib import Path
 from typing import Dict
 
-from source import logger
+from source.core import logger
 
 # ---------- CONSTANTS FOR SETUP & RESTORE -------------------
-CURRENT_DIR = Path(__file__).resolve().parent      # → Python-YTRipper/source
-PROJECT_ROOT = CURRENT_DIR.parent                  # → Python-YTRipper
+CURRENT_DIR = Path(__file__).resolve().parent   # → Python-YTRipper/source/core
+SOURCE_DIR = CURRENT_DIR.parent                 # → Python-YTRipper/source
+PROJECT_ROOT = SOURCE_DIR.parent                # → Python-YTRipper
 CONFIG_DIR = PROJECT_ROOT / "config"
 LOGS_DIR = PROJECT_ROOT / "logs"
 
@@ -16,7 +17,8 @@ PATH_TO_LOGS = str(LOGS_DIR)
 
 DEFAULT_PREFS: Dict = {
     "default_download_directory": "~/Downloads",
-    "audio_only": True,
+    "audio_only": False,
+    "audio_mp3": False,
     "warn_me": False,
     "preferred_audio_quality": "",
     "preferred_video_quality": "",

@@ -13,6 +13,7 @@ class DownloadError(Exception):
 @dataclass(frozen=True)
 class DownloadOptions:
     audio_only: bool = False
+    audio_mp3: bool = False
     preferred_abr: str = ""
     preferred_resolution: str = ""
     preferred_audio_quality: str = ""
@@ -24,12 +25,13 @@ class DownloadOptions:
     def from_preferences(cls, prefs: Dict[str, Any]) -> 'DownloadOptions':
         return cls(
             audio_only=prefs.get("audio_only", False),
+            audio_mp3=prefs.get("audio_mp3", False),
             preferred_abr=prefs.get("preferred_abr", ""),
             preferred_resolution=prefs.get("preferred_resolution", ""),
             preferred_audio_quality=prefs.get("preferred_audio_quality", "best"),
             preferred_video_quality=prefs.get("preferred_video_quality", "best"),
             preferred_format=prefs.get("preferred_format", ""),
-            preferred_mime=prefs.get("preferred_mime", ""),
+            preferred_mime=prefs.get("preferred_mime", "")
         )
 
 @dataclass

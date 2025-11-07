@@ -3,20 +3,19 @@ import os
 import argparse
 import logging
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from source.logger import get_logger
-from source.pytube_interface import DownloadOptions, YouTubeDownloader as YTD
-from source.os_interactions import OSInteractions
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+from source.cli.cli_base import CLIBase
+
+from source.core.logger import get_logger
+from source.core.pytube_interface import DownloadOptions, YouTubeDownloader as YTD
+from source.core.os_interactions import OSInteractions
 
 
-logger = get_logger(__name__, 'cli_debug.log')
+logger = get_logger(__name__, 'cli_com_debug.log')
 
-class CLInterface:
+class CommandCLI(CLIBase):
     def __init__(self):
-        self.os = OSInteractions()                  # helper instance
-        self.preferences = self.os.read_preferences()  # load prefs once
-        self.ytd = YTD(os_handler=self.os)
-
+        super().__init__()
         self.parser = self.build_parser()
         self.enable_argcomplete(self.parser)
     
@@ -48,6 +47,7 @@ class CLInterface:
         parser = argparse.ArgumentParser(description="YouTube Video/Playlist Downloader", add_help=False)
         parser.add_argument('url', help='YouTube video or playlist URL')
         parser.add_argument('-a', '--audio', action='store_true', help='Download audio only')
+        parser.add_argument('-a3', '--audio_mp3', action='store_true', help='Download audio as MP3')
         parser.add_argument('-i', '--info', action='store_true', help='Print video/playlist info and exit')
         parser.add_argument('-cl', '--clear_logs', action='store_true', help='Clear log files before downloading')
         parser.add_argument('-c', '--clear', action='store_true', help='Clear download directory before downloading')
@@ -82,7 +82,12 @@ class CLInterface:
             return
 
         # Update preferences based on command-line arguments
-        self.preferences["audio_only"] = True if args.audio else self.preferences.get("audio_only", True)
+        self.preferences["audio_only"] = True if args.audio else self.preferences.get("audio_only", False)
+        if args.audio_mp3:
+            self.preferences["audio_mp3"] = True
+            self.preferences["audio_only"] = True
+        else:
+            self.preferences["audio_mp3"] = False
         self.preferences["default_download_directory"] = args.output if args.output else self.preferences.get("default_download_directory", "./temp_ripper_downloads")
         #DELETEME
         print(f"Download directory set to: {self.preferences['default_download_directory']}")
@@ -113,26 +118,24 @@ class CLInterface:
 
         print("------ End of action ------")
 
-def main():
-    cli = CLInterface()
+def run():
+    cli = CommandCLI()
 
     print("YouTube Downloader CLI (type 'exit' or '(q)uit' to leave)")
-    print("Usage: <url> [-a] [-i] [-cl] [-c] [-o <dir>]")
+    print("Usage: <url> (to ~/Downloads) optional: [-a] [-a3] [-i] [-cl] [-c] [-o <dir>]")
     print("!! '-c' it will delete EVERYTHING in <dir> !!")
     
-    while True:
-        """Prompt for user input and process commands until the user decides to exit."""
-        try:
-            command = input("yt-ripper> ").strip()
-        except EOFError:
-            print("\nExiting CLI.")
-            break
-        if command.lower() in ('exit', 'quit', 'q'):
-            print("\n Exiting CLI. \n\n")
-            break
-        if not command:
-            continue
+    """Prompt for user input and process commands until the user decides to exit."""
+    try:
+        command = input("yt-ripper> ").strip()
+    except EOFError:
+        print("\nExiting CLI.")
+        return 1
+    if command.lower() in ('exit', 'quit', 'q'):
+        print("\n Exiting CLI. \n\n")
+        return 0
+    else:
         cli.process_command(command)
     
 if __name__ == "__main__":
-    main()
+    run()

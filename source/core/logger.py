@@ -6,7 +6,7 @@ from typing import Optional, Dict
 
 # Delegated constants / preference loading
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import source.preferences as preferences
+import source.core.preferences as preferences
 
 def _load_preferences() -> Dict:
     """

@@ -11,12 +11,12 @@ import time
 import random
 from pathlib import Path 
 #FIXME check import from different locations
-from source.logger import get_logger
-from source.stream_converter import StreamConverter
-from source.url_handler import URLHandler
-from source.os_interactions import OSInteractions
-from source.thumbnail_handler import ThumbnailHandler
-from source.utils import DownloadError, DownloadOptions, DownloadResult, retry_call
+from source.core.logger import get_logger
+from source.core.stream_converter import StreamConverter
+from source.core.url_handler import URLHandler
+from source.core.os_interactions import OSInteractions
+from source.core.thumbnail_handler import ThumbnailHandler
+from source.core.utils import DownloadError, DownloadOptions, DownloadResult, retry_call
 
 logger = get_logger(__name__, 'ytd_debug.log')
 
@@ -54,7 +54,7 @@ class YouTubeDownloader:
         self.urlh = URLHandler()
         self.os_handler = os_handler
         if self.os_handler is None:
-            from source.os_interactions import OSInteractions
+            from source.core.os_interactions import OSInteractions
             self.os_handler = OSInteractions()
 
     def _get_video_obj(self, video_url: str) -> ptf.YouTube:
@@ -189,18 +189,18 @@ class YouTubeDownloader:
             logger.error(f"Failed to fetch video object: {e}")
             return DownloadResult(success=False, errors=[str(e)])
 
-        base_filename = self._sanitize_filename(video_obj.title)
+        base_filename: str = self._sanitize_filename(video_obj.title)
         logger.info(f'Downloading {"soundtrack" if options.audio_only else "video"}: {video_obj.title}') #TODO log less info?
         try:
             if options.audio_only:
                 audio_path = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.AUDIO)
                 thumbnail_path = None #FIXME self.thumbnail_handler.download_thumbnail(video_obj, download_dir, base_filename)
-                output_path = os.path.join(download_dir, f"{base_filename}.m4a")
+                output_path = os.path.join(download_dir, base_filename+f"{'.m4a' if not options.audio_mp3 else '.mp3'}")
                 if not audio_path:
                     msg = "no audio stream available"
                     logger.error(msg)
                     return DownloadResult(success=False, errors=[msg])
-                self.stream_converter.convert_to_m4a(audio_path, output_path, thumbnail_path)
+                self.stream_converter.convert_audio(audio_path, output_path, thumbnail_path)
                 
             else:
                 video_path = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.VIDEO)

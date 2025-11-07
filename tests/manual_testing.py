@@ -7,9 +7,9 @@ import os
 import shutil
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from source.logger import get_logger
-from source.pytube_interface import YouTubeDownloader as YTD
-from source.url_handler import URLHandler as URLH
+from source.core.logger import get_logger
+from source.core.pytube_interface import YouTubeDownloader as YTD
+from source.core.url_handler import URLHandler as URLH
 
 logger = get_logger(__name__, 'man_test_debug.log')
 

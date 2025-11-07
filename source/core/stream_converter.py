@@ -1,12 +1,27 @@
 import os
 import ffmpeg as fpg
-from source.logger import get_logger
+from source.core.logger import get_logger
 
 logger = get_logger(__name__, 'sc_debug.log')
 
 class StreamConverter:
     """Handles conversion and merging of audio/video streams."""
-    
+    @staticmethod
+    def convert_audio(audio_path: str, output_path: str, thumbnail_path: str = None) -> None:
+        """Converts audio to desired format based on output_path extension.
+        Args:
+            audio_path (str): The path to the source audio file.
+            output_path (str): The path where the converted audio file will be saved.
+            thumbnail_path (str, optional): The path to the thumbnail image file. Defaults to None.
+        """
+        ext = os.path.splitext(output_path)[1].lower()
+        if ext == '.m4a':
+            StreamConverter.convert_to_m4a(audio_path, output_path, thumbnail_path)
+        elif ext == '.mp3':
+            StreamConverter.convert_to_mp3(audio_path, output_path)
+        else:
+            logger.warning(f"Unsupported audio format '{ext}' for output. Keeping original audio file at: {audio_path}")
+                      
     @staticmethod
     def convert_to_m4a_old(audio_path: str, output_path: str, thumbnail_path: str = None) -> None:
         """Converts audio to m4a format.
