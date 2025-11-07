@@ -5,7 +5,7 @@ import shutil
 from typing import Dict
 from pathlib import Path
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 import source.core.logger
 import source.core.preferences as preferences
 logger = source.core.logger.get_logger(__name__, 'osi_debug.log')

@@ -269,52 +269,56 @@ class YouTubeDownloader:
         logger.info("Playlist download completed.")
         return results
 
-    def info(self, url: str = None, video_obj: ptf.YouTube = None) -> None:
-        """Print information about a YouTube video or playlist.
+    def info(self, url: str = None, video_obj: ptf.YouTube = None, output: callable = None) -> None:
+        """
+        Print or log information about a YouTube video or playlist.
+
         Args:
-            url (str): The URL of the YouTube video or playlist.
-            video_obj (ptf.YouTube, optional): An existing YouTube video object. Defaults to None.
-        Side Effects:
-            - prints information to the console."""
+        url (str): The URL of the YouTube video or playlist.
+        video_obj (ptf.YouTube, optional): A YouTube video object. Defaults to None.
+        output (callable, optional): A callable that takes a string, e.g. `print` or `logger.info`.
+            Defaults to `logger.info`.
+        """
+        
+        output = output or logger.info        
         
         if self.urlh.is_youtube_playlist(url):
-            try: 
+            try:
                 playlist_obj = self._get_playlist_obj(url)
             except Exception as e:
                 logger.error(f"Failed to fetch playlist object: {e}")
-                return #TODO could raise error upstream
+                return
         
-            
-            logger.info(f"Playlist Title: {playlist_obj.title}")
-            logger.info(f"Number of Videos: {len(playlist_obj.videos)}")
-            #logger.info(f"Playlist Description: {playlist_obj.description}")
-            logger.info("Videos:")
+            output(f"Playlist Title: {playlist_obj.title}")
+            output(f"Number of Videos: {len(playlist_obj.videos)}")
+            output("Videos:")
             for i, video in enumerate(playlist_obj.videos):
-                logger.info(f"{i + 1}. {video.title} ({video.length} seconds)")
+                output(f"{i + 1}. {video.title} ({video.length} seconds)")
         else:
-            try: 
-                if video_obj is None: video_obj = self._get_video_obj(url)
+            try:
+                if video_obj is None:
+                    video_obj = self._get_video_obj(url)
             except Exception as e:
                 logger.error(f"Failed to fetch video object: {e}")
-                return #TODO could raise error upstream
-        
-            logger.debug(f'Video title: {video_obj.title}')
-            logger.debug(f'Video length: {video_obj.length} seconds')
-            logger.debug(f'Video views: {video_obj.views}')
-            logger.debug(f'Video author: {video_obj.author}')
-            logger.debug(f'Video description: {video_obj.description[:200]}...')
-            logger.debug(f"Thumbnail: {video_obj.thumbnail_url}")
-            logger.debug("Available streams:")
-            
-            logger.debug("  Video:")
+                return
+
+            output(f"Video title: {video_obj.title}")
+            output(f"Video length: {video_obj.length} seconds")
+            output(f"Video views: {video_obj.views}")
+            output(f"Video author: {video_obj.author}")
+            output(f"Video description: {video_obj.description[:200]}...")
+            output(f"Thumbnail: {video_obj.thumbnail_url}")
+
+            output("Available streams:")
+            output("  Video:")
             for stream in video_obj.streams.filter(type='video').order_by('resolution').desc():
-                logger.debug(f'- {stream.resolution}, {stream.mime_type}, {stream.fps}fps')
-            logger.info(video_obj.streams.filter(type='video').order_by('resolution').desc().first())
-            
-            logger.debug("  Audio:")
+                output(f"- {stream.resolution}, {stream.mime_type}, {stream.fps}fps")
+            output(f"Best video: {video_obj.streams.filter(type='video').order_by('resolution').desc().first()}")
+
+            output("  Audio:")
             for stream in video_obj.streams.filter(type='audio').order_by('abr').desc():
-                logger.debug(f'- {stream.mime_type}, {stream.abr}')
-            logger.info(video_obj.streams.filter(type='audio').order_by('abr').desc().first())
+                output(f"- {stream.mime_type}, {stream.abr}")
+            output(f"Best audio: {video_obj.streams.filter(type='audio').order_by('abr').desc().first()}")
 
     def download(self, url: str, download_dir: str, options: DownloadOptions) -> None:
         """

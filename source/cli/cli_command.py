@@ -3,7 +3,8 @@ import os
 import argparse
 import logging
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
 from source.cli.cli_base import CLIBase
 
 from source.core.logger import get_logger
@@ -19,26 +20,6 @@ class CommandCLI(CLIBase):
         self.parser = self.build_parser()
         self.enable_argcomplete(self.parser)
     
-    def clear_dialog(self, dir_path: str) -> None:
-        """Prompt the user for confirmation before clearing a directory.
-        Args:
-            dir_path (str): Path to the directory to be cleared.
-        """
-        # discrepacy of print and logger on purpose -> user should only see print
-        if self.preferences.get("warn_me", True):
-            print(f"Are you sure you want to clear the directory: {dir_path} ? (y/n)")
-            confirmation = input().strip().lower()
-            if confirmation.lower() in {'y', 'yes'}:
-                self.os.clear_directory(dir_path)
-                logger.debug(f"Cleared directory: {dir_path}")
-            else: 
-                logger.debug("Directory clear operation cancelled.")
-        else:
-            self.os.clear_directory(dir_path)
-            logger.debug(f"Cleared directory without confirmation: {dir_path}")
-        
-        return
-
     def build_parser(self) -> argparse.ArgumentParser:
         """Build and return the argument parser for command-line options.
         Returns:
@@ -68,7 +49,7 @@ class CommandCLI(CLIBase):
         except ImportError:
             pass
 
-    def process_command(self, command:str) -> None:
+    def run(self, command:str) -> None:
         """Process a command string for downloading YouTube videos or playlists.
         #this need to be deleted ... again
         Args:
@@ -79,7 +60,7 @@ class CommandCLI(CLIBase):
             args = self.parser.parse_args(command.split())
         except SystemExit:
             logger.error("Invalid command or arguments.")
-            return
+            return 1
 
         # Update preferences based on command-line arguments
         self.preferences["audio_only"] = True if args.audio else self.preferences.get("audio_only", False)
@@ -102,11 +83,11 @@ class CommandCLI(CLIBase):
         if args.info:
             print("Fetching video/playlist info...")
             try:
-                self.ytd.info(url=args.url)
+                self.ytd.info(url=args.url, output=print)
             except Exception as e:
                 logger.error(f"Failed to fetch info: {e}")
-            return
-        else: 
+                return 1
+        else:
             print("------ Starting action ------")
             try:
                 # Always expand the download directory before passing to downloader
@@ -114,28 +95,7 @@ class CommandCLI(CLIBase):
                 self.ytd.download(url=args.url, download_dir=expanded_download_dir, options=DownloadOptions.from_preferences(self.preferences))
             except Exception as e:
                 #logger.error(f"Download failed: {e}")
-                return
+                return 1
 
         print("------ End of action ------")
-
-def run():
-    cli = CommandCLI()
-
-    print("YouTube Downloader CLI (type 'exit' or '(q)uit' to leave)")
-    print("Usage: <url> (to ~/Downloads) optional: [-a] [-a3] [-i] [-cl] [-c] [-o <dir>]")
-    print("!! '-c' it will delete EVERYTHING in <dir> !!")
-    
-    """Prompt for user input and process commands until the user decides to exit."""
-    try:
-        command = input("yt-ripper> ").strip()
-    except EOFError:
-        print("\nExiting CLI.")
-        return 1
-    if command.lower() in ('exit', 'quit', 'q'):
-        print("\n Exiting CLI. \n\n")
         return 0
-    else:
-        cli.process_command(command)
-    
-if __name__ == "__main__":
-    run()

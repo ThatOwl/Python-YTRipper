@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict
 
 from source.core import logger
+import getpass
 
 # ---------- CONSTANTS FOR SETUP & RESTORE -------------------
 CURRENT_DIR = Path(__file__).resolve().parent   # → Python-YTRipper/source/core
@@ -12,7 +13,6 @@ PROJECT_ROOT = SOURCE_DIR.parent                # → Python-YTRipper
 CONFIG_DIR = PROJECT_ROOT / "config"
 LOGS_DIR = PROJECT_ROOT / "logs"
 
-PATH_TO_PREFERENCES = str(CONFIG_DIR / "user_settings.json")
 PATH_TO_LOGS = str(LOGS_DIR)
 
 DEFAULT_PREFS: Dict = {
@@ -30,6 +30,15 @@ DEFAULT_PREFS: Dict = {
 }
 # -----------------------------
 
+def current_username() -> str:
+    """Return the current executing user's username; fallback to HOME parsing."""
+    try:
+        return getpass.getuser()
+    except Exception:
+        home = os.environ.get("HOME", "")
+        return Path(home).name if home else ""
+
+PATH_TO_PREFERENCES = str(CONFIG_DIR / f"user_settings_{current_username()}.json")
 
 def read_preferences() -> Dict:
     """

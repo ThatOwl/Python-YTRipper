@@ -1,4 +1,9 @@
 ## big
+- fix cli_interactive: behaviour of loop, want to be able to exit ... ask chat for clean solution to implement loop without question every time 
+    - => use cli_command and do not make all pref editable here just audio_only dir audio_mp3 (general) quality
+    - maybe include ytd.info and abort for "browsing" 
+- add clear dialog , clear logs to interactive or use cli_command
+
 - if single video fails (not playlist!) delete download dir 
 - install.sh if inside repo do not install again
 
@@ -34,6 +39,19 @@
 - warn
  "video_obj.length" if length is very short or very long
  low resolution videos
+- Adapt info for GUI:
+
+If you also want to document and reuse data programmatically, you can make info() return structured info, and have a separate helper for displaying:
+```python
+def get_info(self, url: str = None, video_obj: ptf.YouTube = None) -> dict:
+    """Return structured info about a video or playlist."""
+    # ...same logic, but instead of outputting, build a dict
+    return {
+        "type": "playlist",
+        "title": playlist_obj.title,
+        "videos": [{"title": v.title, "length": v.length} for v in playlist_obj.videos],
+    }
+```
 
 ## cl_interface:
 ### mandatory TODO:
