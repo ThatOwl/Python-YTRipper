@@ -1,6 +1,6 @@
 import os
 import ffmpeg as fpg
-from source.core.logger import get_logger
+from core.logger import get_logger
 
 logger = get_logger(__name__, 'sc_debug.log')
 
@@ -22,50 +22,6 @@ class StreamConverter:
         else:
             logger.warning(f"Unsupported audio format '{ext}' for output. Keeping original audio file at: {audio_path}")
                       
-    @staticmethod
-    def convert_to_m4a_old(audio_path: str, output_path: str, thumbnail_path: str = None) -> None:
-        """Converts audio to m4a format.
-
-        Args:
-            audio_path (str): The path to the source audio file.
-            output_path (str): The path where the converted m4a file will be saved.
-            thumbnail_path (str, optional): The path to the thumbnail image file. Defaults to None.
-        """
-        logger.debug("Converting audio to m4a with ffmpeg...")
-        try:
-            if thumbnail_path and os.path.exists(thumbnail_path):
-                (
-                    fpg
-                    .input(audio_path)
-                    .output(
-                        output_path,
-                        acodec='m4a',
-                        **{'id3v2_version': '3'},
-                        extra_args=[
-                            '-i', thumbnail_path,
-                            '-map', '0:a',
-                            '-map', '1:v',
-                            '-metadata:s:v', 'title=Album cover',
-                            '-metadata:s:v', 'comment=Cover (front)'
-                        ]
-                    )
-                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
-                )
-                os.remove(thumbnail_path)
-            else:
-                (
-                    fpg
-                    .input(audio_path)
-                    .output(output_path, acodec='aac', strict='experimental')
-                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
-                )
-            logger.info(f"Audio file saved to: {output_path}")
-            os.remove(audio_path)
-        except Exception as e:
-            logger.exception(f"Error during ffmpeg audio conversion: {e.stderr.decode() if hasattr(e, 'stderr') else e}")
-            logger.info("Keeping original audio file.")
-            raise e  # Re-raise the exception for upstream handling
-
     @staticmethod
     def convert_to_m4a(audio_path: str, output_path: str, thumbnail_path: str = None) -> None:
         """Converts audio to m4a format.

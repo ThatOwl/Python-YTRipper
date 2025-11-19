@@ -5,11 +5,11 @@ import logging
 
 #sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-from source.cli.cli_base import CLIBase
+from cli.cli_base import CLIBase
 
-from source.core.logger import get_logger
-from source.core.pytube_interface import DownloadOptions, YouTubeDownloader as YTD
-from source.core.os_interactions import OSInteractions
+from core.logger import get_logger
+from core.pytube_interface import DownloadOptions, YouTubeDownloader as YTD
+from core.os_interactions import OSInteractions
 
 
 logger = get_logger(__name__, 'cli_com_debug.log')

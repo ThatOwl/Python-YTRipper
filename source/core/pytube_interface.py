@@ -3,20 +3,16 @@ from pytubefix import exceptions as ptf_ex
 import os
 import re
 from enum import Enum
-import requests
 from datetime import datetime
-from dataclasses import dataclass
 from typing import List
-import time
-import random
 from pathlib import Path 
-#FIXME check import from different locations
-from source.core.logger import get_logger
-from source.core.stream_converter import StreamConverter
-from source.core.url_handler import URLHandler
-from source.core.os_interactions import OSInteractions
-from source.core.thumbnail_handler import ThumbnailHandler
-from source.core.utils import DownloadError, DownloadOptions, DownloadResult, retry_call
+
+from core.logger import get_logger
+from core.stream_converter import StreamConverter
+from core.url_handler import URLHandler
+from core.os_interactions import OSInteractions
+from core.thumbnail_handler import ThumbnailHandler
+from core.utils import DownloadError, DownloadOptions, DownloadResult
 
 logger = get_logger(__name__, 'ytd_debug.log')
 
@@ -72,7 +68,7 @@ class YouTubeDownloader:
             return video_obj
         except ptf_ex.VideoUnavailable as e:
             # concise user-facing error
-            logger.error("Video unavailable: %s", video_url)
+            logger.error("Video unavailable: %s", video_url)    
             # full diagnostic to debug/file
             logger.debug("VideoUnavailable exception while fetching %s", video_url, exc_info=True)
             raise VideoFetchError(f"video unavailable: {video_url}") from e

@@ -7,14 +7,14 @@ import os
 # possibly add other modes later (e.g. GUI)
 # for now, just basic interactive vs command line
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from source.cli.cli_interactive import InteractiveCLI
-from source.cli.cli_command import CommandCLI
+#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from cli.cli_interactive import InteractiveCLI
+from cli.cli_command import CommandCLI
 
 def main():
-    if len(sys.argv) == 1 or sys.argv[1] in ("m", "i","menu", "interactive"):
+    if len(sys.argv) == 1 or sys.argv[1] in ("-m", "-i","--menu", "--interactive"):
         InteractiveCLI().run()
-    elif sys.argv[1] in ("-h", "--help", "l", "loop"):
+    elif sys.argv[1] in ("-h", "--help", "-l", "--loop"):
         if sys.argv[1] in ("-h", "--help"):
             print("YouTube Downloader CLI (type 'exit' or '(q)uit' to leave)")
             print("Either run in interactive mode (no arguments) or provide a single command.")

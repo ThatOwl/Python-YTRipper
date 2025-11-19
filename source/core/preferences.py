@@ -2,9 +2,9 @@ import os
 import json
 from pathlib import Path
 from typing import Dict
-
-from source.core import logger
 import getpass
+
+#from core.logger import logger
 
 # ---------- CONSTANTS FOR SETUP & RESTORE -------------------
 CURRENT_DIR = Path(__file__).resolve().parent   # → Python-YTRipper/source/core

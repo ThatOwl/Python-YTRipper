@@ -6,6 +6,5 @@ else
     # Start the application
     echo "Starting application 'Python-YTRipper'."
     source .venv/bin/activate
-    python3 -m source.cl_interface
+    python3 -m source.main --loop
 fi
-

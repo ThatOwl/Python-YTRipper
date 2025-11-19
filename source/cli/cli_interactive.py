@@ -1,14 +1,12 @@
-# ...existing code...
-import sys
+# import sys
 import os
-import argparse
+# import argparse
 
-#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from source.cli.cli_base import CLIBase
+from cli.cli_base import CLIBase
 
-from source.core.logger import get_logger
-from source.core.utils import DownloadOptions
-from source.core import preferences
+from core.logger import get_logger
+from core.utils import DownloadOptions
+import core.preferences as preferences
 
 
 logger = get_logger(__name__, 'cli_inter_debug.log')
@@ -31,7 +29,7 @@ class InteractiveCLI(CLIBase):
         print("3) [D]ownload Single")
         print("4) Download [M]ultiple (loop)")
         print("5) [B]atch import (file with URLs)  [TODO implement parsing formats]")
-        print("q) Quit")
+        print("q) [Q]uit")
 
     def edit_presets(self) -> None:
         """Interactive editor for preferences. Shows exhaustive choices for known keys."""

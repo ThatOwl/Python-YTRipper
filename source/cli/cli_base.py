@@ -1,12 +1,7 @@
-# ...existing code...
-import sys
-import os
-import argparse
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from source.core.logger import get_logger
-from source.core.pytube_interface import YouTubeDownloader as YTD
-from source.core.os_interactions import OSInteractions
+from core.logger import get_logger
+from core.pytube_interface import YouTubeDownloader as YTD
+from core.os_interactions import OSInteractions
 
 logger = get_logger(__name__, 'cli_debug.log')
 class CLIBase:
