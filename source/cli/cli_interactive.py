@@ -121,6 +121,8 @@ class InteractiveCLI(CLIBase):
             return
         
         if adjust_preferences:
+            self.show_info(url)
+            
             raw = input(f"Audio only? (leave empty to use preset {self.preferences.get('audio_only')} ) [y/N]: ").strip().lower()
             if raw in ("y","yes"):
                 self.preferences["audio_only"] = True
@@ -136,13 +138,16 @@ class InteractiveCLI(CLIBase):
         except Exception as e:
             logger.error("Download failed: %s", e)
     
+    # TODO: add option to specify multiple URLs in one go (comma-separated)
+    # or read from clipboard
+    # add other ways to exit the loop (e.g. empty input)
     def download_loop(self) -> None:
         """Simple loop to download multiple URLs sequentially."""
         
         print("Entering download loop. CTRL-C to exit.")
         
         while True:
-            self.download_flow()
+            self.download_flow(adjust_preferences=False)
 
     def process_batch_file(self, path: str) -> None:
         """
@@ -181,6 +186,13 @@ class InteractiveCLI(CLIBase):
             except Exception as e:
                 logger.error("Failed downloading %s: %s", u, e)
                 # continue with next
+
+    def show_info(self, url: str) -> None:
+        """Fetch and display video/playlist info using the downloader's info method."""
+        try:
+            self.ytd.info(url=url, output=print)
+        except Exception as e:
+            logger.error("Failed to fetch info: %s", e)
 
     def run(self) -> None:
         """Interactive menu loop that coexists with the prompt-based mode."""

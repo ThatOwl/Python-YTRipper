@@ -1,4 +1,5 @@
 
+import os
 from core.logger import get_logger
 from core.pytube_interface import YouTubeDownloader as YTD
 from core.os_interactions import OSInteractions
@@ -11,7 +12,7 @@ class CLIBase:
         # downloader gets os handler injected
         self.ytd = YTD(os_handler=self.os)
     
-    def clear_dialog(self, dir_path: str) -> None:
+    def clear_dialog(self, dir_path: os.PathLike) -> None:
         """Prompt the user for confirmation before clearing a directory.
         Args:
             dir_path (str): Path to the directory to be cleared.

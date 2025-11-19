@@ -1,11 +1,13 @@
 ## big
+- FIX path being "STR" or "PATH" type !!!
+- function path default from preferences !!
+
 - fix cli_interactive: behaviour of loop, want to be able to exit ... ask chat for clean solution to implement loop without question every time 
     - => use cli_command and do not make all pref editable here just audio_only dir audio_mp3 (general) quality
     - maybe include ytd.info and abort for "browsing" 
 - add clear dialog , clear logs to interactive or use cli_command
 
 - if single video fails (not playlist!) delete download dir 
-- install.sh if inside repo do not install again
 
 ## Small
 - check ffmpeg output for sync and playback errors

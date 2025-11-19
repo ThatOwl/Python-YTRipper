@@ -38,7 +38,7 @@ def main():
             CommandCLI().run(command)
     else:
         cmdline = " ".join(sys.argv[1:])
-        CommandCLI().run(cmdline)
+        return CommandCLI().run(cmdline)
 
 if __name__ == "__main__":
     main()

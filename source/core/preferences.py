@@ -40,6 +40,7 @@ def current_username() -> str:
 
 PATH_TO_PREFERENCES = str(CONFIG_DIR / f"user_settings_{current_username()}.json")
 
+#TODO; check if there is better way fot default return
 def read_preferences() -> Dict:
     """
     Read preferences from PATH_TO_PREFERENCES. If missing, create it with DEFAULT_PREFS.
@@ -50,6 +51,7 @@ def read_preferences() -> Dict:
             os.makedirs(os.path.dirname(PATH_TO_PREFERENCES), exist_ok=True)
             with open(PATH_TO_PREFERENCES, 'w', encoding="utf-8") as f:
                 json.dump(DEFAULT_PREFS, f, indent=4)
+                return dict(DEFAULT_PREFS)
         except:
             return dict(DEFAULT_PREFS)
     else:

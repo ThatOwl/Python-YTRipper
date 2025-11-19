@@ -44,7 +44,7 @@ class YouTubeDownloader:
         StreamType.VIDEO:'Video'
     }
 
-    def __init__(self, os_handler: OSInteractions = None):
+    def __init__(self, os_handler: OSInteractions):
         self.thumbnail_handler = ThumbnailHandler()
         self.stream_converter = StreamConverter()
         self.urlh = URLHandler()
@@ -53,7 +53,7 @@ class YouTubeDownloader:
             from source.core.os_interactions import OSInteractions
             self.os_handler = OSInteractions()
 
-    def _get_video_obj(self, video_url: str) -> ptf.YouTube:
+    def _get_video_obj(self, video_url: str) -> ptf.YouTube | Exception:
         """
         Fetches a YouTube video object.
         Args:
@@ -66,12 +66,7 @@ class YouTubeDownloader:
         try:
             video_obj = ptf.YouTube(video_url)
             return video_obj
-        except ptf_ex.VideoUnavailable as e:
-            # concise user-facing error
-            logger.error("Video unavailable: %s", video_url)    
-            # full diagnostic to debug/file
-            logger.debug("VideoUnavailable exception while fetching %s", video_url, exc_info=True)
-            raise VideoFetchError(f"video unavailable: {video_url}") from e
+        
         except ptf_ex.LiveStreamError as e:
             logger.error("Live stream video (not supported): %s", video_url)
             logger.debug("LiveStreamError while fetching %s", video_url, exc_info=True)
@@ -92,6 +87,12 @@ class YouTubeDownloader:
             logger.error("Age check required for video: %s", video_url)
             logger.debug("Age-check exception while fetching %s", video_url, exc_info=True)
             raise VideoFetchError(f"Age check required for video: {video_url}") from e
+        except ptf_ex.VideoUnavailable as e:
+            # concise user-facing error
+            logger.error("Video unavailable: %s", video_url)    
+            # full diagnostic to debug/file
+            logger.debug("VideoUnavailable exception while fetching %s", video_url, exc_info=True)
+            raise VideoFetchError(f"video unavailable: {video_url}") from e
         except Exception as e:
             logger.error("Failed to fetch video: %s", video_url)
             logger.debug("Unexpected exception while fetching %s", video_url, exc_info=True)
@@ -123,7 +124,9 @@ class YouTubeDownloader:
     def _sanitize_filename(self, title: str) -> str:
         return re.sub(r'[\\/*?:"<>|]', "", title)
 
-    def _download_stream_type(self, video: ptf.YouTube, download_dir: str, base_filename: str, type: Enum) -> str:
+    #FIXME: does not use preferred quality etc yet
+    #FIXME: does not use os.path ... str or PathLike ???
+    def _download_stream_type(self, video: ptf.YouTube, download_dir: str, base_filename: str, str_type: Enum) -> str | None:
         """
         Downloads either the highest quality audio or video stream from a YouTube video object.
         
@@ -143,7 +146,7 @@ class YouTubeDownloader:
         try:
             # Select the appropriate stream based on the type
             #TODO implement preferred quality, abr, resolution
-            if type == self.StreamType.AUDIO:
+            if str_type == self.StreamType.AUDIO:
                 stream = video.streams.filter(type='audio').order_by('abr').desc().first()
                 logger.debug(f"Selected audio stream: {stream.abr}, {stream.mime_type}")
             else:
@@ -151,13 +154,13 @@ class YouTubeDownloader:
                 logger.debug(f"Selected video stream: {stream.resolution}, {stream.mime_type}")
 
             if not stream:
-                logger.warning(f"No suitable {self.stream_type_map[type]} stream available for this video.")
+                logger.warning(f"No suitable {self.stream_type_map[str_type.value]} stream available for this video.")
                 return ""
             
             ext = stream.subtype
             downloaded_path = stream.download(
                 output_path=download_dir,
-                filename=f"{base_filename}_{self.stream_type_map[type]}.{ext}",
+                filename=f"{base_filename}_{self.stream_type_map[str_type.value]}.{ext}",
                 skip_existing=True,
                 timeout=5,
                 max_retries=3
@@ -165,26 +168,23 @@ class YouTubeDownloader:
             return downloaded_path
         
         except Exception as e:
-            logger.exception(f"Error downloading {self.stream_type_map[type]} stream: {e}")
-            raise StreamDownloadError(f"Error downloading {self.stream_type_map[type]} stream: {e}") from e
+            logger.exception(f"Error downloading {self.stream_type_map[str_type.value]} stream: {e}")
+            raise StreamDownloadError(f"Error downloading {self.stream_type_map[str_type.value]} stream: {e}") from e
 
-    def download_single(self, download_dir: str, options: DownloadOptions, video_url: str = None, video_obj: ptf.YouTube = None) -> DownloadResult:
+    # FIXME: Pylance does not like optional parameters
+    # was:
+    #     def download_single(self, download_dir: str, options: DownloadOptions, video_url: str = None, video_obj: ptf.YouTube | None = None) -> DownloadResult:
+    def download_single(self, download_dir: str, options: DownloadOptions, video_obj: ptf.YouTube) -> DownloadResult:
         """
         Download a single YouTube video as video or audio.
 
         Args:
-            video_url (str): The URL of the YouTube video.
+            video_obj (ptf.YouTube): The YouTube video object to download.
             download_dir (str): The directory to save the downloaded file.
             audio_only (bool): If True, download audio only. If False, download video.
         """
         # in case a video object is already available, use it
-        try:
-            if video_obj is None: 
-                video_obj = self._get_video_obj(video_url)
-        except Exception as e:
-            logger.error(f"Failed to fetch video object: {e}")
-            return DownloadResult(success=False, errors=[str(e)])
-
+        
         base_filename: str = self._sanitize_filename(video_obj.title)
         logger.info(f'Downloading {"soundtrack" if options.audio_only else "video"}: {video_obj.title}') #TODO log less info?
         try:
@@ -218,6 +218,7 @@ class YouTubeDownloader:
             logger.error(f"An unexpected error occurred: {e}")
             return DownloadResult(success=False, errors=[str(e)])
 
+    # TODO improve error handling (return exceptions or ...?)
     def download_playlist(self, playlist_url: str, download_dir: str, options: DownloadOptions) -> List[DownloadResult]:
         """
         Download all videos from a YouTube playlist as video or audio files.
@@ -265,7 +266,7 @@ class YouTubeDownloader:
         logger.info("Playlist download completed.")
         return results
 
-    def info(self, url: str = None, video_obj: ptf.YouTube = None, output: callable = None) -> None:
+    def info(self, url: str = None, video_obj: ptf.YouTube = None, output: callable = logger.info) -> None:
         """
         Print or log information about a YouTube video or playlist.
 
@@ -275,8 +276,8 @@ class YouTubeDownloader:
         output (callable, optional): A callable that takes a string, e.g. `print` or `logger.info`.
             Defaults to `logger.info`.
         """
-        
-        output = output or logger.info        
+        #DELETEME
+        #output = output or logger.info
         
         if self.urlh.is_youtube_playlist(url):
             try:
@@ -333,7 +334,7 @@ class YouTubeDownloader:
         if self.urlh.is_youtube_url(url) and self.urlh.is_accessible(url):
             logger.debug(f"Valid YouTube URL: {url}")
             try:
-                if not os.path.exists(download_dir): #works for one level only
+                if not os.path.exists(download_dir): # should work for multiple levels TODO: check
                     os.makedirs(download_dir)
                     logger.info(f"Created download directory: {download_dir}")
 
@@ -342,7 +343,8 @@ class YouTubeDownloader:
                     results = self.download_playlist(playlist_url=url, download_dir=download_dir, options=options)
                 else:
                     logger.debug("Detected as a single video URL.")
-                    results.append(self.download_single(video_url=url, download_dir=download_dir, options=options))
+                    video = self._get_video_obj(url)
+                    results.append(self.download_single(video_obj=video, download_dir=download_dir, options=options))
                     
             except Exception as e:
                 logger.error(f"Download failed: {e}")

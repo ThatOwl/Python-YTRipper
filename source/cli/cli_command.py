@@ -49,7 +49,7 @@ class CommandCLI(CLIBase):
         except ImportError:
             pass
 
-    def run(self, command:str) -> None:
+    def run(self, command:str) -> int:
         """Process a command string for downloading YouTube videos or playlists.
         #this need to be deleted ... again
         Args:

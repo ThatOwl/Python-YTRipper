@@ -7,7 +7,7 @@ logger = get_logger(__name__, 'sc_debug.log')
 class StreamConverter:
     """Handles conversion and merging of audio/video streams."""
     @staticmethod
-    def convert_audio(audio_path: str, output_path: str, thumbnail_path: str = None) -> None:
+    def convert_audio(audio_path: str, output_path: str, thumbnail_path: str | None = None) -> None:
         """Converts audio to desired format based on output_path extension.
         Args:
             audio_path (str): The path to the source audio file.
@@ -23,7 +23,7 @@ class StreamConverter:
             logger.warning(f"Unsupported audio format '{ext}' for output. Keeping original audio file at: {audio_path}")
                       
     @staticmethod
-    def convert_to_m4a(audio_path: str, output_path: str, thumbnail_path: str = None) -> None:
+    def convert_to_m4a(audio_path: str, output_path: str, thumbnail_path: str | None = None) -> None:
         """Converts audio to m4a format.
 
         Args:
