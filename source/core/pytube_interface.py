@@ -1,3 +1,4 @@
+from xml.etree.ElementInclude import include
 import pytubefix as ptf
 from pytubefix import exceptions as ptf_ex
 import os
@@ -132,7 +133,7 @@ class YouTubeDownloader:
         
         Args:
             video (ptf.YouTube): The YouTube video object from which to download the stream.
-            download_dir (str): The directory where the downloaded file will be saved.
+            download_dir (Path): The directory where the downloaded file will be saved.
             base_filename (str): The base filename to use for the downloaded file.
             type (int): The type of stream to download. If truthy, downloads audio; if falsy, downloads video.
         Returns:
@@ -143,37 +144,46 @@ class YouTubeDownloader:
         Raises:
             StreamDownloadError: If there is an error during the download process.
         """
-        try:
-            # Select the appropriate stream based on the type
-            #TODO implement preferred quality, abr, resolution
-            if str_type == self.StreamType.AUDIO:
-                stream: ptf.Stream = video.streams.filter(type='audio').order_by('abr').desc().first()
-                logger.debug(f"Selected audio stream: {stream.abr}, {stream.mime_type}")
-            else:
-                stream: ptf.Stream = video.streams.filter(type='video', progressive=False).order_by('resolution').desc().first()
-                logger.debug(f"Selected video stream: {stream.resolution}, {stream.mime_type}")
 
-            if not stream:
-                logger.warning(f"No suitable {self.stream_type_map[str_type.value]} stream available for this video.")
-                return ""
-            
-            ext = stream.subtype # FIXME: this is idiotic
+        # Select the appropriate stream based on the type
+        #TODO implement preferred quality, abr, resolution
+        if str_type == self.StreamType.AUDIO:
+            stream: ptf.Stream = video.streams.filter(type='audio').order_by('abr').desc().first()
+            logger.debug(f"Selected audio stream: {stream.abr}, {stream.mime_type}")
+        else:
+            stream: ptf.Stream = video.streams.filter(type='video', progressive=False).order_by('resolution').desc().first()
+            logger.debug(f"Selected video stream: {stream.resolution}, {stream.mime_type}")
+        
+        #FIXME: debug code    
+        #--- DEBUG: dump repr/type to diagnose ffmpeg/stream mismatch
+        logger.debug(f"DEBUG stream repr: {repr(stream)}; type(stream)={type(stream)}")
+        # if stream is not the expected object, log available stream attrs
+        if not hasattr(stream, 'download'):
+            logger.debug("Stream object has no .download() method; available attrs: " +
+                            ", ".join(sorted([a for a in dir(stream) if not a.startswith('_')]) ) )
+
+        if not stream:
+            logger.warning(f"No suitable {self.stream_type_map[str_type.value]} stream available for this video.")
+            return ""
+        
+        #ext = stream.subtype # FIXME: this is idiotic
+        #ext = stream.mime_type.split('/')[1].split(';')[0]
+        try:
             downloaded_path = stream.download(
                 output_path=str(download_dir),
-                filename=f"{base_filename}_{self.stream_type_map[str_type.value]}.{ext}", # FIXME: does nothing
+                #filename=f"{base_filename}_{self.stream_type_map[str_type.value]}.{ext}", # FIXME: does nothing
                 skip_existing=True,
                 timeout=5,
                 max_retries=3
             )
-            
             #TODO: could be changed to 
             # file: Path =  stream.download()
             # file.rename("base_filename")
             # file.with_suffix
             # file.with_name
             # file.with_stem
+            #logger.debug(f"{self.stream_type_map[str_type.value]} stream downloaded to: {downloaded_path}")
             return downloaded_path
-        
         except Exception as e:
             logger.exception(f"Error downloading {self.stream_type_map[str_type.value]} stream: {e}")
             raise StreamDownloadError(f"Error downloading {self.stream_type_map[str_type.value]} stream: {e}") from e
@@ -323,12 +333,12 @@ class YouTubeDownloader:
                 output(f"- {stream.mime_type}, {stream.abr}")
             output(f"Best audio: {video_obj.streams.filter(type='audio').order_by('abr').desc().first()}")
 
-    def download(self, url: str, download_dir: str, options: DownloadOptions) -> None:
+    def download(self, url: str, download_dir: Path, options: DownloadOptions) -> None:
         """
         Download a YouTube video or playlist.
         Args:
             url (str): The URL of the YouTube video or playlist.
-            download_dir (str): The directory to save the downloaded files.
+            download_dir (Path): The directory to save the downloaded files.
             options (DownloadOptions): The download options.
         Side Effects:
             - creates download directory if it does not exist. 
@@ -362,4 +372,4 @@ class YouTubeDownloader:
         # Summarize results
         success_count = sum(1 for result in results if result.success)
         failure_count = len(results) - success_count
-        logger.info(f"Download Summary: {success_count} succeeded, {failure_count} failed.")''
+        logger.info(f"Download Summary: {success_count} succeeded, {failure_count} failed.")

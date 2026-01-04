@@ -25,7 +25,7 @@ class CommandCLI(CLIBase):
         Returns:
             argparse.ArgumentParser: Configured argument parser.
         """
-        parser = argparse.ArgumentParser(description="YouTube Video/Playlist Downloader", add_help=False^)
+        parser = argparse.ArgumentParser(description="YouTube Video/Playlist Downloader", add_help=False)
         parser.add_argument('url', help='YouTube video or playlist URL')
         parser.add_argument('-a', '--audio', action='store_true', help='Download audio only')
         parser.add_argument('-a3', '--audio_mp3', action='store_true', help='Download audio as MP3')
@@ -34,9 +34,10 @@ class CommandCLI(CLIBase):
         parser.add_argument('-o', '--output', type=str, help='Output directory: supports ~ expansion')
         parser.add_argument('-h', '--help', action='help', help='Show this help message and exit')
         
-        act = parser.
         return parser
 
+    #TODO: FIXME: not working properly
+    #--- INACTIVE !
     def enable_argcomplete(self, parser: argparse.ArgumentParser):
         """Attempt to enable argcomplete if installed."""
         try:
@@ -44,11 +45,10 @@ class CommandCLI(CLIBase):
             from argcomplete.completers import DirectoriesCompleter
             # Assign completers (once)
             comp = DirectoriesCompleter()
-            argp = argparse.
             for action in parser._actions:
                 if action.dest == "output":
-                    action.
-                    action.completer = DirectoriesCompleter()
+                    pass
+                    #action.completer = DirectoriesCompleter()
             argcomplete.autocomplete(parser)
         except ImportError:
             pass

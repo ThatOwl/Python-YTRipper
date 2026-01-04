@@ -15,13 +15,15 @@ class StreamConverter:
             output_path (Path): The path where the converted audio file will be saved.
             thumbnail_path (Path, optional): The path to the thumbnail image file. Defaults to None.
         """
-        ext = os.path.splitext(output_path)[1].lower()
-        if ext == '.m4a':
+        ext_out = os.path.splitext(output_path)[1].lower()
+        ext_in = os.path.splitext(audio_path)[1].lower()
+
+        if ext_out == '.m4a':
             StreamConverter.convert_to_m4a(audio_path, output_path, thumbnail_path)
-        elif ext == '.mp3':
+        elif ext_out == '.mp3' and ext_in != '.mp3':
             StreamConverter.convert_to_mp3(audio_path, output_path)
         else:
-            logger.warning(f"Unsupported audio format '{ext}' for output. Keeping original audio file at: {audio_path}")
+            logger.warning(f"Unsupported audio format '{ext_out}' for output. Keeping original audio file at: {audio_path}")
                       
     @staticmethod
     def convert_to_m4a(audio_path: Path, output_path: Path, thumbnail_path: Path | None = None) -> None:
@@ -32,20 +34,24 @@ class StreamConverter:
             output_path (Path): The path where the converted m4a file will be saved.
             thumbnail_path (Path | None, optional): The path to the thumbnail image file. Defaults to None.
         """
+        ext_out = os.path.splitext(output_path)[1].lower()
+        ext_in = os.path.splitext(audio_path)[1].lower()
+        
         logger.debug("Converting audio to m4a with ffmpeg...")
         # ensure output has proper extension so ffmpeg can pick container
         if not output_path.suffix.lower() == ".m4a":
             logger.warning(f"Output path does not have .m4a extension: {output_path}. Adjusting accordingly.")
             output_path = output_path.with_suffix('.m4a')
 
+        audio_input = fpg.input(str(audio_path))
+        image_input = fpg.input(str(thumbnail_path)) if thumbnail_path else None
+        output = str(output_path)
         try:
             if thumbnail_path and os.path.exists(thumbnail_path):
-                audio_input = fpg.input(audio_path)
-                image_input = fpg.input(thumbnail_path)
                 (
                     fpg
                     .output(
-                        audio_input, image_input, output_path,
+                        audio_input, image_input, output,
                         acodec='aac',
                         # map audio + image, set metadata for cover art
                         extra_args=[
@@ -58,15 +64,24 @@ class StreamConverter:
                     .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
                 )
                 os.remove(thumbnail_path)
-            else:
+                logger.info(f"Audio file saved to: {output}")
+                os.remove(audio_path)
+            elif ext_in != '.m4a':
                 (
                     fpg
-                    .input(audio_path)
-                    .output(output_path, acodec='aac', strict='experimental')
-                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
+                    .output(
+                        audio_input, output,
+                        vcodec='copy', acodec='aac', strict='experimental',
+                    )
+                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)   
                 )
-            logger.info(f"Audio file saved to: {output_path}")
-            os.remove(audio_path)
+                logger.info(f"Audio file saved to: {output}")
+                os.remove(audio_path)
+            else:
+                # if input is already mp4, just rename to m4a
+                os.rename(audio_path, output)
+                logger.info(f"Renamed audio file to: {output}")
+                            
         except Exception as e:
             stderr = getattr(e, 'stderr', None)
             logger.exception(f"Error during ffmpeg audio conversion: {stderr.decode() if stderr else e}")

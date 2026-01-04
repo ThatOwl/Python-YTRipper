@@ -99,5 +99,46 @@ class URLHandler:
             logger.exception(f"Error parsing URL for playlist: {e}")
             return False
 
-    def clean_download_link(self, url: str):
-        
+    def clean_video_link(self, url: str) -> str | None:
+        """
+        Return a clean YouTube video URL (https://www.youtube.com/watch?v=VIDEOID).
+        If 'start_radio' is present it will be logged and removed.
+        """
+        try:
+            parsed = ulp.urlparse(url)
+            qs = ulp.parse_qs(parsed.query)
+            # prefer explicit v parameter, fallback to extractor (handles youtu.be, /shorts/, /embed/)
+            video_id = qs.get("v", [None])[0] or self._extract_video_id(url)
+            if not video_id:
+                logger.debug("clean_video_link: no video id found in URL: %s", url)
+                return None
+            # detect start_radio case-insensitively
+            if any(k.lower() == "start_radio" for k in qs.keys()):
+                logger.warning("clean_video_link: 'start_radio' parameter present and will be removed: %s", url)
+            return f"https://www.youtube.com/watch?v={video_id}"
+        except Exception as e:
+            logger.exception("Error cleaning video link: %s", e)
+            return None
+
+    def clean_playlist_link(self, url: str) -> str:
+        """
+        Return a canonical YouTube playlist URL (https://www.youtube.com/playlist?list=LISTID).
+
+        Raises:
+            ValueError: if no playlist id is found or if 'start_radio' is present on the playlist URL.
+        """
+        try:
+            parsed = ulp.urlparse(url)
+            qs = ulp.parse_qs(parsed.query)
+            # If start_radio is present on a playlist URL, that's disallowed per specification
+            if any(k.lower() == "start_radio" for k in qs.keys()):
+                logger.error("clean_playlist_link: 'start_radio' parameter not allowed on playlist URLs: %s", url)
+                raise ValueError("start_radio parameter not allowed on playlist URLs")
+            playlist_id = qs.get("list", [None])[0]
+            if playlist_id:
+                return f"https://www.youtube.com/playlist?list={playlist_id}"
+            logger.error("clean_playlist_link: no playlist id ('list' param) found in URL: %s", url)
+            raise ValueError("No playlist id ('list' query parameter) found in URL")
+        except Exception:
+            logger.exception("Error cleaning playlist link: %s", url)
+            raise

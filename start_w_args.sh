@@ -23,7 +23,7 @@ source "$VENV_DIR/bin/activate"
 
 # Start the application
 echo "Starting application 'Python-YTRipper'..."
-python3 -m source.yt_ripper "-l"
+python3 -m source.yt_ripper "$@"
 
 # Deactivate venv on exit
 deactivate
