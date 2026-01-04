@@ -1,4 +1,4 @@
-import urllib.parse
+import urllib.parse as ulp
 import requests
 from core.logger import get_logger
 
@@ -23,6 +23,28 @@ class URLHandler:
         "youtu.be",
         "www.youtu.be"
     ]
+    
+    def _extract_video_id(self, url: str) -> str | None:
+        u = ulp.urlparse(url)
+
+        # Case 1 — standard watch?v=
+        if u.path == "/watch":
+            qs = ulp.parse_qs(u.query)
+            return qs.get("v", [None])[0]
+
+        # Case 2 — youtu.be/VIDEOID
+        if u.netloc in ("youtu.be", "www.youtu.be"):
+            return u.path.lstrip("/") or None
+
+        # Case 3 — /shorts/VIDEOID
+        if u.path.startswith("/shorts/"):
+            return u.path.split("/")[2]
+
+        # Case 4 — /embed/VIDEOID
+        if u.path.startswith("/embed/"):
+            return u.path.split("/")[2]
+
+        return None
 
     @staticmethod
     def is_youtube_url(url: str) -> bool:
@@ -35,7 +57,7 @@ class URLHandler:
             bool: True if the URL is a YouTube URL, False otherwise.
         """
         try:
-            parsed_url = urllib.parse.urlparse(url)
+            parsed_url = ulp.urlparse(url)
             domain = parsed_url.netloc.lower()
             return any(youtube_domain in domain for youtube_domain in URLHandler.YOUTUBE_DOMAINS)
         except Exception as e:
@@ -59,30 +81,9 @@ class URLHandler:
             logger.exception(f"Error checking URL accessibility: {e}")
             #raise e
             return False
-
-    @staticmethod
-    def extract_video_id(url: str) -> str | None:
-        """
-        Extract the video ID from a YouTube URL.
-
-        Args:
-            url (str): The YouTube URL.
-        Returns:
-            str or None: The video ID if found, None otherwise.
-        """
-        try:
-            parsed_url = urllib.parse.urlparse(url)
-            if 'youtu.be' in parsed_url.netloc:
-                return parsed_url.path.lstrip('/')
-            elif 'youtube.com' in parsed_url.netloc:
-                query_params = urllib.parse.parse_qs(parsed_url.query)
-                return query_params.get('v', [None])[0]
-            return None
-        except Exception as e:
-            logger.exception(f"Error extracting video ID: {e}")
-            return None
     
-    def is_youtube_playlist(self, url: str) -> bool:
+    @staticmethod #--- why?
+    def is_youtube_playlist(url: str) -> bool:
         """
         Check if the given URL is a YouTube playlist URL.
 
@@ -97,3 +98,6 @@ class URLHandler:
         except Exception as e:
             logger.exception(f"Error parsing URL for playlist: {e}")
             return False
+
+    def clean_download_link(self, url: str):
+        

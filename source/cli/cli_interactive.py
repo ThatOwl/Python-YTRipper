@@ -1,5 +1,6 @@
 # import sys
 import os
+from pathlib import Path
 # import argparse
 
 from cli.cli_base import CLIBase
@@ -76,7 +77,7 @@ class InteractiveCLI(CLIBase):
                 raw = input("Enter new path (or empty to keep): ").strip()
                 if raw == "":
                     continue
-                newp = str(self.os.expand_path(raw))
+                newp = str(self.os.expand_path(Path(raw)))
                 self.preferences[key] = newp
                 print(f"  Set {key} -> {newp}")
                 continue
@@ -128,8 +129,8 @@ class InteractiveCLI(CLIBase):
                 self.preferences["audio_only"] = True
             elif raw in ("n","no"):
                 self.preferences["audio_only"] = False
-            dl_dir = self.preferences.get("default_download_directory", preferences.DEFAULT_PREFS["default_download_directory"])
-            expanded = str(self.os.expand_path(dl_dir))
+            dl_dir = Path(self.preferences.get("default_download_directory", preferences.DEFAULT_PREFS["default_download_directory"]))
+            expanded = self.os.expand_path(dl_dir)
             print(f"Using download dir: {expanded}")
 
         opts = DownloadOptions.from_preferences(self.preferences)

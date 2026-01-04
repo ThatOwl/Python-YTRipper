@@ -25,25 +25,29 @@ class CommandCLI(CLIBase):
         Returns:
             argparse.ArgumentParser: Configured argument parser.
         """
-        parser = argparse.ArgumentParser(description="YouTube Video/Playlist Downloader", add_help=False)
+        parser = argparse.ArgumentParser(description="YouTube Video/Playlist Downloader", add_help=False^)
         parser.add_argument('url', help='YouTube video or playlist URL')
         parser.add_argument('-a', '--audio', action='store_true', help='Download audio only')
         parser.add_argument('-a3', '--audio_mp3', action='store_true', help='Download audio as MP3')
         parser.add_argument('-i', '--info', action='store_true', help='Print video/playlist info and exit')
-        parser.add_argument('-cl', '--clear_logs', action='store_true', help='Clear log files before downloading')
         parser.add_argument('-c', '--clear', action='store_true', help='Clear download directory before downloading')
-        parser.add_argument('-o', '--output', type=OSInteractions().expand_path, help='Output directory: supports ~ expansion')
+        parser.add_argument('-o', '--output', type=str, help='Output directory: supports ~ expansion')
         parser.add_argument('-h', '--help', action='help', help='Show this help message and exit')
+        
+        act = parser.
         return parser
 
-    def enable_argcomplete(self, parser):
+    def enable_argcomplete(self, parser: argparse.ArgumentParser):
         """Attempt to enable argcomplete if installed."""
         try:
             import argcomplete
             from argcomplete.completers import DirectoriesCompleter
             # Assign completers (once)
+            comp = DirectoriesCompleter()
+            argp = argparse.
             for action in parser._actions:
                 if action.dest == "output":
+                    action.
                     action.completer = DirectoriesCompleter()
             argcomplete.autocomplete(parser)
         except ImportError:
@@ -75,10 +79,6 @@ class CommandCLI(CLIBase):
         
         if args.clear: #FIXME: not working properly
             self.clear_dialog(args.dir)
-
-        if args.clear_logs: #FIXME: not working properly
-            self.os.clear_logs()
-            logger.debug(f"Cleared log files before downloading.")
 
         if args.info:
             print("Fetching video/playlist info...")

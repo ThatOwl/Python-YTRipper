@@ -126,7 +126,7 @@ class YouTubeDownloader:
 
     #FIXME: does not use preferred quality etc yet
     #FIXME: does not use os.path ... str or PathLike ???
-    def _download_stream_type(self, video: ptf.YouTube, download_dir: str, base_filename: str, str_type: Enum) -> str | None:
+    def _download_stream_type(self, video: ptf.YouTube, download_dir: Path, base_filename: str, str_type: Enum) -> str | None:
         """
         Downloads either the highest quality audio or video stream from a YouTube video object.
         
@@ -147,34 +147,38 @@ class YouTubeDownloader:
             # Select the appropriate stream based on the type
             #TODO implement preferred quality, abr, resolution
             if str_type == self.StreamType.AUDIO:
-                stream = video.streams.filter(type='audio').order_by('abr').desc().first()
+                stream: ptf.Stream = video.streams.filter(type='audio').order_by('abr').desc().first()
                 logger.debug(f"Selected audio stream: {stream.abr}, {stream.mime_type}")
             else:
-                stream = video.streams.filter(type='video', progressive=False).order_by('resolution').desc().first()
+                stream: ptf.Stream = video.streams.filter(type='video', progressive=False).order_by('resolution').desc().first()
                 logger.debug(f"Selected video stream: {stream.resolution}, {stream.mime_type}")
 
             if not stream:
                 logger.warning(f"No suitable {self.stream_type_map[str_type.value]} stream available for this video.")
                 return ""
             
-            ext = stream.subtype
+            ext = stream.subtype # FIXME: this is idiotic
             downloaded_path = stream.download(
-                output_path=download_dir,
-                filename=f"{base_filename}_{self.stream_type_map[str_type.value]}.{ext}",
+                output_path=str(download_dir),
+                filename=f"{base_filename}_{self.stream_type_map[str_type.value]}.{ext}", # FIXME: does nothing
                 skip_existing=True,
                 timeout=5,
                 max_retries=3
             )
+            
+            #TODO: could be changed to 
+            # file: Path =  stream.download()
+            # file.rename("base_filename")
+            # file.with_suffix
+            # file.with_name
+            # file.with_stem
             return downloaded_path
         
         except Exception as e:
             logger.exception(f"Error downloading {self.stream_type_map[str_type.value]} stream: {e}")
             raise StreamDownloadError(f"Error downloading {self.stream_type_map[str_type.value]} stream: {e}") from e
 
-    # FIXME: Pylance does not like optional parameters
-    # was:
-    #     def download_single(self, download_dir: str, options: DownloadOptions, video_url: str = None, video_obj: ptf.YouTube | None = None) -> DownloadResult:
-    def download_single(self, download_dir: str, options: DownloadOptions, video_obj: ptf.YouTube) -> DownloadResult:
+    def download_single(self, download_dir: Path, options: DownloadOptions, video_obj: ptf.YouTube) -> DownloadResult:
         """
         Download a single YouTube video as video or audio.
 
@@ -182,30 +186,32 @@ class YouTubeDownloader:
             video_obj (ptf.YouTube): The YouTube video object to download.
             download_dir (str): The directory to save the downloaded file.
             audio_only (bool): If True, download audio only. If False, download video.
-        """
-        # in case a video object is already available, use it
-        
+        """        
         base_filename: str = self._sanitize_filename(video_obj.title)
         logger.info(f'Downloading {"soundtrack" if options.audio_only else "video"}: {video_obj.title}') #TODO log less info?
+        
         try:
             if options.audio_only:
-                audio_path = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.AUDIO)
+                audio_path_str = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.AUDIO)
                 thumbnail_path = None #FIXME self.thumbnail_handler.download_thumbnail(video_obj, download_dir, base_filename)
-                output_path = os.path.join(download_dir, base_filename+f"{'.m4a' if not options.audio_mp3 else '.mp3'}")
-                if not audio_path:
+                output_path = Path(download_dir) / f"{base_filename}{'.mp3' if options.audio_mp3 else '.m4a'}"
+                if not audio_path_str:
                     msg = "no audio stream available"
                     logger.error(msg)
                     return DownloadResult(success=False, errors=[msg])
+                audio_path = Path(audio_path_str)
                 self.stream_converter.convert_audio(audio_path, output_path, thumbnail_path)
                 
             else:
-                video_path = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.VIDEO)
-                audio_path = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.AUDIO)
-                output_path = os.path.join(download_dir, f"{base_filename}.mp4")
-                if not video_path or not audio_path:
+                video_path_str = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.VIDEO)
+                audio_path_str = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.AUDIO)
+                output_path = Path(download_dir) / f"{base_filename}.mp4"
+                if not video_path_str or not audio_path_str:
                     msg = "missing audio or video stream"
                     logger.error(msg)
                     return DownloadResult(success=False, errors=[msg])
+                video_path = Path(video_path_str)
+                audio_path = Path(audio_path_str)
                 self.stream_converter.combine_streams(audio_path, video_path, output_path)
 
             logger.debug(f'Download of {"soundtrack" if options.audio_only else "video"} completed.')
@@ -219,7 +225,7 @@ class YouTubeDownloader:
             return DownloadResult(success=False, errors=[str(e)])
 
     # TODO improve error handling (return exceptions or ...?)
-    def download_playlist(self, playlist_url: str, download_dir: str, options: DownloadOptions) -> List[DownloadResult]:
+    def download_playlist(self, playlist_url: str, download_dir: Path, options: DownloadOptions) -> List[DownloadResult]:
         """
         Download all videos from a YouTube playlist as video or audio files.
 
@@ -260,7 +266,7 @@ class YouTubeDownloader:
 
         for i, video in enumerate(playlist_obj.videos):
             logger.info(f'At {"soundtrack" if options.audio_only else "video"} {i + 1}/{len(playlist_obj.videos)}: ')
-            result = self.download_single(download_dir=str(playlist_dir), options=options, video_obj=video)
+            result = self.download_single(download_dir=playlist_dir, options=options, video_obj=video)
             results.append(result)
 
         logger.info("Playlist download completed.")
@@ -356,4 +362,4 @@ class YouTubeDownloader:
         # Summarize results
         success_count = sum(1 for result in results if result.success)
         failure_count = len(results) - success_count
-        logger.info(f"Download Summary: {success_count} succeeded, {failure_count} failed.")
+        logger.info(f"Download Summary: {success_count} succeeded, {failure_count} failed.")''

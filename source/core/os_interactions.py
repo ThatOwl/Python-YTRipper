@@ -1,5 +1,6 @@
 #import sys
 import os
+from pathlib import Path 
 #import json
 import shutil
 from typing import Dict
@@ -19,7 +20,7 @@ class OSInteractions:
         self.logs_path = preferences.PATH_TO_LOGS
 
 
-    def expand_path(self, path_str: os.PathLike) -> Path:
+    def expand_path(self, path_str: Path) -> Path:
         return Path(os.path.expandvars(os.path.expanduser(path_str))).resolve()
         
     def read_preferences(self) -> Dict:
@@ -31,7 +32,7 @@ class OSInteractions:
         preferences.write_preferences(prefs)
 
     #FIXME: a bit unsafe ... permission issues, edge cases
-    def clear_directory(self, dir_path: os.PathLike) -> None:
+    def clear_directory(self, dir_path: Path) -> None:
         """
         Utility function to clear all files and subdirectories in a directory.
         Aborts unless the target directory is inside the current user's home directory.
