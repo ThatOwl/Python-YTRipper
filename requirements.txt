@@ -1,7 +1,7 @@
 pip-tools
 pytube
 argparse 
-pytubefix-10.3.6 
+pytubefix
 requests 
 ffmpeg-python 
 urllib3 
