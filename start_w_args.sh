@@ -1,4 +1,6 @@
 #!/bin/bash
+# filepath: /home/localuser/GitRepos/Python-YTRipper/run.sh
+
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -17,13 +19,9 @@ fi
 echo "Activating virtual environment..."
 source "$VENV_DIR/bin/activate"
 
-# Install/update dependencies (optional, comment out if not needed)
-# pip install --upgrade pip
-# pip install -r requirements.txt
-
-# Start the application
+# Start the application (as a script, not module)
 echo "Starting application 'Python-YTRipper'..."
-python3 -m source.yt_ripper "$@"
+python3 source/yt_ripper.py "$@"
 
 # Deactivate venv on exit
 deactivate
