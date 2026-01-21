@@ -5,6 +5,41 @@ import random
 
 #TODO currently has no logging; consider adding if needed
 
+QUALITY_ALIAS_MAP = {
+    # high / best
+    "high": "high", "h": "high", "best": "high", "b": "high",
+    # medium
+    "medium": "medium", "m": "medium", "mid": "medium", "average": "medium", "a": "medium",
+    # low / worst
+    "low": "low", "lowest": "low", "l": "low", "worst": "low", "w": "low",
+}
+
+# Common YouTube audio bitrates (kbps)
+COMMON_AUDIO_ABR = {
+    "48k": "48kbps",
+    "50k": "50kbps",
+    "56k": "56kbps",
+    "64k": "64kbps",
+    "96k": "96kbps",
+    "128k": "128kbps",
+    "192k": "192kbps",
+    "256k": "256kbps",
+    "320k": "320kbps",
+}
+
+# Common YouTube video resolutions
+COMMON_VIDEO_RESOLUTIONS = {
+    "144p": "144p",
+    "240p": "240p",
+    "360p": "360p",
+    "480p": "480p",
+    "720p": "720p",
+    "1080p": "1080p",
+    "1440p": "1440p",
+    "2160p": "2160p",  # 4K
+}
+
+
 # Domain exceptions / base
 class DownloadError(Exception):
     """Base exception for download-related errors."""

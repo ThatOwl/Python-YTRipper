@@ -10,6 +10,7 @@ from cli.cli_base import CLIBase
 from core.logger import get_logger
 from core.pytube_interface import DownloadOptions, YouTubeDownloader as YTD
 from core.os_interactions import OSInteractions
+from core.utils import QUALITY_ALIAS_MAP, COMMON_AUDIO_ABR, COMMON_VIDEO_RESOLUTIONS
 
 
 logger = get_logger(__name__, 'cli_com_debug.log')
@@ -27,12 +28,15 @@ class CommandCLI(CLIBase):
         """
         parser = argparse.ArgumentParser(description="YouTube Video/Playlist Downloader", add_help=False)
         parser.add_argument('url', help='YouTube video or playlist URL')
+        parser.add_argument('-h', '--help', action='help', help='Show this help message and exit')
         parser.add_argument('-a', '--audio', action='store_true', help='Download audio only')
         parser.add_argument('-a3', '--audio_mp3', action='store_true', help='Download audio as MP3')
         parser.add_argument('-i', '--info', action='store_true', help='Print video/playlist info and exit')
         parser.add_argument('-c', '--clear', action='store_true', help='Clear download directory before downloading')
+        parser.add_argument('-q', '--quality', type=str, help='Preferred quality (e.g., [h]igh, [m]edium, [l]ow)')
+        parser.add_argument('-r', '--resolution', type=str, help='Preferred video resolution (e.g., 1080p, 720p) => OVERRIDES quality!')
+        parser.add_argument('-au', '--abr', type=str, help='Preferred audio bitrate (e.g., 128k, 192k) => OVERRIDES quality!')
         parser.add_argument('-o', '--output', type=str, help='Output directory: supports ~ expansion')
-        parser.add_argument('-h', '--help', action='help', help='Show this help message and exit')
         
         return parser
 
@@ -80,6 +84,33 @@ class CommandCLI(CLIBase):
         if args.clear: #FIXME: not working properly
             self.clear_dialog(args.dir)
 
+        if args.resolution:
+            self.preferences["preferred_resolution"] = args.resolution
+            
+            resolution_key = args.resolution.lower()
+            mapped_resolution = COMMON_VIDEO_RESOLUTIONS.get(resolution_key)
+            if mapped_resolution:
+                self.preferences["preferred_resolution"] = mapped_resolution
+            else:
+                logger.warning(f"Unknown quality alias '{args.quality}'; ignoring.")
+        
+        if args.abr:
+            abr_key = args.abr.lower()
+            mapped_abr = COMMON_AUDIO_ABR.get(abr_key)
+            if mapped_abr:
+                self.preferences["preferred_abr"] = mapped_abr
+            else:
+                logger.warning(f"Unknown audio bitrate alias '{args.abr}'; ignoring.")
+            
+        if args.quality:
+            quality_key = args.quality.lower()
+            mapped_quality = QUALITY_ALIAS_MAP.get(quality_key)
+            if mapped_quality:
+                self.preferences["preferred_audio_quality"] = mapped_quality
+                self.preferences["preferred_video_quality"] = mapped_quality
+            else:
+                logger.warning(f"Unknown quality alias '{args.quality}'; ignoring.")
+        
         if args.info:
             print("Fetching video/playlist info...")
             try:

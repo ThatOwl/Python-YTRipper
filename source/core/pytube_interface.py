@@ -13,11 +13,12 @@ from core.stream_converter import StreamConverter
 from core.url_handler import URLHandler
 from core.os_interactions import OSInteractions
 from core.thumbnail_handler import ThumbnailHandler
-from core.utils import DownloadError, DownloadOptions, DownloadResult
+from core.utils import DownloadError, DownloadOptions, DownloadResult, QUALITY_ALIAS_MAP
 
 logger = get_logger(__name__, 'ytd_debug.log')
 
 # downloader-specific subclasses (keep here for module-local semantics)
+# TODO: improve exception hierarchy if needed and add more specific exceptions
 class VideoFetchError(DownloadError):
     pass
 
@@ -31,6 +32,9 @@ class ConversionError(DownloadError):
     pass
 
 class CombineError(DownloadError):
+    pass
+
+class StreamSelectionError(DownloadError):
     pass
 
 class YouTubeDownloader:
@@ -125,69 +129,149 @@ class YouTubeDownloader:
     def _sanitize_filename(self, title: str) -> str:
         return re.sub(r'[\\/*?:"<>|]', "", title)
 
-    #FIXME: does not use preferred quality etc yet
-    #FIXME: does not use os.path ... str or PathLike ???
-    def _download_stream_type(self, video: ptf.YouTube, download_dir: Path, base_filename: str, str_type: Enum) -> str | None:
+    def _select_stream(self, video: ptf.YouTube, str_type: Enum, options: DownloadOptions) -> ptf.Stream:
         """
-        Downloads either the highest quality audio or video stream from a YouTube video object.
-        
-        Args:
-            video (ptf.YouTube): The YouTube video object from which to download the stream.
-            download_dir (Path): The directory where the downloaded file will be saved.
-            base_filename (str): The base filename to use for the downloaded file.
-            type (int): The type of stream to download. If truthy, downloads audio; if falsy, downloads video.
-        Returns:
-            str: The file path of the downloaded stream, or an empty string if no suitable stream is found.
-        Logs:
-            - Selected stream details (audio bitrate or video resolution and mime type).
-            - If no suitable stream is available.
-        Raises:
-            StreamDownloadError: If there is an error during the download process.
+            Select a pytubefix Stream for audio or video using preferences in DownloadOptions.
+            Priority:
+            - VIDEO: preferred_resolution > preferred_mime > preferred_video_quality > best available
+            - AUDIO: preferred_abr > preferred_audio_quality > best available
+            Returns:
+            ptf.Stream
+            Raises:
+            StreamSelectionError
         """
-
-        # Select the appropriate stream based on the type
-        #TODO implement preferred quality, abr, resolution
-        if str_type == self.StreamType.AUDIO:
-            stream: ptf.Stream = video.streams.filter(type='audio').order_by('abr').desc().first()
-            logger.debug(f"Selected audio stream: {stream.abr}, {stream.mime_type}")
-        else:
-            stream: ptf.Stream = video.streams.filter(type='video', progressive=False).order_by('resolution').desc().first()
-            logger.debug(f"Selected video stream: {stream.resolution}, {stream.mime_type}")
-        
-        #FIXME: debug code    
-        #--- DEBUG: dump repr/type to diagnose ffmpeg/stream mismatch
-        logger.debug(f"DEBUG stream repr: {repr(stream)}; type(stream)={type(stream)}")
-        # if stream is not the expected object, log available stream attrs
-        if not hasattr(stream, 'download'):
-            logger.debug("Stream object has no .download() method; available attrs: " +
-                            ", ".join(sorted([a for a in dir(stream) if not a.startswith('_')]) ) )
-
-        if not stream:
-            logger.warning(f"No suitable {self.stream_type_map[str_type.value]} stream available for this video.")
-            return ""
-        
-        #ext = stream.subtype # FIXME: this is idiotic
-        #ext = stream.mime_type.split('/')[1].split(';')[0]
         try:
-            downloaded_path = stream.download(
-                output_path=str(download_dir),
-                #filename=f"{base_filename}_{self.stream_type_map[str_type.value]}.{ext}", # FIXME: does nothing
-                skip_existing=True,
-                timeout=5,
-                max_retries=3
-            )
-            #TODO: could be changed to 
-            # file: Path =  stream.download()
-            # file.rename("base_filename")
-            # file.with_suffix
-            # file.with_name
-            # file.with_stem
-            #logger.debug(f"{self.stream_type_map[str_type.value]} stream downloaded to: {downloaded_path}")
-            return downloaded_path
-        except Exception as e:
-            logger.exception(f"Error downloading {self.stream_type_map[str_type.value]} stream: {e}")
-            raise StreamDownloadError(f"Error downloading {self.stream_type_map[str_type.value]} stream: {e}") from e
+            if str_type == self.StreamType.AUDIO:
+                q = video.streams.filter(type='audio')
+                stream = None
 
+                # 1) preferred_abr exact match
+                if options and options.preferred_abr:
+                    stream = q.filter(abr=options.preferred_abr).first()
+                    logger.debug(f"[select] audio preferred abr={options.preferred_abr} -> {stream}")
+
+                # 2) preferred_audio_quality via aliases (optionally constrained by mime)
+                if not stream and options and options.preferred_audio_quality:
+                    qual_key = QUALITY_ALIAS_MAP.get(options.preferred_audio_quality.strip().lower())
+                    aq = q.filter(mime_type=options.preferred_mime) if options.preferred_mime else q
+                    if qual_key == "high":
+                        stream = aq.order_by('abr').desc().first()
+                    elif qual_key == "low":
+                        stream = aq.order_by('abr').asc().first()
+                    elif qual_key == "medium":
+                        candidates = list(aq.order_by('abr'))
+                        if candidates:
+                            idx = len(candidates) // 2  # upper-middle for even counts
+                            stream = candidates[idx]
+                    logger.debug(f"[select] audio quality={options.preferred_audio_quality} (mime={options.preferred_mime or 'any'}) -> {stream}")
+
+                # 3) best available (highest abr)
+                if not stream:
+                    stream = q.order_by('abr').desc().first()
+                    logger.debug(f"[select] audio fallback best abr -> {stream}")
+
+                if not stream:
+                    raise StreamSelectionError("No audio stream available")
+                return stream
+
+            else:
+                # VIDEO
+                q = video.streams.filter(type='video', progressive=False)
+                stream = None
+
+                # 1) preferred_resolution (DASH first, then progressive)
+                if options and options.preferred_resolution:
+                    stream = q.filter(resolution=options.preferred_resolution).order_by('fps').desc().first()
+                    logger.debug(f"[select] video preferred resolution={options.preferred_resolution} (DASH) -> {stream}")
+                    if not stream:
+                        stream = video.streams.filter(type='video', progressive=True, resolution=options.preferred_resolution).order_by('fps').desc().first()
+                        logger.debug(f"[select] video preferred resolution={options.preferred_resolution} (progressive) -> {stream}")
+
+                # 2) preferred_mime (best resolution within mime)
+                if not stream and options and options.preferred_mime:
+                    stream = q.filter(mime_type=options.preferred_mime).order_by('resolution').desc().first()
+                    logger.debug(f"[select] video preferred mime={options.preferred_mime} (DASH) -> {stream}")
+                    if not stream:
+                        stream = video.streams.filter(type='video', progressive=True, mime_type=options.preferred_mime).order_by('resolution').desc().first()
+                        logger.debug(f"[select] video preferred mime={options.preferred_mime} (progressive) -> {stream}")
+
+                # 3) preferred_video_quality via aliases (fps heuristic)
+                if not stream and options and options.preferred_video_quality:
+                    qual_key = QUALITY_ALIAS_MAP.get(options.preferred_video_quality.strip().lower())
+                    vq = q
+                    if qual_key == "high":
+                        stream = vq.order_by('fps').desc().first()
+                    elif qual_key == "low":
+                        stream = vq.order_by('fps').asc().first()
+                    elif qual_key == "medium":
+                        candidates = list(vq.order_by('fps'))
+                        if candidates:
+                            idx = len(candidates) // 2  # upper-middle for even counts
+                            stream = candidates[idx]
+                    logger.debug(f"[select] video quality={options.preferred_video_quality} by fps -> {stream}")
+            
+                # 4) best available (highest resolution)
+                if not stream:
+                    stream = q.order_by('resolution').desc().first()
+                    logger.debug(f"[select] video fallback best resolution (DASH) -> {stream}")
+                    if not stream:
+                        stream = video.streams.filter(type='video').order_by('resolution').desc().first()
+                        logger.debug(f"[select] video fallback best resolution (any) -> {stream}")
+
+                if not stream:
+                    raise StreamSelectionError("No video stream available")
+
+                return stream
+        except Exception as e:
+            raise StreamSelectionError(f"Stream selection failed: {e}") from e
+    
+    # TODO: Test and         
+    def _download_stream_type(self, video: ptf.YouTube, download_dir: Path, options: DownloadOptions, base_filename: str, str_type: Enum) -> str | None:
+        """
+            Downloads either the highest quality audio or video stream from a YouTube video object.
+            
+            Args:
+                video (ptf.YouTube): The YouTube video object from which to download the stream.
+                download_dir (Path): The directory where the downloaded file will be saved.
+                options (DownloadOptions): The download options specifying preferences.
+                base_filename (str): The base filename to use for the downloaded file.
+                str_type (Enum): The type of stream to download (AUDIO or VIDEO).
+            Returns:
+                str: The file path of the downloaded stream, or an empty string if no suitable stream is found.
+            Logs:
+                - Selected stream details (audio bitrate or video resolution and mime type).
+                - If no suitable stream is available.
+            Raises:
+                StreamDownloadError: If there is an error during the download process.
+        """
+
+        try:
+            # Use the new stream selector
+            stream: ptf.Stream = self._select_stream(video, str_type, options)
+            
+            # Log selected stream details
+            if str_type == self.StreamType.AUDIO:
+                logger.debug(f"Selected audio stream: {stream.abr}, {stream.mime_type}")
+            else:
+                logger.debug(f"Selected video stream: {stream.resolution}, {stream.mime_type}")
+            
+        except StreamSelectionError as e:
+            logger.warning(f"No suitable {self.stream_type_map[str_type]} stream available: {e}")
+            return ""
+    
+    # Download the selected stream
+    try:
+        downloaded_path = stream.download(
+            output_path=str(download_dir),
+            skip_existing=True,
+            timeout=5,
+            max_retries=3
+        )
+        logger.debug(f"{self.stream_type_map[str_type]} stream downloaded to: {downloaded_path}")
+        return downloaded_path
+    except Exception as e:
+        logger.exception(f"Error downloading {self.stream_type_map[str_type]} stream: {e}")
+        raise StreamDownloadError(f"Error downloading {self.stream_type_map[str_type]} stream: {e}") from e
     def download_single(self, download_dir: Path, options: DownloadOptions, video_obj: ptf.YouTube) -> DownloadResult:
         """
         Download a single YouTube video as video or audio.
@@ -202,7 +286,7 @@ class YouTubeDownloader:
         
         try:
             if options.audio_only:
-                audio_path_str = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.AUDIO)
+                audio_path_str = self._download_stream_type(video_obj, download_dir, options, base_filename, self.StreamType.AUDIO)
                 thumbnail_path = None #FIXME self.thumbnail_handler.download_thumbnail(video_obj, download_dir, base_filename)
                 output_path = Path(download_dir) / f"{base_filename}{'.mp3' if options.audio_mp3 else '.m4a'}"
                 if not audio_path_str:
@@ -213,8 +297,8 @@ class YouTubeDownloader:
                 self.stream_converter.convert_audio(audio_path, output_path, thumbnail_path)
                 
             else:
-                video_path_str = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.VIDEO)
-                audio_path_str = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.AUDIO)
+                video_path_str = self._download_stream_type(video_obj, download_dir, options, base_filename, self.StreamType.VIDEO)
+                audio_path_str = self._download_stream_type(video_obj, download_dir, options, base_filename, self.StreamType.AUDIO)
                 output_path = Path(download_dir) / f"{base_filename}.mp4"
                 if not video_path_str or not audio_path_str:
                     msg = "missing audio or video stream"
