@@ -5,6 +5,7 @@
 - how to minimize exception handling 
 
 ## big
+- handle exception thrown resulting from internet connection timeout (cleanly)
 - maybe: make options part of downloader-class ? discuss with chat
 - refactor codebase as discussed with chat => restructure to make classses injectable and mockable for unittests.
 - DROP interactive menu ! (or pause development)

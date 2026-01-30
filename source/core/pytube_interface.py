@@ -174,6 +174,10 @@ class YouTubeDownloader:
                     raise StreamSelectionError("No audio stream available")
                 return stream
 
+            
+            #TODO: Adapt to also use FPS!
+            #TODO  => new heuristic for video selection based on connectionspeed or (mobile-hotspot) ?!
+            #         does not requuire system level interaction => ask user
             else:
                 # VIDEO
                 q = video.streams.filter(type='video', progressive=False)
@@ -181,6 +185,7 @@ class YouTubeDownloader:
 
                 # 1) preferred_resolution (DASH first, then progressive)
                 if options and options.preferred_resolution:
+                    #if(options.preferred_video_quality not )
                     stream = q.filter(resolution=options.preferred_resolution).order_by('fps').desc().first()
                     logger.debug(f"[select] video preferred resolution={options.preferred_resolution} (DASH) -> {stream}")
                     if not stream:
@@ -195,19 +200,31 @@ class YouTubeDownloader:
                         stream = video.streams.filter(type='video', progressive=True, mime_type=options.preferred_mime).order_by('resolution').desc().first()
                         logger.debug(f"[select] video preferred mime={options.preferred_mime} (progressive) -> {stream}")
 
-                # 3) preferred_video_quality via aliases (fps heuristic)
+                #TODO: FIXME improve res / fps selection logic -> untested code !
+                # 3) preferred_video_quality via aliases (resolution)
                 if not stream and options and options.preferred_video_quality:
                     qual_key = QUALITY_ALIAS_MAP.get(options.preferred_video_quality.strip().lower())
                     vq = q
                     if qual_key == "high":
-                        stream = vq.order_by('fps').desc().first()
+                        stream = vq.order_by('resolution').desc().order_by('fps').first()
                     elif qual_key == "low":
-                        stream = vq.order_by('fps').asc().first()
+                        stream = vq.order_by('resolution').asc().order_by('fps').last()
                     elif qual_key == "medium":
-                        candidates = list(vq.order_by('fps'))
+                        candidates = list(vq.order_by('resolution'))
                         if candidates:
                             idx = len(candidates) // 2  # upper-middle for even counts
                             stream = candidates[idx]
+                        # -> adapt for medium quality selection as [720p, 480p, 360p]
+                        """ try selecting low fps among medium res candidat*E* if multiple are present! 
+                        if len(candidates) >= 3:
+                            idx = len(candidates) // 2  # upper-middle for even counts
+                            candidates = candidates[idx-1:idx+1]
+                            # check if fps selection is possible for res of candidates[idx]
+                            candidates = sorted(candidates, key=lambda s: int(s.fps.replace('fps','')))
+                            stream = candidates[0] if len(candidates) % 2 == 1 else candidates[1]
+                            #stream = candidates[idx].order_by('fps').last() #--- test this !
+                        """    
+                        
                     logger.debug(f"[select] video quality={options.preferred_video_quality} by fps -> {stream}")
             
                 # 4) best available (highest resolution)
@@ -258,20 +275,20 @@ class YouTubeDownloader:
         except StreamSelectionError as e:
             logger.warning(f"No suitable {self.stream_type_map[str_type]} stream available: {e}")
             return ""
-    
-    # Download the selected stream
-    try:
-        downloaded_path = stream.download(
-            output_path=str(download_dir),
-            skip_existing=True,
-            timeout=5,
-            max_retries=3
-        )
-        logger.debug(f"{self.stream_type_map[str_type]} stream downloaded to: {downloaded_path}")
-        return downloaded_path
-    except Exception as e:
-        logger.exception(f"Error downloading {self.stream_type_map[str_type]} stream: {e}")
-        raise StreamDownloadError(f"Error downloading {self.stream_type_map[str_type]} stream: {e}") from e
+        
+        # Download the selected stream
+        try:
+            downloaded_path = stream.download(
+                output_path=str(download_dir),
+                skip_existing=True,
+                timeout=5,
+                max_retries=3
+            )
+            logger.debug(f"{self.stream_type_map[str_type]} stream downloaded to: {downloaded_path}")
+            return downloaded_path
+        except Exception as e:
+            logger.exception(f"Error downloading {self.stream_type_map[str_type]} stream: {e}")
+            raise StreamDownloadError(f"Error downloading {self.stream_type_map[str_type]} stream: {e}") from e
     def download_single(self, download_dir: Path, options: DownloadOptions, video_obj: ptf.YouTube) -> DownloadResult:
         """
         Download a single YouTube video as video or audio.
