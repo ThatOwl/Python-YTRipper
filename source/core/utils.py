@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import List, Callable, Tuple, Type, Any, Dict
 import time
 import random
@@ -45,33 +45,37 @@ class DownloadError(Exception):
     """Base exception for download-related errors."""
 
 # Models / result objects
-@dataclass(frozen=True)
+
+@dataclass
 class DownloadOptions:
+    """Centralized download preferences (mirrors preferences.py DEFAULT_PREFS)."""
     default_download_directory: str = "~/Downloads"
     audio_only: bool = False
     audio_mp3: bool = False
-    preferred_abr: str = ""
+    warn_me: bool = False
+    preferred_audio_quality: str = ""
+    preferred_video_quality: str = ""
     preferred_resolution: str = ""
-    preferred_audio_quality: str = "best"
-    preferred_video_quality: str = "best"
-    preferred_format: str = ""
+    preferred_abr: str = ""
     preferred_mime: str = ""
+    preferred_format: str = ""
     loglevel: str = "WARNING"
     donotconvert: bool = False
-    # Other preferences can be added here AND "DEFAULT_PREFS" as needed
 
     @classmethod
-    def from_preferences(cls, prefs: Dict[str, Any]) -> 'DownloadOptions':
-        return cls(
-            audio_only=prefs.get("audio_only", False),
-            audio_mp3=prefs.get("audio_mp3", False),
-            preferred_abr=prefs.get("preferred_abr", ""),
-            preferred_resolution=prefs.get("preferred_resolution", ""),
-            preferred_audio_quality=prefs.get("preferred_audio_quality", "best"),
-            preferred_video_quality=prefs.get("preferred_video_quality", "best"),
-            preferred_format=prefs.get("preferred_format", ""),
-            preferred_mime=prefs.get("preferred_mime", "")
-        )
+    def from_preferences(cls, prefs: Dict) -> "DownloadOptions":
+        """Load from preferences dict."""
+        return cls(**{k: v for k, v in prefs.items() if k in cls.__dataclass_fields__})
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return asdict(self)
+    
+    def update_from_dict(self, data: Dict) -> None:
+        """Update options from dictionary (only non-None values)."""
+        for key, value in data.items():
+            if value is not None and hasattr(self, key):
+                setattr(self, key, value)
 
 @dataclass
 class DownloadResult:
