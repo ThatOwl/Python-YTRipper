@@ -29,15 +29,15 @@ class CommandCLI(CLIBase):
         parser = argparse.ArgumentParser(description="YouTube Video/Playlist Downloader", add_help=False)
         parser.add_argument('url', help='YouTube video or playlist URL')
         parser.add_argument('-h', '--help', action='help', help='Show this help message and exit')
+        parser.add_argument('-i', '--info', action='store_true', help='Print video/playlist info and exit')
         parser.add_argument('-a', '--audio', action='store_true', help='Download audio only')
         parser.add_argument('-a3', '--audio_mp3', action='store_true', help='Download audio as MP3')
-        parser.add_argument('-i', '--info', action='store_true', help='Print video/playlist info and exit')
-        parser.add_argument('-c', '--clear', action='store_true', help='Clear download directory before downloading')
         parser.add_argument('-q', '--quality', type=str, help='Preferred quality (e.g., [h]igh, [m]edium, [l]ow)')
         parser.add_argument('-r', '--resolution', type=str, help='Preferred video resolution (e.g., 1080p, 720p) => OVERRIDES quality!')
         parser.add_argument('-au', '--abr', type=str, help='Preferred audio bitrate (e.g., 128k, 192k) => OVERRIDES quality!')
         parser.add_argument('-o', '--output', type=str, help='Output directory: supports ~ expansion')
-        
+        parser.add_argument('-w', '--warnme', type=str, help='Set warning prompts (true/false)')
+
         return parser
 
     #TODO: FIXME: not working properly
@@ -78,11 +78,6 @@ class CommandCLI(CLIBase):
         else:
             self.preferences["audio_mp3"] = False
         self.preferences["default_download_directory"] = args.output if args.output else self.preferences.get("default_download_directory", "./temp_ripper_downloads")
-        #DELETEME
-        print(f"Download directory set to: {self.preferences['default_download_directory']}")
-        
-        if args.clear: #FIXME: not working properly
-            self.clear_dialog(args.dir)
 
         if args.resolution:
             self.preferences["preferred_resolution"] = args.resolution
@@ -110,7 +105,13 @@ class CommandCLI(CLIBase):
                 self.preferences["preferred_video_quality"] = mapped_quality
             else:
                 logger.warning(f"Unknown quality alias '{args.quality}'; ignoring.")
-        
+
+        if args.warnme or self.preferences.get('warn_me', False):
+            self.preferences["warn_me"] = args.warnme.lower() in ('true', '1', 'yes', 'y')
+            print("Loaded Preferences: ")
+            for key, value in self.preferences.items():
+                print(f"{key}: {value}")
+
         if args.info:
             print("Fetching video/playlist info...")
             try:
@@ -118,7 +119,7 @@ class CommandCLI(CLIBase):
             except Exception as e:
                 logger.error(f"Failed to fetch info: {e}")
                 return 1
-        else:
+        else:            
             print("------ Starting action ------")
             try:
                 # Always expand the download directory before passing to downloader

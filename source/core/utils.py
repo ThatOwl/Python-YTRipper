@@ -47,14 +47,18 @@ class DownloadError(Exception):
 # Models / result objects
 @dataclass(frozen=True)
 class DownloadOptions:
+    default_download_directory: str = "~/Downloads"
     audio_only: bool = False
     audio_mp3: bool = False
     preferred_abr: str = ""
     preferred_resolution: str = ""
-    preferred_audio_quality: str = ""
-    preferred_video_quality: str = ""
+    preferred_audio_quality: str = "best"
+    preferred_video_quality: str = "best"
     preferred_format: str = ""
     preferred_mime: str = ""
+    loglevel: str = "WARNING"
+    donotconvert: bool = False
+    # Other preferences can be added here AND "DEFAULT_PREFS" as needed
 
     @classmethod
     def from_preferences(cls, prefs: Dict[str, Any]) -> 'DownloadOptions':

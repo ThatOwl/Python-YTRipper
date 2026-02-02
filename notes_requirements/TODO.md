@@ -5,18 +5,19 @@
 - how to minimize exception handling 
 
 ## big
-- handle exception thrown resulting from internet connection timeout (cleanly)
-- maybe: make options part of downloader-class ? discuss with chat
-- refactor codebase as discussed with chat => restructure to make classses injectable and mockable for unittests.
-- DROP interactive menu ! (or pause development)
-- -> otherwise make a GUI with qt5
-- refactor "download_dir" into "options"
-- add history in file with max size of 20 entries -> use arrow key for navigation during interaction
-- add method to interact with preferrence file for editing with limits
+- path handling and renaming o file .. including .mp4/mp3 bullshit
 - FIX path being "STR" or "PATH" type !!!
     - > path is cumbersome revise solution
     - > problem with many libs expecting str (ffmpeg, pytube)
-- if single video fails (not playlist!) delete download dir 
+- refactor "download_dir" into "options"
+
+- check preferences handling
+- handle exception thrown resulting from internet connection timeout (cleanly)
+- maybe: make options part of downloader-class ? discuss with chat
+- DROP interactive menu ! (or pause development)
+- -> otherwise make a GUI with qt5
+- add history in file with max size of 20 entries -> use arrow key for navigation during interaction
+- add method to interact with preferrence file for editing with limits
 
 ## Small
 - check ffmpeg output for sync and playback errors

@@ -17,6 +17,8 @@ from core.utils import DownloadError, DownloadOptions, DownloadResult, QUALITY_A
 
 logger = get_logger(__name__, 'ytd_debug.log')
 
+# DEBUG < INFO < WARNING < ERROR < CRITICAL
+
 # downloader-specific subclasses (keep here for module-local semantics)
 # TODO: improve exception hierarchy if needed and add more specific exceptions
 class VideoFetchError(DownloadError):
@@ -49,15 +51,26 @@ class YouTubeDownloader:
         StreamType.VIDEO:'Video'
     }
 
-    def __init__(self, os_handler: OSInteractions):
-        self.thumbnail_handler = ThumbnailHandler()
-        self.stream_converter = StreamConverter()
-        self.urlh = URLHandler()
-        self.os_handler = os_handler
-        if self.os_handler is None:
-            from source.core.os_interactions import OSInteractions
-            self.os_handler = OSInteractions()
-
+    def __init__(self, 
+                 os_handler: OSInteractions = None, 
+                 thumbnail_handler: ThumbnailHandler = None,
+                 stream_converter: StreamConverter = None, 
+                 url_handler: URLHandler = None):
+        """
+        Initialize the YouTubeDownloader with optional handlers for OS interactions,
+        thumbnail downloading, and stream conversion.
+        Args:
+            os_handler (OSInteractions): Handler for OS interactions.
+            thumbnail_handler (ThumbnailHandler, optional): Handler for thumbnail downloading. Defaults to None.
+            stream_converter (StreamConverter, optional): Handler for stream conversion. Defaults to None.
+            url_handler (URLHandler, optional): Handler for URL handling. Defaults to None.
+        """
+            
+        self.thumbnail_handler = thumbnail_handler if thumbnail_handler is not None else ThumbnailHandler()
+        self.stream_converter = stream_converter if stream_converter is not None else StreamConverter()
+        self.urlh = url_handler if url_handler is not None else URLHandler()
+        self.os_handler = os_handler if os_handler is not None else OSInteractions()
+        
     def _get_video_obj(self, video_url: str) -> ptf.YouTube | Exception:
         """
         Fetches a YouTube video object.
@@ -261,7 +274,7 @@ class YouTubeDownloader:
             Raises:
                 StreamDownloadError: If there is an error during the download process.
         """
-
+        
         try:
             # Use the new stream selector
             stream: ptf.Stream = self._select_stream(video, str_type, options)
@@ -289,6 +302,7 @@ class YouTubeDownloader:
         except Exception as e:
             logger.exception(f"Error downloading {self.stream_type_map[str_type]} stream: {e}")
             raise StreamDownloadError(f"Error downloading {self.stream_type_map[str_type]} stream: {e}") from e
+    
     def download_single(self, download_dir: Path, options: DownloadOptions, video_obj: ptf.YouTube) -> DownloadResult:
         """
         Download a single YouTube video as video or audio.
@@ -311,7 +325,8 @@ class YouTubeDownloader:
                     logger.error(msg)
                     return DownloadResult(success=False, errors=[msg])
                 audio_path = Path(audio_path_str)
-                self.stream_converter.convert_audio(audio_path, output_path, thumbnail_path)
+                if not options.donotconvert:
+                    self.stream_converter.convert_audio(audio_path, output_path, thumbnail_path=thumbnail_path)
                 
             else:
                 video_path_str = self._download_stream_type(video_obj, download_dir, options, base_filename, self.StreamType.VIDEO)
@@ -323,7 +338,8 @@ class YouTubeDownloader:
                     return DownloadResult(success=False, errors=[msg])
                 video_path = Path(video_path_str)
                 audio_path = Path(audio_path_str)
-                self.stream_converter.combine_streams(audio_path, video_path, output_path)
+                if not options.donotconvert:
+                    self.stream_converter.combine_streams(audio_path, video_path, output_path)
 
             logger.debug(f'Download of {"soundtrack" if options.audio_only else "video"} completed.')
             return DownloadResult(success=True, errors=[])
@@ -385,7 +401,7 @@ class YouTubeDownloader:
 
     def info(self, url: str = None, video_obj: ptf.YouTube = None, output: callable = logger.info) -> None:
         """
-        Print or log information about a YouTube video or playlist.
+        Print to console or log information about video or playlist.
 
         Args:
         url (str): The URL of the YouTube video or playlist.

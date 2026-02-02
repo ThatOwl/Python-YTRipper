@@ -20,13 +20,14 @@ DEFAULT_PREFS: Dict = {
     "audio_only": False,
     "audio_mp3": False,
     "warn_me": False,
-    "preferred_audio_quality": "",
-    "preferred_video_quality": "",
+    "preferred_audio_quality": "best",
+    "preferred_video_quality": "best",
     "preferred_format": "",
     "preferred_abr": "",
     "preferred_resolution": "",
     "preferred_mime": "",
-    "loglevel": "WARNING"
+    "loglevel": "WARNING",
+    "donotconvert": False
 }
 # -----------------------------
 
