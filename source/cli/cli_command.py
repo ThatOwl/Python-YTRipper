@@ -35,14 +35,15 @@ class CommandCLI(CLIBase):
         parser.add_argument('-h', '--help', action='help', help='Show this help message and exit')
         parser.add_argument('-i', '--info', action='store_true', help='Print video/playlist info and exit')
         parser.add_argument('-a', '--audio_only', action='store_true', default=self.options.audio_only)
+        #FIXME - this is a bit hacky ... ideally we would have a more flexible way to specify output format (e.g. --audio-format mp3/m4a) and not just a boolean for mp3 conversion
+        # also currently not handled
         parser.add_argument('-a3', '--audio_mp3', action='store_true', default=self.options.audio_mp3)
-        parser.add_argument('-q', '--preferred_video_quality', type=str, default=self.options.preferred_video_quality,
+        parser.add_argument('-q', '--preferred_quality', type=str, default=self.options.preferred_video_quality,
                            help=f'Quality: {", ".join(set(QUALITY_ALIAS_MAP.values()))}')
         parser.add_argument('-r', '--preferred_resolution', type=str, default=self.options.preferred_resolution,
                            help=f'Resolution: {", ".join(COMMON_VIDEO_RESOLUTIONS.keys())}')
         parser.add_argument('-au', '--preferred_abr', type=str, default=self.options.preferred_abr,
                            help=f'Audio bitrate: {", ".join(COMMON_AUDIO_ABR.keys())}')
-        #FIXME
         parser.add_argument('-o', '--default_download_directory', type=str, default=self.options.default_download_directory,
                            help='Output directory (supports ~ expansion)')
         parser.add_argument('-w', '--warn_me', type=str, default=str(self.options.warn_me),
@@ -71,7 +72,8 @@ class CommandCLI(CLIBase):
         args_dict = {
             'audio_only': args.audio_only,
             'audio_mp3': args.audio_mp3,
-            'preferred_video_quality': args.preferred_video_quality or None,
+            'preferred_video_quality': args.preferred_quality or None,
+            'preferred_audio_quality': args.preferred_quality or None,
             'preferred_resolution': args.preferred_resolution or None,
             'preferred_abr': args.preferred_abr or None,
             'default_download_directory': args.default_download_directory or None,

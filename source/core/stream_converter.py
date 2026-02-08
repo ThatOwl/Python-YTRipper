@@ -8,7 +8,7 @@ logger = get_logger(__name__, 'sc_debug.log')
 class StreamConverter:
     """Handles conversion and merging of audio/video streams."""
     @staticmethod
-    def convert_audio(audio_path: Path, output_path: Path, thumbnail_path: Path | None = None) -> None:
+    def convert_audio_old(audio_path: Path, output_path: Path, thumbnail_path: Path | None = None) -> None:
         """Converts audio to desired format based on output_path extension.
         Args:
             audio_path (Path): The path to the source audio file.
@@ -153,7 +153,7 @@ class StreamConverter:
 
     # will replace convert_to_m4a and convert_to_mp3
     @staticmethod
-    def convert_audio_new(audio_path: Path, output_path: Path, thumbnail_path: Path | None = None) -> None:
+    def convert_audio(audio_path: Path, output_path: Path, thumbnail_path: Path | None = None) -> None:
         """Converts audio to m4a or mp3 format.
         
         Args:

@@ -451,25 +451,32 @@ class YouTubeDownloader:
             output(f"Best audio: {video_obj.streams.filter(type='audio').order_by('abr').desc().first()}")
 
     def download(self, url: str, download_dir: Path, options: DownloadOptions) -> None:
-        """
-        Download a YouTube video or playlist.
+        """Download a YouTube video or playlist based on the provided URL and options.
         Args:
-            url (str): The URL of the YouTube video or playlist.
-            download_dir (Path): The directory to save the downloaded files.
-            options (DownloadOptions): The download options.
+            url (str): The URL of the YouTube video or playlist to download.
+            download_dir (Path): The directory where the downloaded files should be saved.
+            options (DownloadOptions): The download options specifying preferences for audio/video quality, format, etc.
         Side Effects:
-            - creates download directory if it does not exist. 
+            - Downloads the specified video or playlist to the given directory.
         Logs:
-            - Download status.
+            - Download status and any errors encountered during the process.
         """
         results = []
-        
+
         if self.urlh.is_youtube_url(url) and self.urlh.is_accessible(url):
             logger.debug(f"Valid YouTube URL: {url}")
             try:
-                if not os.path.exists(download_dir): # should work for multiple levels TODO: check
+                if not os.path.exists(download_dir):
                     os.makedirs(download_dir)
                     logger.info(f"Created download directory: {download_dir}")
+
+                # NEW: if start_radio mix, force single-video download with cleaned URL
+                if self.urlh.has_start_radio(url):
+                    cleaned = self.urlh.clean_video_link(url)
+                    if not cleaned:
+                        raise ValueError("Could not extract video id from start_radio URL")
+                    logger.info(f"start_radio detected; treating as single video: {cleaned}")
+                    url = cleaned
 
                 if self.urlh.is_youtube_playlist(url):
                     logger.debug("Detected as a playlist URL.")
@@ -478,15 +485,10 @@ class YouTubeDownloader:
                     logger.debug("Detected as a single video URL.")
                     video = self._get_video_obj(url)
                     results.append(self.download_single(video_obj=video, download_dir=download_dir, options=options))
-                    
+
             except Exception as e:
                 logger.error(f"Download failed: {e}")
-                return #TODO could raise error upstream
+                return
         else:
             logger.error("The provided URL is not a valid YouTube URL or inaccessible.")
             raise ValueError("The provided URL is not valid or unreachable.")
-        
-        # Summarize results
-        success_count = sum(1 for result in results if result.success)
-        failure_count = len(results) - success_count
-        logger.info(f"Download Summary: {success_count} succeeded, {failure_count} failed.")

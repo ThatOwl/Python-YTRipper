@@ -82,22 +82,35 @@ class URLHandler:
             #raise e
             return False
     
-    @staticmethod #--- why?
+    def has_start_radio(self, url: str) -> bool:
+        """Return True if the URL contains start_radio=1 (or truthy)."""
+        try:
+            parsed = ulp.urlparse(url)
+            qs = ulp.parse_qs(parsed.query)
+            start_radio = qs.get("start_radio", [None])[0]
+            return start_radio is not None and str(start_radio).strip().lower() in ("1", "true", "yes")
+        except Exception as e:
+            logger.exception("Error parsing start_radio: %s", e)
+            return False
+
+    @staticmethod
     def is_youtube_playlist(url: str) -> bool:
         """
         Check if the given URL is a YouTube playlist URL.
-
-        Args:
-            url (str): The URL to check.
-        Returns:
-            bool: True if the URL contains '&list=' indicating a playlist, False otherwise.
+        If start_radio=1 is present, treat as NOT a playlist.
         """
         try:
-            # Check for '&list=' or '?list=' in the URL string (case-insensitive)
-            return '&list=' in url.lower() or '?list=' in url.lower()
+            parsed = ulp.urlparse(url)
+            qs = ulp.parse_qs(parsed.query)
+            has_list = bool(qs.get("list"))
+            start_radio = qs.get("start_radio", [None])[0]
+            if start_radio is not None and str(start_radio).strip().lower() in ("1", "true", "yes"):
+                return False
+            return has_list
         except Exception as e:
             logger.exception(f"Error parsing URL for playlist: {e}")
             return False
+
 
     def clean_video_link(self, url: str) -> str | None:
         """
@@ -119,26 +132,3 @@ class URLHandler:
         except Exception as e:
             logger.exception("Error cleaning video link: %s", e)
             return None
-
-    def clean_playlist_link(self, url: str) -> str:
-        """
-        Return a canonical YouTube playlist URL (https://www.youtube.com/playlist?list=LISTID).
-
-        Raises:
-            ValueError: if no playlist id is found or if 'start_radio' is present on the playlist URL.
-        """
-        try:
-            parsed = ulp.urlparse(url)
-            qs = ulp.parse_qs(parsed.query)
-            # If start_radio is present on a playlist URL, that's disallowed per specification
-            if any(k.lower() == "start_radio" for k in qs.keys()):
-                logger.error("clean_playlist_link: 'start_radio' parameter not allowed on playlist URLs: %s", url)
-                raise ValueError("start_radio parameter not allowed on playlist URLs")
-            playlist_id = qs.get("list", [None])[0]
-            if playlist_id:
-                return f"https://www.youtube.com/playlist?list={playlist_id}"
-            logger.error("clean_playlist_link: no playlist id ('list' param) found in URL: %s", url)
-            raise ValueError("No playlist id ('list' query parameter) found in URL")
-        except Exception:
-            logger.exception("Error cleaning playlist link: %s", url)
-            raise
