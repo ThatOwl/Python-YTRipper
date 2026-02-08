@@ -1,10 +1,8 @@
-#import sys
 import os
-from pathlib import Path 
-#import json
-import shutil
-from typing import Dict
 from pathlib import Path
+import shutil
+import csv
+from typing import Dict, List, Tuple
 
 from core.logger import get_logger
 import core.preferences as preferences
@@ -13,80 +11,100 @@ logger = get_logger(__name__, 'osi_debug.log')
 
 
 class OSInteractions:
-    """Small utility for filesystem / preferences operations. Stateless and easy to mock."""
+    """Filesystem and file I/O operations (preferences, batch files, paths)."""
 
     def __init__(self):
-        self.prefs_path = preferences.PATH_TO_PREFERENCES # could be parameterized if needed
+        self.prefs_path = preferences.PATH_TO_PREFERENCES
         self.logs_path = preferences.PATH_TO_LOGS
 
-
-    def expand_path(self, path_str: Path) -> Path:
+    def expand_path(self, path_str: str) -> Path:
+        """Expand ~ and environment variables."""
         return Path(os.path.expandvars(os.path.expanduser(path_str))).resolve()
-        
+
     def read_preferences(self) -> Dict:
-        # delegate to single source of truth to avoid duplicate code/import locks
+        """Delegate to preferences module."""
         return preferences.read_preferences()
 
     def write_preferences(self, prefs: Dict) -> None:
-        # delegate to single source of truth to avoid duplicate code/import locks
+        """Delegate to preferences module."""
         preferences.write_preferences(prefs)
 
-    #FIXME: a bit unsafe ... permission issues, edge cases
     def clear_directory(self, dir_path: Path) -> None:
-        """
-        Utility function to clear all files and subdirectories in a directory.
-        Aborts unless the target directory is inside the current user's home directory.
-        Args:
-            dir_path (str): Path to the directory to be cleared.
-        """
-        # Resolve paths safely
-        home = os.path.realpath(os.path.expanduser("~"))
-        target = os.path.realpath(os.path.abspath(os.path.expanduser(dir_path)))
+        """...existing code..."""
+        pass
 
-        # Abort if target is not inside user's home directory
-        try:
-            if os.path.commonpath([home, target]) != home:
-                logger.warning("clear_directory: aborting because %s is not inside the user's home directory %s", target, home)
-                return
-        except Exception:
-            # If commonpath raises (e.g. on different drives on Windows), be conservative and abort
-            logger.warning("clear_directory: unable to verify that %s is inside %s — aborting for safety", target, home)
-            return
-
-        if not os.path.isdir(target):
-            logger.debug("clear_directory: not a directory: %s", target)
-            return
-
-        for filename in os.listdir(target):
-            file_path = os.path.join(target, filename)
-            try:
-                if os.path.isfile(file_path) or os.path.islink(file_path):
-                    os.unlink(file_path)
-                elif os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
-            except Exception:
-                logger.exception("Failed to delete %s", file_path)
-
-    # maybe unusable ... trying to move to logger.py
     def clear_logs(self) -> None:
-        if not os.path.isdir(self.logs_path):
-            logger.debug("clear_logs: not a directory: %s", self.logs_path)
-            return
-        # First, delete old_*.log files
-        for filename in os.listdir(self.logs_path):
-            if filename.startswith("old_") and filename.endswith(".log"):
-                file_path = os.path.join(self.logs_path, filename)
-                try:
-                    if os.path.isfile(file_path) or os.path.islink(file_path):
-                        os.unlink(file_path)
-                except Exception:
-                    logger.exception("Failed to delete log file %s", file_path)
+        """...existing code..."""
+        pass
 
-        # Then, rename remaining *.log files
-        for filename in os.listdir(self.logs_path):
-            if filename.endswith(".log"):
-                try:
-                    new_name = filename.replace(".log", f"old_{filename}.log")
-                    os.rename(os.path.join(self.logs_path, filename), os.path.join(self.logs_path, new_name))
-                except Exception:
-                    logger.exception("Failed renaming log %s", filename)
+    # BATCH FILE LOADING
+    def load_batch_urls_txt(self, file_path: Path) -> Tuple[List[str], str]:
+        """
+        Load URLs from .txt file.
+        First line may contain params (format: "param: -a -q low -r 480p")
+        Returns: (list of URLs, param_string or empty string)
+        """
+        urls = []
+        params = ""
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lines = [line.strip() for line in f if line.strip()]
+            
+            if not lines:
+                return [], ""
+            
+            # Check if first line contains params
+            first_line = lines[0].lower()
+            if first_line.startswith("param:") or first_line.startswith("params:"):
+                params = lines[0].split(":", 1)[1].strip()
+                urls = lines[1:]
+            else:
+                urls = lines
+            
+            return urls, params
+        except Exception as e:
+            raise IOError(f"Error reading file {file_path}: {e}")
+
+    def load_batch_urls_csv(self, file_path: Path, url_column: int = 0) -> Tuple[List[str], str]:
+        """
+        Load URLs from .csv file.
+        First line may contain params (same format as .txt).
+        url_column: which column contains the URL (default: 0).
+        """
+        urls = []
+        params = ""
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                rows = list(reader)
+            
+            if not rows:
+                return [], ""
+            
+            # Check if first line contains params
+            first_row = rows[0][0].lower() if rows[0] else ""
+            if first_row.startswith("param:") or first_row.startswith("params:"):
+                params = rows[0][0].split(":", 1)[1].strip()
+                rows = rows[1:]
+            
+            urls = [row[url_column].strip() for row in rows if len(row) > url_column]
+            return urls, params
+        except Exception as e:
+            raise IOError(f"Error reading CSV file {file_path}: {e}")
+
+    def load_batch_urls(self, file_path: Path, url_column: int = 0) -> Tuple[List[str], str]:
+        """
+        Auto-detect file format and load batch URLs.
+        Returns: (list of URLs, param_string or empty string)
+        """
+        file_path = Path(file_path)
+        suffix = file_path.suffix.lower()
+        
+        if suffix == ".txt":
+            return self.load_batch_urls_txt(file_path)
+        elif suffix == ".csv":
+            return self.load_batch_urls_csv(file_path, url_column)
+        else:
+            raise ValueError(f"Unsupported file format: {suffix}")

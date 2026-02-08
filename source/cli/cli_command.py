@@ -1,6 +1,7 @@
 import sys
 import os
 import argparse
+from pathlib import Path
 
 from cli.cli_base import CLIBase
 from core.logger import get_logger
@@ -28,15 +29,14 @@ class CommandCLI(CLIBase):
             description="YouTube Video/Playlist Downloader",
             add_help=False,
             formatter_class=argparse.RawDescriptionHelpFormatter,
-            epilog="Examples:\n  yt_ripper <URL> -a -q high\n  yt_ripper <URL> -r 1080p -o ~/Downloads"
+            epilog="Examples:\n  yt_ripper <URL> -a -q high\n  yt_ripper <URL> -r 1080p -o ~/Downloads\n  yt_ripper -f ~/urls.txt -a -q low"
         )
         
-        parser.add_argument('url', help='YouTube video or playlist URL')
+        parser.add_argument('url', nargs='?', default=None, help='YouTube video or playlist URL')
+        parser.add_argument('-f', '--file', type=str, help='Batch file with URLs (.txt or .csv)')
         parser.add_argument('-h', '--help', action='help', help='Show this help message and exit')
         parser.add_argument('-i', '--info', action='store_true', help='Print video/playlist info and exit')
         parser.add_argument('-a', '--audio_only', action='store_true', default=self.options.audio_only)
-        #FIXME - this is a bit hacky ... ideally we would have a more flexible way to specify output format (e.g. --audio-format mp3/m4a) and not just a boolean for mp3 conversion
-        # also currently not handled
         parser.add_argument('-a3', '--audio_mp3', action='store_true', default=self.options.audio_mp3)
         parser.add_argument('-q', '--preferred_quality', type=str, default=self.options.preferred_video_quality,
                            help=f'Quality: {", ".join(set(QUALITY_ALIAS_MAP.values()))}')
@@ -60,15 +60,8 @@ class CommandCLI(CLIBase):
         except ImportError:
             pass
 
-    def run(self, command: str) -> int:
-        """Process a command string for downloading YouTube videos or playlists."""
-        try:
-            args = self.parser.parse_args(command.split())
-        except SystemExit:
-            logger.error("Invalid command or arguments.")
-            return 1
-
-        # Build dict of args to update options
+    def _apply_options(self, args) -> None:
+        """Apply CLI arguments to options (shared logic for single/batch)."""
         args_dict = {
             'audio_only': args.audio_only,
             'audio_mp3': args.audio_mp3,
@@ -80,10 +73,9 @@ class CommandCLI(CLIBase):
             'warn_me': args.warn_me.lower() in ('true', '1', 'yes', 'y') if args.warn_me else self.options.warn_me,
         }
         
-        # Update options from CLI args
         self.options.update_from_dict(args_dict)
         
-        # Map quality aliases to preferred values
+        # Map quality aliases
         if self.options.preferred_video_quality:
             qual_key = QUALITY_ALIAS_MAP.get(self.options.preferred_video_quality.lower())
             if qual_key:
@@ -91,6 +83,14 @@ class CommandCLI(CLIBase):
             else:
                 logger.warning(f"Unknown quality alias '{self.options.preferred_video_quality}'; ignoring.")
                 self.options.preferred_video_quality = ""
+        
+        if self.options.preferred_audio_quality:
+            qual_key = QUALITY_ALIAS_MAP.get(self.options.preferred_audio_quality.lower())
+            if qual_key:
+                self.options.preferred_audio_quality = qual_key
+            else:
+                logger.warning(f"Unknown quality alias '{self.options.preferred_audio_quality}'; ignoring.")
+                self.options.preferred_audio_quality = ""
         
         if self.options.preferred_abr:
             abr_key = self.options.preferred_abr.lower()
@@ -109,6 +109,35 @@ class CommandCLI(CLIBase):
             else:
                 logger.warning(f"Unknown resolution '{self.options.preferred_resolution}'; ignoring.")
                 self.options.preferred_resolution = ""
+
+    def _download_single_url(self, url: str, expanded_dir: Path) -> int:
+        """Download a single URL. Returns 0 on success, 1 on failure."""
+        try:
+            self.ytd.download(url=url, download_dir=expanded_dir, options=self.options)
+            return 0
+        except Exception as e:
+            logger.error(f"Download failed for {url}: {e}")
+            return 1
+
+    def run(self, command: str) -> int:
+        """Process a command string for downloading YouTube videos or playlists."""
+        try:
+            args = self.parser.parse_args(command.split())
+        except SystemExit:
+            logger.error("Invalid command or arguments.")
+            return 1
+
+        # Validate: either URL or --file, not both
+        if not args.url and not args.file:
+            logger.error("Either provide a URL or use -f/--file for batch processing.")
+            return 1
+        
+        if args.url and args.file:
+            logger.error("Cannot specify both URL and --file; choose one.")
+            return 1
+
+        # Apply CLI options (will use defaults for missing args)
+        self._apply_options(args)
         
         # Save config if requested
         if args.save_config:
@@ -122,23 +151,60 @@ class CommandCLI(CLIBase):
             for key, value in self.options.to_dict().items():
                 print(f"  {key}: {value}")
         
-        # Expand path
+        # Expand download directory
         expanded_download_dir = self.os.expand_path(self.options.default_download_directory)
         
-        if args.info:
-            print("Fetching video/playlist info...")
-            try:
-                self.ytd.info(url=args.url, output=print)
-            except Exception as e:
-                logger.error(f"Failed to fetch info: {e}")
+        # BATCH MODE: process file
+        if args.file:
+            file_path = Path(args.file).expanduser()
+            
+            if not file_path.exists():
+                logger.error(f"Batch file not found: {file_path}")
                 return 1
-        else:            
-            print("------ Starting Action ------") # as it is not just a (multiple) download(s)
+            
             try:
-                self.ytd.download(url=args.url, download_dir=expanded_download_dir, options=self.options)
+                urls, file_params = self.os.load_batch_urls(file_path)
             except Exception as e:
-                logger.error(f"Download failed: {e}")
+                logger.error(f"Failed to load batch file: {e}")
                 return 1
-
-        print("------ Action complete ------")
-        return 0
+            
+            if not urls:
+                logger.warning("No URLs found in batch file.")
+                return 1
+            
+            # If file contains params, parse and apply them (but don't override CLI args)
+            if file_params:
+                try:
+                    file_args = self.parser.parse_args(file_params.split())
+                    logger.info(f"Using parameters from batch file: {file_params}")
+                    self._apply_options(file_args)
+                except SystemExit:
+                    logger.warning(f"Invalid params in batch file; using current config: {file_params}")
+            
+            print(f"------ Batch Processing {len(urls)} URLs ------")
+            success_count = 0
+            fail_count = 0
+            
+            for idx, url in enumerate(urls, 1):
+                print(f"\n[{idx}/{len(urls)}] Processing: {url}")
+                if self._download_single_url(url, expanded_download_dir) == 0:
+                    success_count += 1
+                else:
+                    fail_count += 1
+            
+            print(f"\n------ Batch Complete ------")
+            print(f"Summary: {success_count} succeeded, {fail_count} failed.")
+            return 0 if fail_count == 0 else 1
+        
+        # SINGLE MODE: process single URL
+        else:
+            if args.info:
+                print("Fetching video/playlist info...")
+                try:
+                    self.ytd.info(url=args.url, output=print)
+                except Exception as e:
+                    logger.error(f"Failed to fetch info: {e}")
+                    return 1
+            else:
+                print("------ Starting Download ------")
+                return self._download_single_url(args.url, expanded_download_dir)
