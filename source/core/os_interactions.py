@@ -6,6 +6,7 @@ from typing import Dict, List, Tuple
 
 from core.logger import get_logger
 import core.preferences as preferences
+from core.url_handler import URLHandler
 
 logger = get_logger(__name__, 'osi_debug.log')
 
@@ -108,3 +109,25 @@ class OSInteractions:
             return self.load_batch_urls_csv(file_path, url_column)
         else:
             raise ValueError(f"Unsupported file format: {suffix}")
+    
+    def filter_valid_urls(self, urls: List[str]) -> Tuple[List[str], int]:
+        """
+        Filter out invalid/empty URLs from a list.
+        
+        Args:
+            urls: List of URLs to validate
+            
+        Returns:
+            Tuple of (valid_urls, skipped_count)
+        """
+        valid_urls = []
+        skipped_count = 0
+        
+        for idx, url in enumerate(urls, 1):
+            if url and url.strip() and URLHandler.is_youtube_url(url):
+                valid_urls.append(url)
+            else:
+                logger.warning(f"Skipping invalid/empty URL at line {idx}: '{url}'")
+                skipped_count += 1
+        
+        return valid_urls, skipped_count

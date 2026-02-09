@@ -146,11 +146,11 @@ class YouTubeDownloader:
         """
             Select a pytubefix Stream for audio or video using preferences in DownloadOptions.
             Priority:
-            - VIDEO: preferred_resolution > preferred_mime > preferred_video_quality > best available
+            - VIDEO: preferred_resolution > preferred_mime > preferred_video_quality (with FPS consideration) > best available
             - AUDIO: preferred_abr > preferred_audio_quality > best available
-            Returns:
+        Returns:
             ptf.Stream
-            Raises:
+        Raises:
             StreamSelectionError
         """
         try:
@@ -187,69 +187,75 @@ class YouTubeDownloader:
                     raise StreamSelectionError("No audio stream available")
                 return stream
 
-            
-            #TODO: Adapt to also use FPS!
-            #TODO  => new heuristic for video selection based on connectionspeed or (mobile-hotspot) ?!
-            #         does not requuire system level interaction => ask user
             else:
                 # VIDEO
                 q = video.streams.filter(type='video', progressive=False)
                 stream = None
 
+                # Helper to filter by FPS preference
+                def apply_fps_filter(candidates_list, preferred_fps):
+                    """Filter candidates by FPS preference: 0=any, 30=prefer 30fps, 60=prefer 60fps"""
+                    if not candidates_list or preferred_fps == 0:
+                        return candidates_list
+                    # Extract fps from stream strings like "60fps" -> 60
+                    result = []
+                    for stream_obj in candidates_list:
+                        try:
+                            stream_fps = int(str(stream_obj.fps).rstrip('fps')) if stream_obj.fps else 0
+                            if stream_fps == preferred_fps:
+                                result.append(stream_obj)
+                        except (ValueError, AttributeError):
+                            pass
+                    return result if result else candidates_list  # fallback to all if none match
+
                 # 1) preferred_resolution (DASH first, then progressive)
                 if options and options.preferred_resolution:
-                    #if(options.preferred_video_quality not )
-                    stream = q.filter(resolution=options.preferred_resolution).order_by('fps').desc().first()
-                    logger.debug(f"[select] video preferred resolution={options.preferred_resolution} (DASH) -> {stream}")
+                    stream = q.filter(resolution=options.preferred_resolution).order_by('fps').desc().first() if options.preferred_fps == 60 else q.filter(resolution=options.preferred_resolution).order_by('fps').asc().first() if options.preferred_fps == 30 else q.filter(resolution=options.preferred_resolution).first()
+                    logger.debug(f"[select] video preferred resolution={options.preferred_resolution} fps={options.preferred_fps or 'any'} (DASH) -> {stream}")
                     if not stream:
-                        stream = video.streams.filter(type='video', progressive=True, resolution=options.preferred_resolution).order_by('fps').desc().first()
+                        candidates = list(video.streams.filter(type='video', progressive=True, resolution=options.preferred_resolution).order_by('fps'))
+                        candidates = apply_fps_filter(candidates, options.preferred_fps)
+                        stream = candidates[-1] if candidates else None
                         logger.debug(f"[select] video preferred resolution={options.preferred_resolution} (progressive) -> {stream}")
 
-                # 2) preferred_mime (best resolution within mime)
+                # 2) preferred_mime (best resolution within mime, considering FPS)
                 if not stream and options and options.preferred_mime:
-                    stream = q.filter(mime_type=options.preferred_mime).order_by('resolution').desc().first()
-                    logger.debug(f"[select] video preferred mime={options.preferred_mime} (DASH) -> {stream}")
+                    candidates = list(q.filter(mime_type=options.preferred_mime).order_by('resolution'))
+                    candidates = apply_fps_filter(candidates, options.preferred_fps)
+                    stream = candidates[-1] if candidates else None  # highest resolution
+                    logger.debug(f"[select] video preferred mime={options.preferred_mime} fps={options.preferred_fps or 'any'} (DASH) -> {stream}")
                     if not stream:
-                        stream = video.streams.filter(type='video', progressive=True, mime_type=options.preferred_mime).order_by('resolution').desc().first()
+                        candidates = list(video.streams.filter(type='video', progressive=True, mime_type=options.preferred_mime).order_by('resolution'))
+                        candidates = apply_fps_filter(candidates, options.preferred_fps)
+                        stream = candidates[-1] if candidates else None
                         logger.debug(f"[select] video preferred mime={options.preferred_mime} (progressive) -> {stream}")
 
-                #TODO: FIXME improve res / fps selection logic -> untested code !
-                # 3) preferred_video_quality via aliases (resolution)
+                # 3) preferred_video_quality via aliases (resolution + FPS consideration)
                 if not stream and options and options.preferred_video_quality:
                     qual_key = QUALITY_ALIAS_MAP.get(options.preferred_video_quality.strip().lower())
-                    vq = q
+                    candidates = list(q.order_by('resolution'))
+                    candidates = apply_fps_filter(candidates, options.preferred_fps)
+                    
                     if qual_key == "high":
-                        stream = vq.order_by('resolution').desc().order_by('fps').first()
+                        stream = candidates[-1] if candidates else None  # highest resolution
                     elif qual_key == "low":
-                        stream = vq.order_by('resolution').asc().order_by('fps').last()
+                        stream = candidates[0] if candidates else None  # lowest resolution
                     elif qual_key == "medium":
-                        candidates = list(vq.order_by('resolution'))
                         if candidates:
-                            idx = len(candidates) // 2  # upper-middle for even counts
+                            idx = len(candidates) // 2  # middle resolution
                             stream = candidates[idx]
-                        # -> adapt for medium quality selection as [720p, 480p, 360p]
-                        """ try selecting low fps among medium res candidat*E* if multiple are present! 
-                        if len(candidates) >= 3:
-                            idx = len(candidates) // 2  # upper-middle for even counts
-                            candidates = candidates[idx-1:idx+1]
-                            # check if fps selection is possible for res of candidates[idx]
-                            candidates = sorted(candidates, key=lambda s: int(s.fps.replace('fps','')))
-                            stream = candidates[0] if len(candidates) % 2 == 1 else candidates[1]
-                            #stream = candidates[idx].order_by('fps').last() #--- test this !
-                        """    
-                        
-                    logger.debug(f"[select] video quality={options.preferred_video_quality} by fps -> {stream}")
+                    logger.debug(f"[select] video quality={options.preferred_video_quality} fps={options.preferred_fps or 'any'} -> {stream}")
             
-                # 4) best available (highest resolution)
+                # 4) best available (highest resolution, considering FPS)
                 if not stream:
-                    stream = q.order_by('resolution').desc().first()
-                    logger.debug(f"[select] video fallback best resolution (DASH) -> {stream}")
+                    candidates = list(q.order_by('resolution'))
+                    candidates = apply_fps_filter(candidates, options.preferred_fps)
+                    stream = candidates[-1] if candidates else None  # highest resolution
+                    logger.debug(f"[select] video fallback best resolution (DASH) fps={options.preferred_fps or 'any'} -> {stream}")
                     if not stream:
-                        stream = video.streams.filter(type='video').order_by('resolution').desc().first()
-                        logger.debug(f"[select] video fallback best resolution (any) -> {stream}")
-
-                if not stream:
-                    raise StreamSelectionError("No video stream available")
+                        candidates = list(video.streams.filter(type='video').order_by('resolution'))
+                        candidates = apply_fps_filter(candidates, options.preferred_fps)
+                        stream = candidates[-1] if candidates else None
 
                 return stream
         except Exception as e:
@@ -313,7 +319,10 @@ class YouTubeDownloader:
             audio_only (bool): If True, download audio only. If False, download video.
         """        
         base_filename: str = self._sanitize_filename(video_obj.title)
-        logger.info(f'Downloading {"soundtrack" if options.audio_only else "video"}: {video_obj.title}') #TODO log less info?
+        video_title = video_obj.title
+        video_url = video_obj.watch_url
+        
+        logger.info(f'Downloading {"soundtrack" if options.audio_only else "video"}: {video_title}')
         
         try:
             if options.audio_only:
@@ -322,8 +331,8 @@ class YouTubeDownloader:
                 output_path = Path(download_dir) / f"{base_filename}{'.mp3' if options.audio_mp3 else '.m4a'}"
                 if not audio_path_str:
                     msg = "no audio stream available"
-                    logger.error(msg)
-                    return DownloadResult(success=False, errors=[msg])
+                    logger.error(f"✗ {video_title}: {msg}")
+                    return DownloadResult(success=False, errors=[msg], video_title=video_title, video_url=video_url)
                 audio_path = Path(audio_path_str)
                 if not options.donotconvert:
                     self.stream_converter.convert_audio(audio_path, output_path, thumbnail_path=thumbnail_path)
@@ -334,22 +343,22 @@ class YouTubeDownloader:
                 output_path = Path(download_dir) / f"{base_filename}.mp4"
                 if not video_path_str or not audio_path_str:
                     msg = "missing audio or video stream"
-                    logger.error(msg)
-                    return DownloadResult(success=False, errors=[msg])
+                    logger.error(f"✗ {video_title}: {msg}")
+                    return DownloadResult(success=False, errors=[msg], video_title=video_title, video_url=video_url)
                 video_path = Path(video_path_str)
                 audio_path = Path(audio_path_str)
                 if not options.donotconvert:
                     self.stream_converter.combine_streams(audio_path, video_path, output_path)
 
-            logger.debug(f'Download of {"soundtrack" if options.audio_only else "video"} completed.')
-            return DownloadResult(success=True, errors=[])
+            logger.info(f'✓ {video_title}')
+            return DownloadResult(success=True, errors=[], video_title=video_title, video_url=video_url)
         
         except (StreamDownloadError, ConversionError, CombineError) as e:
-            logger.error(f"Download failed: {e}")
-            return DownloadResult(success=False, errors=[str(e)])
+            logger.error(f"✗ {video_title}: {e}")
+            return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_url)
         except Exception as e:
-            logger.error(f"An unexpected error occurred: {e}")
-            return DownloadResult(success=False, errors=[str(e)])
+            logger.error(f"✗ {video_title}: Unexpected error - {e}")
+            return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_url)
 
     # TODO improve error handling (return exceptions or ...?)
     def download_playlist(self, playlist_url: str, download_dir: Path, options: DownloadOptions) -> List[DownloadResult]:
@@ -378,7 +387,7 @@ class YouTubeDownloader:
             playlist_obj = self._get_playlist_obj(playlist_url)
         except Exception as e:
             logger.error(f"Failed to fetch playlist object: {e}")
-            return #TODO could raise error upstream
+            return [] #TODO could raise error upstream
         
         # Override pytube's video URL regex to capture all videos in the playlist
         playlist_obj._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
@@ -397,11 +406,21 @@ class YouTubeDownloader:
             return results
 
         for i, video in enumerate(playlist_obj.videos):
-            logger.info(f'At {"soundtrack" if options.audio_only else "video"} {i + 1}/{len(playlist_obj.videos)}: ')
+            logger.info(f'[{i + 1}/{len(playlist_obj.videos)}] Processing: {video.title}')
             result = self.download_single(download_dir=playlist_dir, options=options, video_obj=video)
             results.append(result)
 
-        logger.info("Playlist download completed.")
+        # Log summary
+        success_count = sum(1 for r in results if r.success)
+        fail_count = len(results) - success_count
+        logger.info(f"Playlist download completed: {success_count} succeeded, {fail_count} failed")
+        
+        if fail_count > 0:
+            logger.warning("Failed downloads:")
+            for result in results:
+                if not result.success:
+                    logger.warning(f"  ✗ {result.video_title}: {'; '.join(result.errors)}")
+        
         return results
 
     def info(self, url: str = None, video_obj: ptf.YouTube = None, output: callable = logger.info) -> None:
@@ -455,12 +474,14 @@ class YouTubeDownloader:
                 output(f"- {stream.mime_type}, {stream.abr}")
             output(f"Best audio: {video_obj.streams.filter(type='audio').order_by('abr').desc().first()}")
 
-    def download(self, url: str, download_dir: Path, options: DownloadOptions) -> None:
+    def download(self, url: str, download_dir: Path, options: DownloadOptions) -> List[DownloadResult]:
         """Download a YouTube video or playlist based on the provided URL and options.
         Args:
             url (str): The URL of the YouTube video or playlist to download.
             download_dir (Path): The directory where the downloaded files should be saved.
             options (DownloadOptions): The download options specifying preferences for audio/video quality, format, etc.
+        Returns:
+            List[DownloadResult]: List of download results for each video.
         Side Effects:
             - Downloads the specified video or playlist to the given directory.
         Logs:
@@ -493,7 +514,9 @@ class YouTubeDownloader:
 
             except Exception as e:
                 logger.error(f"Download failed: {e}")
-                return
+                return results
         else:
             logger.error("The provided URL is not a valid YouTube URL or inaccessible.")
             raise ValueError("The provided URL is not valid or unreachable.")
+        
+        return results

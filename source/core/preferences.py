@@ -25,6 +25,7 @@ DEFAULT_PREFS: Dict = {
     "preferred_abr": "",
     "preferred_mime": "",
     "preferred_format": "",
+    "preferred_fps": 0,
     "loglevel": "WARNING",
     "donotconvert": False,
     "no_dir_date": False

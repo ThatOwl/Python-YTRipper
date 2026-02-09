@@ -136,18 +136,34 @@ class StreamConverter:
             Exception: Logs any exception raised during the ffmpeg merging process.
         """
         logger.debug("Combining video and audio with ffmpeg...")
+        
+        # Use a temporary output file to avoid overwriting input files
+        temp_output_path = Path(output_path).parent / f".{Path(output_path).stem}.tmp.mp4"
+        
         try:
             (
                 fpg
-                .output(fpg.input(str(video_path)), fpg.input(str(audio_path)), str(output_path), vcodec='copy', acodec='aac', strict='experimental')
+                .output(fpg.input(str(video_path)), fpg.input(str(audio_path)), str(temp_output_path), vcodec='copy', acodec='aac', strict='experimental')
                 .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
             )
-            logger.info(f"Merged file saved to: {output_path}")
+            
+            # Remove input files
             os.remove(video_path)
             os.remove(audio_path)
+            
+            # Move temp file to final location
+            os.rename(temp_output_path, output_path)
+            logger.info(f"Merged file saved to: {output_path}")
+            
         except Exception as e:
             logger.exception(f"Error during ffmpeg merging: {e.stderr.decode() if hasattr(e, 'stderr') else e}")
             logger.info("Keeping original files.")
+            # Clean up temp file if it exists
+            if temp_output_path.exists():
+                try:
+                    os.remove(temp_output_path)
+                except Exception as cleanup_err:
+                    logger.warning(f"Failed to clean up temp file {temp_output_path}: {cleanup_err}")
             raise e  # Re-raise the exception for upstream handling
 
 

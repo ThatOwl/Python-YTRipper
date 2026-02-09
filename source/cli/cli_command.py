@@ -6,7 +6,7 @@ from pathlib import Path
 from cli.cli_base import CLIBase
 from core.logger import get_logger
 from core.pytube_interface import YouTubeDownloader as YTD
-from core.utils import DownloadOptions, QUALITY_ALIAS_MAP, COMMON_AUDIO_ABR, COMMON_VIDEO_RESOLUTIONS
+from core.utils import DownloadOptions, QUALITY_ALIAS_MAP, COMMON_AUDIO_ABR, COMMON_VIDEO_RESOLUTIONS, parse_bool_string
 from core.os_interactions import OSInteractions
 import core.preferences as preferences
 
@@ -36,19 +36,23 @@ class CommandCLI(CLIBase):
         parser.add_argument('-f', '--file', type=str, help='Batch file with URLs (.txt or .csv)')
         parser.add_argument('-h', '--help', action='help', help='Show this help message and exit')
         parser.add_argument('-i', '--info', action='store_true', help='Print video/playlist info and exit')
-        parser.add_argument('-a', '--audio_only', action='store_true', default=self.options.audio_only)
-        parser.add_argument('-a3', '--audio_mp3', action='store_true', default=self.options.audio_mp3)
+        parser.add_argument('-a', '--audio_only', type=str, default=str(self.options.audio_only),
+                           help='Download audio only (true/false)')
+        parser.add_argument('-a3', '--audio_mp3', type=str, default=str(self.options.audio_mp3),
+                           help='Convert audio to MP3 (true/false)')
         parser.add_argument('-q', '--preferred_quality', type=str, default=self.options.preferred_video_quality,
                            help=f'Quality: {", ".join(set(QUALITY_ALIAS_MAP.values()))}')
         parser.add_argument('-r', '--preferred_resolution', type=str, default=self.options.preferred_resolution,
                            help=f'Resolution: {", ".join(COMMON_VIDEO_RESOLUTIONS.keys())}')
         parser.add_argument('-au', '--preferred_abr', type=str, default=self.options.preferred_abr,
                            help=f'Audio bitrate: {", ".join(COMMON_AUDIO_ABR.keys())}')
+        parser.add_argument('-hf', '--high_fps', type=str, default=str(self.options.preferred_fps),
+                           help='Prefer 60fps (true) or 30fps (false), or any (empty/0)')
         parser.add_argument('-o', '--default_download_directory', type=str, default=self.options.default_download_directory,
                            help='Output directory (supports ~ expansion)')
         parser.add_argument('-w', '--warn_me', type=str, default=str(self.options.warn_me),
                            help='Enable warning prompts (true/false)')
-        parser.add_argument('-nd', '--no_dir_date', action='store_true', default=self.options.no_dir_date,
+        parser.add_argument('-nd', '--no_dir_date', type=str, default=str(self.options.no_dir_date),
                            help='Disable auto date prefix for playlist directory')
         parser.add_argument('--save-config', action='store_true', help='Save current options to config file')
         
@@ -62,18 +66,29 @@ class CommandCLI(CLIBase):
         except ImportError:
             pass
 
+    def _parse_fps_preference(self, value: str) -> int:
+        """Parse FPS preference from string value.
+        Returns 60 for high fps, 30 for low fps, 0 for any.
+        """
+        if not value or value == '0' or value.lower() in ('', 'any', 'none'):
+            return 0
+        if parse_bool_string(value):
+            return 60
+        return 30
+
     def _apply_options(self, args) -> None:
         """Apply CLI arguments to options (shared logic for single/batch)."""
         args_dict = {
-            'audio_only': args.audio_only,
-            'audio_mp3': args.audio_mp3,
+            'audio_only': parse_bool_string(args.audio_only),
+            'audio_mp3': parse_bool_string(args.audio_mp3),
             'preferred_video_quality': args.preferred_quality or None,
             'preferred_audio_quality': args.preferred_quality or None,
             'preferred_resolution': args.preferred_resolution or None,
             'preferred_abr': args.preferred_abr or None,
+            'preferred_fps': self._parse_fps_preference(args.high_fps),
             'default_download_directory': args.default_download_directory or None,
-            'warn_me': args.warn_me.lower() in ('true', '1', 'yes', 'y') if args.warn_me else self.options.warn_me,
-            'no_dir_date': args.no_dir_date,
+            'warn_me': parse_bool_string(args.warn_me) if args.warn_me else self.options.warn_me,
+            'no_dir_date': parse_bool_string(args.no_dir_date) if args.no_dir_date else self.options.no_dir_date,
         }
         
         self.options.update_from_dict(args_dict)
@@ -113,19 +128,28 @@ class CommandCLI(CLIBase):
                 logger.warning(f"Unknown resolution '{self.options.preferred_resolution}'; ignoring.")
                 self.options.preferred_resolution = ""
 
-    #TODO: delete this when moving to new architecture as is redundant with url_handler urlh.is_youtube_url()
-    def _is_valid_url(self, url: str) -> bool:
-        """Check if URL is valid and non-empty."""
-        if not url or not url.strip():
-            return False
-        # Basic validation: must contain youtube domain
-        url_lower = url.lower()
-        return any(domain in url_lower for domain in ["youtube.com", "youtu.be"])
-
     def _download_single_url(self, url: str, expanded_dir: Path) -> int:
         """Download a single URL. Returns 0 on success, 1 on failure."""
         try:
-            self.ytd.download(url=url, download_dir=expanded_dir, options=self.options)
+            results = self.ytd.download(url=url, download_dir=expanded_dir, options=self.options)
+            
+            # Display results summary
+            if results:
+                success_count = sum(1 for r in results if r.success)
+                fail_count = len(results) - success_count
+                
+                # For playlists, show summary
+                if len(results) > 1:
+                    print(f"\n{'='*50}")
+                    print(f"Download Summary: {success_count} succeeded, {fail_count} failed")
+                    if fail_count > 0:
+                        print("\nFailed downloads:")
+                        for result in results:
+                            if not result.success:
+                                print(f"  {result}")
+                    print(f"{'='*50}")
+                
+                return 0 if fail_count == 0 else 1
             return 0
         except Exception as e:
             logger.error(f"Download failed for {url}: {e}")
@@ -163,9 +187,6 @@ class CommandCLI(CLIBase):
             for key, value in self.options.to_dict().items():
                 print(f"  {key}: {value}")
         
-        # Expand download directory
-        expanded_download_dir = self.os.expand_path(self.options.default_download_directory)
-        
         # BATCH MODE: process file
         if args.file:
             file_path = Path(args.file).expanduser()
@@ -181,35 +202,34 @@ class CommandCLI(CLIBase):
                 return 1
             
             # Filter out invalid/empty URLs
-            valid_urls = []
-            skipped_count = 0
-            for idx, url in enumerate(urls, 1):
-                if self._is_valid_url(url):
-                    valid_urls.append(url)
-                else:
-                    logger.warning(f"Skipping invalid/empty URL at line {idx}: '{url}'")
-                    skipped_count += 1
+            valid_urls, skipped_count = self.os.filter_valid_urls(urls)
             
+            if valid_urls:
+                logger.info(f"Batch file loaded: {len(urls)} total URLs, {skipped_count} invalid/skipped, {len(valid_urls)} valid.")
             
-            if not urls:
-                logger.warning("No URLs found in batch file.")
+            if not valid_urls:
+                logger.warning("No valid URLs found in batch file.")
                 return 1
             
             # If file contains params, parse and apply them (but don't override CLI args)
             if file_params:
                 try:
                     file_args = self.parser.parse_args(file_params.split())
-                    logger.info(f"Using parameters from batch file: {file_params}")
+                    logger.info(f"Batch file parameters: {file_params}")
                     self._apply_options(file_args)
                 except SystemExit:
                     logger.warning(f"Invalid params in batch file; using current config: {file_params}")
             
-            print(f"------ Batch Processing {len(urls)} URLs ------")
+            # Expand download directory AFTER applying batch file parameters
+            expanded_download_dir = self.os.expand_path(self.options.default_download_directory)
+            logger.info(f"Download directory: {expanded_download_dir}")
+            
+            print(f"------ Batch Processing {len(valid_urls)} URLs ------")
             success_count = 0
             fail_count = 0
             
-            for idx, url in enumerate(urls, 1):
-                print(f"\n[{idx}/{len(urls)}] Processing: {url}")
+            for idx, url in enumerate(valid_urls, 1):
+                print(f"\n[{idx}/{len(valid_urls)}] Processing: {url}")
                 if self._download_single_url(url, expanded_download_dir) == 0:
                     success_count += 1
                 else:
@@ -221,6 +241,10 @@ class CommandCLI(CLIBase):
         
         # SINGLE MODE: process single URL
         else:
+            # Expand download directory for single mode
+            expanded_download_dir = self.os.expand_path(self.options.default_download_directory)
+            logger.info(f"Download directory: {expanded_download_dir}")
+            
             if args.info:
                 print("Fetching video/playlist info...")
                 try:

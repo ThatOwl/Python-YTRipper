@@ -39,6 +39,30 @@ COMMON_VIDEO_RESOLUTIONS = {
     "2160p": "2160p",  # 4K
 }
 
+# Boolean string parsing constants
+BOOLEAN_TRUE_VALUES = ('true', '1', 'yes', 'y')
+BOOLEAN_FALSE_VALUES = ('false', '0', 'no', 'n')
+
+# FPS preference constants
+FPS_ANY = 0      # Accept any FPS
+FPS_30 = 30      # Prefer 30 FPS (lower bandwidth, older devices)
+FPS_60 = 60      # Prefer 60 FPS (smooth motion, higher bandwidth)
+
+def parse_bool_string(value: Any) -> bool:
+    """Parse a boolean value from string or bool.
+    
+    Args:
+        value: String ('true'/'false'/'yes'/'no'/'1'/'0'/'y'/'n') or bool
+        
+    Returns:
+        bool: Parsed boolean value
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in BOOLEAN_TRUE_VALUES
+    return bool(value)
+
 
 # Domain exceptions / base
 class DownloadError(Exception):
@@ -59,6 +83,7 @@ class DownloadOptions:
     preferred_abr: str = ""
     preferred_mime: str = ""
     preferred_format: str = ""
+    preferred_fps: int = 0  # 0=any, 30=prefer 30fps, 60=prefer 60fps
     loglevel: str = "WARNING"
     donotconvert: bool = False
     no_dir_date: bool = False
@@ -82,6 +107,17 @@ class DownloadOptions:
 class DownloadResult:
     success: bool
     errors: List[str]
+    video_title: str = ""
+    video_url: str = ""
+    
+    def __str__(self) -> str:
+        """String representation for display."""
+        status = "✓" if self.success else "✗"
+        if self.success:
+            return f"{status} {self.video_title}"
+        else:
+            error_msg = "; ".join(self.errors) if self.errors else "Unknown error"
+            return f"{status} {self.video_title}: {error_msg}"
 
 # Retry helper (stateless)
 def retry_call(callable_fn: Callable[[], Any],
