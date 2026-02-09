@@ -1,5 +1,5 @@
 #!/bin/bash
-# filepath: setup.sh
+# execute in empty directory, will detect existing repo or clone fresh if not found
 set -e
 
 REPO_NAME="Python-YTRipper"

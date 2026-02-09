@@ -4,14 +4,11 @@
 #
 #--------------------
 
-import sys
-import os
-import argparse
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from source.core.logger import get_logger
-from source.core.pytube_interface import YouTubeDownloader as YTD
-from source.core.os_interactions import OSInteractions
+import os
+from core.logger import get_logger
+from core.pytube_interface import YouTubeDownloader as YTD
+from core.os_interactions import OSInteractions
 
 logger = get_logger(__name__, 'cli_debug.log')
 class CLIBase:
@@ -21,7 +18,7 @@ class CLIBase:
         # downloader gets os handler injected
         self.ytd = YTD(os_handler=self.os)
     
-    def clear_dialog(self, dir_path: str) -> None:
+    def clear_dialog(self, dir_path: os.PathLike) -> None:
         """Prompt the user for confirmation before clearing a directory.
         Args:
             dir_path (str): Path to the directory to be cleared.
@@ -57,11 +54,11 @@ import logging
 
 #sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-from source.cli.cli_base import CLIBase
+from cli.cli_base import CLIBase
 
-from source.core.logger import get_logger
-from source.core.pytube_interface import DownloadOptions, YouTubeDownloader as YTD
-from source.core.os_interactions import OSInteractions
+from core.logger import get_logger
+from core.pytube_interface import DownloadOptions, YouTubeDownloader as YTD
+from core.os_interactions import OSInteractions
 
 
 logger = get_logger(__name__, 'cli_com_debug.log')
@@ -82,26 +79,30 @@ class CommandCLI(CLIBase):
         parser.add_argument('-a', '--audio', action='store_true', help='Download audio only')
         parser.add_argument('-a3', '--audio_mp3', action='store_true', help='Download audio as MP3')
         parser.add_argument('-i', '--info', action='store_true', help='Print video/playlist info and exit')
-        parser.add_argument('-cl', '--clear_logs', action='store_true', help='Clear log files before downloading')
         parser.add_argument('-c', '--clear', action='store_true', help='Clear download directory before downloading')
-        parser.add_argument('-o', '--output', type=OSInteractions().expand_path, help='Output directory: supports ~ expansion')
+        parser.add_argument('-o', '--output', type=str, help='Output directory: supports ~ expansion')
         parser.add_argument('-h', '--help', action='help', help='Show this help message and exit')
+        
         return parser
 
-    def enable_argcomplete(self, parser):
+    #TODO: FIXME: not working properly
+    #--- INACTIVE !
+    def enable_argcomplete(self, parser: argparse.ArgumentParser):
         """Attempt to enable argcomplete if installed."""
         try:
             import argcomplete
             from argcomplete.completers import DirectoriesCompleter
             # Assign completers (once)
+            comp = DirectoriesCompleter()
             for action in parser._actions:
                 if action.dest == "output":
-                    action.completer = DirectoriesCompleter()
+                    pass
+                    #action.completer = DirectoriesCompleter()
             argcomplete.autocomplete(parser)
         except ImportError:
             pass
 
-    def run(self, command:str) -> None:
+    def run(self, command:str) -> int:
         """Process a command string for downloading YouTube videos or playlists.
         #this need to be deleted ... again
         Args:
@@ -127,10 +128,6 @@ class CommandCLI(CLIBase):
         
         if args.clear: #FIXME: not working properly
             self.clear_dialog(args.dir)
-
-        if args.clear_logs: #FIXME: not working properly
-            self.os.clear_logs()
-            logger.debug(f"Cleared log files before downloading.")
 
         if args.info:
             print("Fetching video/playlist info...")
@@ -159,17 +156,16 @@ class CommandCLI(CLIBase):
 #
 #--------------------
 
-# ...existing code...
-import sys
+# import sys
 import os
-import argparse
+from pathlib import Path
+# import argparse
 
-#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from source.cli.cli_base import CLIBase
+from cli.cli_base import CLIBase
 
-from source.core.logger import get_logger
-from source.core.utils import DownloadOptions
-from source.core import preferences
+from core.logger import get_logger
+from core.utils import DownloadOptions
+import core.preferences as preferences
 
 
 logger = get_logger(__name__, 'cli_inter_debug.log')
@@ -239,7 +235,7 @@ class InteractiveCLI(CLIBase):
                 raw = input("Enter new path (or empty to keep): ").strip()
                 if raw == "":
                     continue
-                newp = str(self.os.expand_path(raw))
+                newp = str(self.os.expand_path(Path(raw)))
                 self.preferences[key] = newp
                 print(f"  Set {key} -> {newp}")
                 continue
@@ -284,13 +280,15 @@ class InteractiveCLI(CLIBase):
             return
         
         if adjust_preferences:
+            self.show_info(url)
+            
             raw = input(f"Audio only? (leave empty to use preset {self.preferences.get('audio_only')} ) [y/N]: ").strip().lower()
             if raw in ("y","yes"):
                 self.preferences["audio_only"] = True
             elif raw in ("n","no"):
                 self.preferences["audio_only"] = False
-            dl_dir = self.preferences.get("default_download_directory", preferences.DEFAULT_PREFS["default_download_directory"])
-            expanded = str(self.os.expand_path(dl_dir))
+            dl_dir = Path(self.preferences.get("default_download_directory", preferences.DEFAULT_PREFS["default_download_directory"]))
+            expanded = self.os.expand_path(dl_dir)
             print(f"Using download dir: {expanded}")
 
         opts = DownloadOptions.from_preferences(self.preferences)
@@ -299,13 +297,16 @@ class InteractiveCLI(CLIBase):
         except Exception as e:
             logger.error("Download failed: %s", e)
     
+    # TODO: add option to specify multiple URLs in one go (comma-separated)
+    # or read from clipboard
+    # add other ways to exit the loop (e.g. empty input)
     def download_loop(self) -> None:
         """Simple loop to download multiple URLs sequentially."""
         
         print("Entering download loop. CTRL-C to exit.")
         
         while True:
-            self.download_flow()
+            self.download_flow(adjust_preferences=False)
 
     def process_batch_file(self, path: str) -> None:
         """
@@ -345,6 +346,13 @@ class InteractiveCLI(CLIBase):
                 logger.error("Failed downloading %s: %s", u, e)
                 # continue with next
 
+    def show_info(self, url: str) -> None:
+        """Fetch and display video/playlist info using the downloader's info method."""
+        try:
+            self.ytd.info(url=url, output=print)
+        except Exception as e:
+            logger.error("Failed to fetch info: %s", e)
+
     def run(self) -> None:
         """Interactive menu loop that coexists with the prompt-based mode."""
         while True:
@@ -369,6 +377,88 @@ class InteractiveCLI(CLIBase):
                 print("Unknown option.")
 
 
+#--------------------
+#
+#     logger.py
+#
+#--------------------
+
+from asyncio.log import logger
+import logging
+import sys
+import os
+from typing import Optional, Dict
+
+# Delegated constants / preference loading
+import core.preferences as preferences
+
+def _load_preferences() -> Dict:
+    """
+    Delegate preference loading to source.preferences (single source of truth).
+    """
+    try:
+        return preferences.read_preferences()
+    except Exception:
+        return {}
+
+
+class _NoTracebackFormatter(logging.Formatter):
+    """
+    Formatter for console output that suppresses exception tracebacks.
+    """
+    def formatException(self, ei):
+        # suppress traceback in console output
+        return ""
+
+
+def get_logger(name: str, logfile: Optional[str] = None, prefs: Optional[Dict] = None) -> logging.Logger:
+    """
+    Create/return a module logger configured with:
+      - console handler level taken from preferences (or INFO by default)
+      - file handler at DEBUG (if logfile provided) placed under preferences.LOGS_DIR
+      - console formatter that suppresses tracebacks
+      - file formatter that includes timestamps and full tracebacks
+    """
+    prefs = prefs or _load_preferences()
+    level_name = (prefs.get("loglevel") or "INFO").upper()
+    try:
+        console_level = getattr(logging, level_name)
+    except Exception:
+        console_level = logging.INFO
+
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)  # let handlers filter
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+
+    # Console handler (no tracebacks)
+    console_fmt = "%(levelname)s - %(message)s"
+    console_formatter = _NoTracebackFormatter(console_fmt)
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(console_level)
+    ch.setFormatter(console_formatter)
+    logger.addHandler(ch)
+
+    # File handler (always DEBUG) with timestamp and module.func context
+    if logfile:
+        try:
+            logs_dir = preferences.LOGS_DIR
+            os.makedirs(logs_dir, exist_ok=True)
+            if os.path.isabs(logfile):
+                logfile_path = logfile
+            else:
+                logfile_path = os.path.join(logs_dir, logfile)
+            file_fmt = "%(asctime)s - %(levelname)s - %(module)s.%(funcName)s - %(message)s"
+            fh = logging.FileHandler(logfile_path, encoding="utf-8")
+            fh.setLevel(logging.DEBUG)
+            fh.setFormatter(logging.Formatter(file_fmt))
+            logger.addHandler(fh)
+        except Exception:
+            logger.warning("Failed to create file handler for logger %s (file: %s)", name, logfile)
+    logger.debug("Logger initialized --------------------------------")
+    logger.propagate = False
+    return logger
+
 
 #--------------------
 #
@@ -376,17 +466,18 @@ class InteractiveCLI(CLIBase):
 #
 #--------------------
 
-import sys
+#import sys
 import os
-import json
+from pathlib import Path 
+#import json
 import shutil
 from typing import Dict
 from pathlib import Path
 
-#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-import source.core.logger
-import source.core.preferences as preferences
-logger = source.core.logger.get_logger(__name__, 'osi_debug.log')
+from core.logger import get_logger
+import core.preferences as preferences
+
+logger = get_logger(__name__, 'osi_debug.log')
 
 
 class OSInteractions:
@@ -397,7 +488,7 @@ class OSInteractions:
         self.logs_path = preferences.PATH_TO_LOGS
 
 
-    def expand_path(self, path_str: str) -> Path:
+    def expand_path(self, path_str: Path) -> Path:
         return Path(os.path.expandvars(os.path.expanduser(path_str))).resolve()
         
     def read_preferences(self) -> Dict:
@@ -409,7 +500,7 @@ class OSInteractions:
         preferences.write_preferences(prefs)
 
     #FIXME: a bit unsafe ... permission issues, edge cases
-    def clear_directory(self, dir_path: str) -> None:
+    def clear_directory(self, dir_path: Path) -> None:
         """
         Utility function to clear all files and subdirectories in a directory.
         Aborts unless the target directory is inside the current user's home directory.
@@ -479,9 +570,9 @@ import os
 import json
 from pathlib import Path
 from typing import Dict
-
-from source.core import logger
 import getpass
+
+#from core.logger import logger
 
 # ---------- CONSTANTS FOR SETUP & RESTORE -------------------
 CURRENT_DIR = Path(__file__).resolve().parent   # → Python-YTRipper/source/core
@@ -490,7 +581,7 @@ PROJECT_ROOT = SOURCE_DIR.parent                # → Python-YTRipper
 CONFIG_DIR = PROJECT_ROOT / "config"
 LOGS_DIR = PROJECT_ROOT / "logs"
 
-PATH_TO_LOGS = str(LOGS_DIR)
+PATH_TO_LOGS = LOGS_DIR
 
 DEFAULT_PREFS: Dict = {
     "default_download_directory": "~/Downloads",
@@ -515,8 +606,9 @@ def current_username() -> str:
         home = os.environ.get("HOME", "")
         return Path(home).name if home else ""
 
-PATH_TO_PREFERENCES = str(CONFIG_DIR / f"user_settings_{current_username()}.json")
+PATH_TO_PREFERENCES = CONFIG_DIR / f"user_settings_{current_username()}.json"
 
+#TODO; check if there is better way fot default return
 def read_preferences() -> Dict:
     """
     Read preferences from PATH_TO_PREFERENCES. If missing, create it with DEFAULT_PREFS.
@@ -527,6 +619,7 @@ def read_preferences() -> Dict:
             os.makedirs(os.path.dirname(PATH_TO_PREFERENCES), exist_ok=True)
             with open(PATH_TO_PREFERENCES, 'w', encoding="utf-8") as f:
                 json.dump(DEFAULT_PREFS, f, indent=4)
+                return dict(DEFAULT_PREFS)
         except:
             return dict(DEFAULT_PREFS)
     else:
@@ -551,25 +644,22 @@ def write_preferences(prefs: Dict) -> None:
 #
 #--------------------
 
+from xml.etree.ElementInclude import include
 import pytubefix as ptf
 from pytubefix import exceptions as ptf_ex
 import os
 import re
 from enum import Enum
-import requests
 from datetime import datetime
-from dataclasses import dataclass
 from typing import List
-import time
-import random
 from pathlib import Path 
-#FIXME check import from different locations
-from source.core.logger import get_logger
-from source.core.stream_converter import StreamConverter
-from source.core.url_handler import URLHandler
-from source.core.os_interactions import OSInteractions
-from source.core.thumbnail_handler import ThumbnailHandler
-from source.core.utils import DownloadError, DownloadOptions, DownloadResult, retry_call
+
+from core.logger import get_logger
+from core.stream_converter import StreamConverter
+from core.url_handler import URLHandler
+from core.os_interactions import OSInteractions
+from core.thumbnail_handler import ThumbnailHandler
+from core.utils import DownloadError, DownloadOptions, DownloadResult
 
 logger = get_logger(__name__, 'ytd_debug.log')
 
@@ -601,7 +691,7 @@ class YouTubeDownloader:
         StreamType.VIDEO:'Video'
     }
 
-    def __init__(self, os_handler: OSInteractions = None):
+    def __init__(self, os_handler: OSInteractions):
         self.thumbnail_handler = ThumbnailHandler()
         self.stream_converter = StreamConverter()
         self.urlh = URLHandler()
@@ -610,7 +700,7 @@ class YouTubeDownloader:
             from source.core.os_interactions import OSInteractions
             self.os_handler = OSInteractions()
 
-    def _get_video_obj(self, video_url: str) -> ptf.YouTube:
+    def _get_video_obj(self, video_url: str) -> ptf.YouTube | Exception:
         """
         Fetches a YouTube video object.
         Args:
@@ -623,12 +713,7 @@ class YouTubeDownloader:
         try:
             video_obj = ptf.YouTube(video_url)
             return video_obj
-        except ptf_ex.VideoUnavailable as e:
-            # concise user-facing error
-            logger.error("Video unavailable: %s", video_url)
-            # full diagnostic to debug/file
-            logger.debug("VideoUnavailable exception while fetching %s", video_url, exc_info=True)
-            raise VideoFetchError(f"video unavailable: {video_url}") from e
+        
         except ptf_ex.LiveStreamError as e:
             logger.error("Live stream video (not supported): %s", video_url)
             logger.debug("LiveStreamError while fetching %s", video_url, exc_info=True)
@@ -649,6 +734,12 @@ class YouTubeDownloader:
             logger.error("Age check required for video: %s", video_url)
             logger.debug("Age-check exception while fetching %s", video_url, exc_info=True)
             raise VideoFetchError(f"Age check required for video: {video_url}") from e
+        except ptf_ex.VideoUnavailable as e:
+            # concise user-facing error
+            logger.error("Video unavailable: %s", video_url)    
+            # full diagnostic to debug/file
+            logger.debug("VideoUnavailable exception while fetching %s", video_url, exc_info=True)
+            raise VideoFetchError(f"video unavailable: {video_url}") from e
         except Exception as e:
             logger.error("Failed to fetch video: %s", video_url)
             logger.debug("Unexpected exception while fetching %s", video_url, exc_info=True)
@@ -680,13 +771,15 @@ class YouTubeDownloader:
     def _sanitize_filename(self, title: str) -> str:
         return re.sub(r'[\\/*?:"<>|]', "", title)
 
-    def _download_stream_type(self, video: ptf.YouTube, download_dir: str, base_filename: str, type: Enum) -> str:
+    #FIXME: does not use preferred quality etc yet
+    #FIXME: does not use os.path ... str or PathLike ???
+    def _download_stream_type(self, video: ptf.YouTube, download_dir: Path, base_filename: str, str_type: Enum) -> str | None:
         """
         Downloads either the highest quality audio or video stream from a YouTube video object.
         
         Args:
             video (ptf.YouTube): The YouTube video object from which to download the stream.
-            download_dir (str): The directory where the downloaded file will be saved.
+            download_dir (Path): The directory where the downloaded file will be saved.
             base_filename (str): The base filename to use for the downloaded file.
             type (int): The type of stream to download. If truthy, downloads audio; if falsy, downloads video.
         Returns:
@@ -697,72 +790,84 @@ class YouTubeDownloader:
         Raises:
             StreamDownloadError: If there is an error during the download process.
         """
-        try:
-            # Select the appropriate stream based on the type
-            #TODO implement preferred quality, abr, resolution
-            if type == self.StreamType.AUDIO:
-                stream = video.streams.filter(type='audio').order_by('abr').desc().first()
-                logger.debug(f"Selected audio stream: {stream.abr}, {stream.mime_type}")
-            else:
-                stream = video.streams.filter(type='video', progressive=False).order_by('resolution').desc().first()
-                logger.debug(f"Selected video stream: {stream.resolution}, {stream.mime_type}")
 
-            if not stream:
-                logger.warning(f"No suitable {self.stream_type_map[type]} stream available for this video.")
-                return ""
-            
-            ext = stream.subtype
+        # Select the appropriate stream based on the type
+        #TODO implement preferred quality, abr, resolution
+        if str_type == self.StreamType.AUDIO:
+            stream: ptf.Stream = video.streams.filter(type='audio').order_by('abr').desc().first()
+            logger.debug(f"Selected audio stream: {stream.abr}, {stream.mime_type}")
+        else:
+            stream: ptf.Stream = video.streams.filter(type='video', progressive=False).order_by('resolution').desc().first()
+            logger.debug(f"Selected video stream: {stream.resolution}, {stream.mime_type}")
+        
+        #FIXME: debug code    
+        #--- DEBUG: dump repr/type to diagnose ffmpeg/stream mismatch
+        logger.debug(f"DEBUG stream repr: {repr(stream)}; type(stream)={type(stream)}")
+        # if stream is not the expected object, log available stream attrs
+        if not hasattr(stream, 'download'):
+            logger.debug("Stream object has no .download() method; available attrs: " +
+                            ", ".join(sorted([a for a in dir(stream) if not a.startswith('_')]) ) )
+
+        if not stream:
+            logger.warning(f"No suitable {self.stream_type_map[str_type.value]} stream available for this video.")
+            return ""
+        
+        #ext = stream.subtype # FIXME: this is idiotic
+        #ext = stream.mime_type.split('/')[1].split(';')[0]
+        try:
             downloaded_path = stream.download(
-                output_path=download_dir,
-                filename=f"{base_filename}_{self.stream_type_map[type]}.{ext}",
+                output_path=str(download_dir),
+                #filename=f"{base_filename}_{self.stream_type_map[str_type.value]}.{ext}", # FIXME: does nothing
                 skip_existing=True,
                 timeout=5,
                 max_retries=3
             )
+            #TODO: could be changed to 
+            # file: Path =  stream.download()
+            # file.rename("base_filename")
+            # file.with_suffix
+            # file.with_name
+            # file.with_stem
+            #logger.debug(f"{self.stream_type_map[str_type.value]} stream downloaded to: {downloaded_path}")
             return downloaded_path
-        
         except Exception as e:
-            logger.exception(f"Error downloading {self.stream_type_map[type]} stream: {e}")
-            raise StreamDownloadError(f"Error downloading {self.stream_type_map[type]} stream: {e}") from e
+            logger.exception(f"Error downloading {self.stream_type_map[str_type.value]} stream: {e}")
+            raise StreamDownloadError(f"Error downloading {self.stream_type_map[str_type.value]} stream: {e}") from e
 
-    def download_single(self, download_dir: str, options: DownloadOptions, video_url: str = None, video_obj: ptf.YouTube = None) -> DownloadResult:
+    def download_single(self, download_dir: Path, options: DownloadOptions, video_obj: ptf.YouTube) -> DownloadResult:
         """
         Download a single YouTube video as video or audio.
 
         Args:
-            video_url (str): The URL of the YouTube video.
+            video_obj (ptf.YouTube): The YouTube video object to download.
             download_dir (str): The directory to save the downloaded file.
             audio_only (bool): If True, download audio only. If False, download video.
-        """
-        # in case a video object is already available, use it
-        try:
-            if video_obj is None: 
-                video_obj = self._get_video_obj(video_url)
-        except Exception as e:
-            logger.error(f"Failed to fetch video object: {e}")
-            return DownloadResult(success=False, errors=[str(e)])
-
+        """        
         base_filename: str = self._sanitize_filename(video_obj.title)
         logger.info(f'Downloading {"soundtrack" if options.audio_only else "video"}: {video_obj.title}') #TODO log less info?
+        
         try:
             if options.audio_only:
-                audio_path = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.AUDIO)
+                audio_path_str = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.AUDIO)
                 thumbnail_path = None #FIXME self.thumbnail_handler.download_thumbnail(video_obj, download_dir, base_filename)
-                output_path = os.path.join(download_dir, base_filename+f"{'.m4a' if not options.audio_mp3 else '.mp3'}")
-                if not audio_path:
+                output_path = Path(download_dir) / f"{base_filename}{'.mp3' if options.audio_mp3 else '.m4a'}"
+                if not audio_path_str:
                     msg = "no audio stream available"
                     logger.error(msg)
                     return DownloadResult(success=False, errors=[msg])
+                audio_path = Path(audio_path_str)
                 self.stream_converter.convert_audio(audio_path, output_path, thumbnail_path)
                 
             else:
-                video_path = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.VIDEO)
-                audio_path = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.AUDIO)
-                output_path = os.path.join(download_dir, f"{base_filename}.mp4")
-                if not video_path or not audio_path:
+                video_path_str = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.VIDEO)
+                audio_path_str = self._download_stream_type(video_obj, download_dir, base_filename, self.StreamType.AUDIO)
+                output_path = Path(download_dir) / f"{base_filename}.mp4"
+                if not video_path_str or not audio_path_str:
                     msg = "missing audio or video stream"
                     logger.error(msg)
                     return DownloadResult(success=False, errors=[msg])
+                video_path = Path(video_path_str)
+                audio_path = Path(audio_path_str)
                 self.stream_converter.combine_streams(audio_path, video_path, output_path)
 
             logger.debug(f'Download of {"soundtrack" if options.audio_only else "video"} completed.')
@@ -775,7 +880,8 @@ class YouTubeDownloader:
             logger.error(f"An unexpected error occurred: {e}")
             return DownloadResult(success=False, errors=[str(e)])
 
-    def download_playlist(self, playlist_url: str, download_dir: str, options: DownloadOptions) -> List[DownloadResult]:
+    # TODO improve error handling (return exceptions or ...?)
+    def download_playlist(self, playlist_url: str, download_dir: Path, options: DownloadOptions) -> List[DownloadResult]:
         """
         Download all videos from a YouTube playlist as video or audio files.
 
@@ -816,13 +922,13 @@ class YouTubeDownloader:
 
         for i, video in enumerate(playlist_obj.videos):
             logger.info(f'At {"soundtrack" if options.audio_only else "video"} {i + 1}/{len(playlist_obj.videos)}: ')
-            result = self.download_single(download_dir=str(playlist_dir), options=options, video_obj=video)
+            result = self.download_single(download_dir=playlist_dir, options=options, video_obj=video)
             results.append(result)
 
         logger.info("Playlist download completed.")
         return results
 
-    def info(self, url: str = None, video_obj: ptf.YouTube = None, output: callable = None) -> None:
+    def info(self, url: str = None, video_obj: ptf.YouTube = None, output: callable = logger.info) -> None:
         """
         Print or log information about a YouTube video or playlist.
 
@@ -832,8 +938,8 @@ class YouTubeDownloader:
         output (callable, optional): A callable that takes a string, e.g. `print` or `logger.info`.
             Defaults to `logger.info`.
         """
-        
-        output = output or logger.info        
+        #DELETEME
+        #output = output or logger.info
         
         if self.urlh.is_youtube_playlist(url):
             try:
@@ -873,12 +979,12 @@ class YouTubeDownloader:
                 output(f"- {stream.mime_type}, {stream.abr}")
             output(f"Best audio: {video_obj.streams.filter(type='audio').order_by('abr').desc().first()}")
 
-    def download(self, url: str, download_dir: str, options: DownloadOptions) -> None:
+    def download(self, url: str, download_dir: Path, options: DownloadOptions) -> None:
         """
         Download a YouTube video or playlist.
         Args:
             url (str): The URL of the YouTube video or playlist.
-            download_dir (str): The directory to save the downloaded files.
+            download_dir (Path): The directory to save the downloaded files.
             options (DownloadOptions): The download options.
         Side Effects:
             - creates download directory if it does not exist. 
@@ -890,7 +996,7 @@ class YouTubeDownloader:
         if self.urlh.is_youtube_url(url) and self.urlh.is_accessible(url):
             logger.debug(f"Valid YouTube URL: {url}")
             try:
-                if not os.path.exists(download_dir): #works for one level only
+                if not os.path.exists(download_dir): # should work for multiple levels TODO: check
                     os.makedirs(download_dir)
                     logger.info(f"Created download directory: {download_dir}")
 
@@ -899,7 +1005,8 @@ class YouTubeDownloader:
                     results = self.download_playlist(playlist_url=url, download_dir=download_dir, options=options)
                 else:
                     logger.debug("Detected as a single video URL.")
-                    results.append(self.download_single(video_url=url, download_dir=download_dir, options=options))
+                    video = self._get_video_obj(url)
+                    results.append(self.download_single(video_obj=video, download_dir=download_dir, options=options))
                     
             except Exception as e:
                 logger.error(f"Download failed: {e}")
@@ -917,16 +1024,160 @@ class YouTubeDownloader:
 #--------------------
 #
 #     stream_converter.py
-# ... uses ffmpeg (via ffmpeg-python) for conversion
-# will not be displayed in full (unneccessary), but has these functions: 
+#
 #--------------------
 
-# convert_audio uses convert_to_m4a and convert_to_m4a -> will later be refactored to be private and other formats will be supported
+import os
+from pathlib import Path 
+import ffmpeg as fpg
+from core.logger import get_logger
+
+logger = get_logger(__name__, 'sc_debug.log')
+
 class StreamConverter:
-    def convert_audio(audio_path: str, output_path: str, thumbnail_path: str = None) -> None:
-    def convert_to_mp3(audio_path: str, output_path: str) -> None:
-    def convert_to_m4a(audio_path: str, output_path: str, thumbnail_path: str = None) -> None:
-    def combine_streams(audio_path: str, video_path: str, output_path: str) -> None:
+    """Handles conversion and merging of audio/video streams."""
+    @staticmethod
+    def convert_audio(audio_path: Path, output_path: Path, thumbnail_path: Path | None = None) -> None:
+        """Converts audio to desired format based on output_path extension.
+        Args:
+            audio_path (Path): The path to the source audio file.
+            output_path (Path): The path where the converted audio file will be saved.
+            thumbnail_path (Path, optional): The path to the thumbnail image file. Defaults to None.
+        """
+        ext_out = os.path.splitext(output_path)[1].lower()
+        ext_in = os.path.splitext(audio_path)[1].lower()
+
+        if ext_out == '.m4a':
+            StreamConverter.convert_to_m4a(audio_path, output_path, thumbnail_path)
+        elif ext_out == '.mp3' and ext_in != '.mp3':
+            StreamConverter.convert_to_mp3(audio_path, output_path)
+        else:
+            logger.warning(f"Unsupported audio format '{ext_out}' for output. Keeping original audio file at: {audio_path}")
+                      
+    @staticmethod
+    def convert_to_m4a(audio_path: Path, output_path: Path, thumbnail_path: Path | None = None) -> None:
+        """Converts audio to m4a format.
+
+        Args:
+            audio_path (Path): The path to the source audio file.
+            output_path (Path): The path where the converted m4a file will be saved.
+            thumbnail_path (Path | None, optional): The path to the thumbnail image file. Defaults to None.
+        """
+        ext_out = os.path.splitext(output_path)[1].lower()
+        ext_in = os.path.splitext(audio_path)[1].lower()
+        
+        logger.debug("Converting audio to m4a with ffmpeg...")
+        # ensure output has proper extension so ffmpeg can pick container
+        if not output_path.suffix.lower() == ".m4a":
+            logger.warning(f"Output path does not have .m4a extension: {output_path}. Adjusting accordingly.")
+            output_path = output_path.with_suffix('.m4a')
+
+        audio_input = fpg.input(str(audio_path))
+        image_input = fpg.input(str(thumbnail_path)) if thumbnail_path else None
+        output = str(output_path)
+        try:
+            if thumbnail_path and os.path.exists(thumbnail_path):
+                (
+                    fpg
+                    .output(
+                        audio_input, image_input, output,
+                        acodec='aac',
+                        # map audio + image, set metadata for cover art
+                        extra_args=[
+                            '-map', '0:a',
+                            '-map', '1:v',
+                            '-metadata:s:v', 'title=Album cover',
+                            '-metadata:s:v', 'comment=Cover (front)'
+                        ]
+                    )
+                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
+                )
+                os.remove(thumbnail_path)
+                logger.info(f"Audio file saved to: {output}")
+                os.remove(audio_path)
+            elif ext_in != '.m4a':
+                (
+                    fpg
+                    .output(
+                        audio_input, output,
+                        vcodec='copy', acodec='aac', strict='experimental',
+                    )
+                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)   
+                )
+                logger.info(f"Audio file saved to: {output}")
+                os.remove(audio_path)
+            else:
+                # if input is already mp4, just rename to m4a
+                os.rename(audio_path, output)
+                logger.info(f"Renamed audio file to: {output}")
+                            
+        except Exception as e:
+            stderr = getattr(e, 'stderr', None)
+            logger.exception(f"Error during ffmpeg audio conversion: {stderr.decode() if stderr else e}")
+            logger.info("Keeping original audio file.")
+            raise e  # propagate for upstream handling
+
+    @staticmethod
+    def convert_to_mp3(audio_path: Path, output_path: Path) -> None:
+        """
+        currently unused !
+        Converts an audio file to MP3 format using ffmpeg and saves it to the specified output path.
+
+        Args:
+            audio_path (str): The path to the source audio file to be converted.
+            output_path (str): The path where the converted MP3 file will be saved.
+        Raises:
+            Exception: Logs and handles any exceptions that occur during the conversion process.
+        Side Effects:
+            - Saves the converted MP3 file to the specified output path.
+            - Removes the original audio file upon successful conversion.
+            - Logs conversion progress and errors.
+        """
+        logger.debug("Converting audio to mp3 with ffmpeg...")
+        try:
+            (
+                fpg
+                .input(audio_path)
+                .output(output_path, acodec='mp3', strict='experimental')
+                .run(overwrite_output=True, quiet=True)
+            )
+            logger.info(f"Audio file saved to: {output_path}")
+            os.remove(audio_path)
+        except Exception as e:
+            logger.exception(f"Error during ffmpeg audio conversion: {e.stderr.decode() if hasattr(e, 'stderr') else e}")
+            logger.info("Keeping original audio file.")
+            raise e  # Re-raise the exception for upstream handling
+        
+    @staticmethod
+    def combine_streams(audio_path: Path, video_path: Path, output_path: Path) -> None:
+        """
+        Combines separate audio and video files into a single output file using ffmpeg.
+
+        This method takes the paths to an audio file and a video file, merges them into one media file at the specified output path,
+        and removes the original input files upon successful completion.
+        Args:
+            audio_path (str): Path to the audio file to be merged.
+            video_path (str): Path to the video file to be merged.
+            output_path (str): Path where the merged output file will be saved.
+        Raises:
+            Exception: Logs any exception raised during the ffmpeg merging process.
+        """
+        logger.debug("Combining video and audio with ffmpeg...")
+        try:
+            (
+                fpg
+                .output(fpg.input(str(video_path)), fpg.input(str(audio_path)), str(output_path), vcodec='copy', acodec='aac', strict='experimental')
+                .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
+            )
+            logger.info(f"Merged file saved to: {output_path}")
+            os.remove(video_path)
+            os.remove(audio_path)
+        except Exception as e:
+            logger.exception(f"Error during ffmpeg merging: {e.stderr.decode() if hasattr(e, 'stderr') else e}")
+            logger.info("Keeping original files.")
+            raise e  # Re-raise the exception for upstream handling
+
+
 
 #--------------------
 #
@@ -937,8 +1188,8 @@ class StreamConverter:
 import os
 import requests
 import pytube as ptf
-from source.core.logger import get_logger
-from source.core.utils import retry_call
+from core.logger import get_logger
+from core.utils import retry_call
 
 logger = get_logger(__name__, 'th_debug.log')
 
@@ -988,9 +1239,9 @@ class ThumbnailHandler:
 #
 #--------------------
 
-import urllib.parse
+import urllib.parse as ulp
 import requests
-from source.core.logger import get_logger
+from core.logger import get_logger
 
 #TODO Add unit tests for this class
 #TODO Add logging instead of print statements
@@ -1013,6 +1264,28 @@ class URLHandler:
         "youtu.be",
         "www.youtu.be"
     ]
+    
+    def _extract_video_id(self, url: str) -> str | None:
+        u = ulp.urlparse(url)
+
+        # Case 1 — standard watch?v=
+        if u.path == "/watch":
+            qs = ulp.parse_qs(u.query)
+            return qs.get("v", [None])[0]
+
+        # Case 2 — youtu.be/VIDEOID
+        if u.netloc in ("youtu.be", "www.youtu.be"):
+            return u.path.lstrip("/") or None
+
+        # Case 3 — /shorts/VIDEOID
+        if u.path.startswith("/shorts/"):
+            return u.path.split("/")[2]
+
+        # Case 4 — /embed/VIDEOID
+        if u.path.startswith("/embed/"):
+            return u.path.split("/")[2]
+
+        return None
 
     @staticmethod
     def is_youtube_url(url: str) -> bool:
@@ -1025,7 +1298,7 @@ class URLHandler:
             bool: True if the URL is a YouTube URL, False otherwise.
         """
         try:
-            parsed_url = urllib.parse.urlparse(url)
+            parsed_url = ulp.urlparse(url)
             domain = parsed_url.netloc.lower()
             return any(youtube_domain in domain for youtube_domain in URLHandler.YOUTUBE_DOMAINS)
         except Exception as e:
@@ -1049,30 +1322,9 @@ class URLHandler:
             logger.exception(f"Error checking URL accessibility: {e}")
             #raise e
             return False
-
-    @staticmethod
-    def extract_video_id(url: str) -> str | None:
-        """
-        Extract the video ID from a YouTube URL.
-
-        Args:
-            url (str): The YouTube URL.
-        Returns:
-            str or None: The video ID if found, None otherwise.
-        """
-        try:
-            parsed_url = urllib.parse.urlparse(url)
-            if 'youtu.be' in parsed_url.netloc:
-                return parsed_url.path.lstrip('/')
-            elif 'youtube.com' in parsed_url.netloc:
-                query_params = urllib.parse.parse_qs(parsed_url.query)
-                return query_params.get('v', [None])[0]
-            return None
-        except Exception as e:
-            logger.exception(f"Error extracting video ID: {e}")
-            return None
     
-    def is_youtube_playlist(self, url: str) -> bool:
+    @staticmethod #--- why?
+    def is_youtube_playlist(url: str) -> bool:
         """
         Check if the given URL is a YouTube playlist URL.
 
@@ -1088,6 +1340,49 @@ class URLHandler:
             logger.exception(f"Error parsing URL for playlist: {e}")
             return False
 
+    def clean_video_link(self, url: str) -> str | None:
+        """
+        Return a clean YouTube video URL (https://www.youtube.com/watch?v=VIDEOID).
+        If 'start_radio' is present it will be logged and removed.
+        """
+        try:
+            parsed = ulp.urlparse(url)
+            qs = ulp.parse_qs(parsed.query)
+            # prefer explicit v parameter, fallback to extractor (handles youtu.be, /shorts/, /embed/)
+            video_id = qs.get("v", [None])[0] or self._extract_video_id(url)
+            if not video_id:
+                logger.debug("clean_video_link: no video id found in URL: %s", url)
+                return None
+            # detect start_radio case-insensitively
+            if any(k.lower() == "start_radio" for k in qs.keys()):
+                logger.warning("clean_video_link: 'start_radio' parameter present and will be removed: %s", url)
+            return f"https://www.youtube.com/watch?v={video_id}"
+        except Exception as e:
+            logger.exception("Error cleaning video link: %s", e)
+            return None
+
+    def clean_playlist_link(self, url: str) -> str:
+        """
+        Return a canonical YouTube playlist URL (https://www.youtube.com/playlist?list=LISTID).
+
+        Raises:
+            ValueError: if no playlist id is found or if 'start_radio' is present on the playlist URL.
+        """
+        try:
+            parsed = ulp.urlparse(url)
+            qs = ulp.parse_qs(parsed.query)
+            # If start_radio is present on a playlist URL, that's disallowed per specification
+            if any(k.lower() == "start_radio" for k in qs.keys()):
+                logger.error("clean_playlist_link: 'start_radio' parameter not allowed on playlist URLs: %s", url)
+                raise ValueError("start_radio parameter not allowed on playlist URLs")
+            playlist_id = qs.get("list", [None])[0]
+            if playlist_id:
+                return f"https://www.youtube.com/playlist?list={playlist_id}"
+            logger.error("clean_playlist_link: no playlist id ('list' param) found in URL: %s", url)
+            raise ValueError("No playlist id ('list' query parameter) found in URL")
+        except Exception:
+            logger.exception("Error cleaning playlist link: %s", url)
+            raise
 
 
 #--------------------
@@ -1175,7 +1470,7 @@ def retry_call(callable_fn: Callable[[], Any],
 
 #--------------------
 #
-#     main.py
+#     yt_ripper.py
 #
 #--------------------
 
@@ -1188,9 +1483,9 @@ import os
 # possibly add other modes later (e.g. GUI)
 # for now, just basic interactive vs command line
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from source.cli.cli_interactive import InteractiveCLI
-from source.cli.cli_command import CommandCLI
+#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from cli.cli_interactive import InteractiveCLI
+from cli.cli_command import CommandCLI
 
 def main():
     if len(sys.argv) == 1 or sys.argv[1] in ("-m", "-i","--menu", "--interactive"):
@@ -1219,7 +1514,7 @@ def main():
             CommandCLI().run(command)
     else:
         cmdline = " ".join(sys.argv[1:])
-        CommandCLI().run(cmdline)
+        return CommandCLI().run(cmdline)
 
 if __name__ == "__main__":
     main()

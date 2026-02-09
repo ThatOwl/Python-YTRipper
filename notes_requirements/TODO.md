@@ -1,13 +1,23 @@
+## research
+- how to inject logger, os, handlers etc.
+- how to properly log
+- how to handle errors upstream
+- how to minimize exception handling 
+
 ## big
+- path handling and renaming o file .. including .mp4/mp3 bullshit
 - FIX path being "STR" or "PATH" type !!!
-- function path default from preferences !!
+    - > path is cumbersome revise solution
+    - > problem with many libs expecting str (ffmpeg, pytube)
+- refactor "download_dir" into "options"
 
-- fix cli_interactive: behaviour of loop, want to be able to exit ... ask chat for clean solution to implement loop without question every time 
-    - => use cli_command and do not make all pref editable here just audio_only dir audio_mp3 (general) quality
-    - maybe include ytd.info and abort for "browsing" 
-- add clear dialog , clear logs to interactive or use cli_command
-
-- if single video fails (not playlist!) delete download dir 
+- check preferences handling
+- handle exception thrown resulting from internet connection timeout (cleanly)
+- maybe: make options part of downloader-class ? discuss with chat
+- DROP interactive menu ! (or pause development)
+- -> otherwise make a GUI with qt5
+- add history in file with max size of 20 entries -> use arrow key for navigation during interaction
+- add method to interact with preferrence file for editing with limits
 
 ## Small
 - check ffmpeg output for sync and playback errors
@@ -58,6 +68,7 @@ def get_info(self, url: str = None, video_obj: ptf.YouTube = None) -> dict:
 ## cl_interface:
 ### mandatory TODO:
 - How to test cli?
+- => Tasks (bash etc -> can still be unittested)
 
 ### optional TODO: 
 - validate user_saettings file for fields and content type

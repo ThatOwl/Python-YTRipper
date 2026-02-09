@@ -1,0 +1,10 @@
+param: -nd false -hf false -a true -q high -r 720p -w true -o ~/Starsector_OST
+invalid_address
+
+https://www.youtube.com/watch?v=eDV_qQ3fapw
+https://www.youtube.com/watch?v=rkS70Tkgdzs
+https://www.youtube.com/watch?v=VHBlCqvfopw
+https://www.youtube.com/watch?v=4e1bCs9rScg
+https://www.youtube.com/watch?v=3sKil93B08E
+https://www.youtube.com/watch?v=W9NRUznftt8
+https://www.youtube.com/watch?v=I_ebcd2OP_s

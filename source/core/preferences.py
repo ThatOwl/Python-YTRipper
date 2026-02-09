@@ -2,9 +2,8 @@ import os
 import json
 from pathlib import Path
 from typing import Dict
+from dataclasses import dataclass, asdict
 import getpass
-
-#from core.logger import logger
 
 # ---------- CONSTANTS FOR SETUP & RESTORE -------------------
 CURRENT_DIR = Path(__file__).resolve().parent   # → Python-YTRipper/source/core
@@ -22,13 +21,15 @@ DEFAULT_PREFS: Dict = {
     "warn_me": False,
     "preferred_audio_quality": "",
     "preferred_video_quality": "",
-    "preferred_format": "",
-    "preferred_abr": "",
     "preferred_resolution": "",
+    "preferred_abr": "",
     "preferred_mime": "",
-    "loglevel": "WARNING"
+    "preferred_format": "",
+    "preferred_fps": 0,
+    "loglevel": "WARNING",
+    "donotconvert": False,
+    "no_dir_date": False
 }
-# -----------------------------
 
 def current_username() -> str:
     """Return the current executing user's username; fallback to HOME parsing."""
@@ -40,7 +41,6 @@ def current_username() -> str:
 
 PATH_TO_PREFERENCES = CONFIG_DIR / f"user_settings_{current_username()}.json"
 
-#TODO; check if there is better way fot default return
 def read_preferences() -> Dict:
     """
     Read preferences from PATH_TO_PREFERENCES. If missing, create it with DEFAULT_PREFS.
@@ -51,13 +51,16 @@ def read_preferences() -> Dict:
             os.makedirs(os.path.dirname(PATH_TO_PREFERENCES), exist_ok=True)
             with open(PATH_TO_PREFERENCES, 'w', encoding="utf-8") as f:
                 json.dump(DEFAULT_PREFS, f, indent=4)
-                return dict(DEFAULT_PREFS)
-        except:
+            return dict(DEFAULT_PREFS)
+        except Exception:
             return dict(DEFAULT_PREFS)
     else:
-        with open(PATH_TO_PREFERENCES, 'r', encoding="utf-8") as fh:
-            data = json.load(fh)
-            return data if isinstance(data, dict) else dict(DEFAULT_PREFS)
+        try:
+            with open(PATH_TO_PREFERENCES, 'r', encoding="utf-8") as fh:
+                data = json.load(fh)
+                return data if isinstance(data, dict) else dict(DEFAULT_PREFS)
+        except Exception:
+            return dict(DEFAULT_PREFS)
 
 def write_preferences(prefs: Dict) -> None:
     """Write provided prefs dict to PATH_TO_PREFERENCES (best-effort)."""
@@ -66,5 +69,4 @@ def write_preferences(prefs: Dict) -> None:
         with open(PATH_TO_PREFERENCES, "w", encoding="utf-8") as fh:
             json.dump(prefs if isinstance(prefs, dict) else DEFAULT_PREFS, fh, indent=4)
     except Exception:
-        # intentionally silent/fail-safe here; callers can log if desired
         pass

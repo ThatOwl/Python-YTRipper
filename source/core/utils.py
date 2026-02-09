@@ -1,43 +1,123 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import List, Callable, Tuple, Type, Any, Dict
 import time
 import random
 
 #TODO currently has no logging; consider adding if needed
 
+QUALITY_ALIAS_MAP = {
+    # high / best
+    "high": "high", "h": "high", "best": "high", "b": "high",
+    # medium
+    "medium": "medium", "m": "medium", "mid": "medium", "average": "medium", "a": "medium",
+    # low / worst
+    "low": "low", "lowest": "low", "l": "low", "worst": "low", "w": "low",
+}
+
+# Common YouTube audio bitrates (kbps)
+COMMON_AUDIO_ABR = {
+    "48k": "48kbps",
+    "50k": "50kbps",
+    "56k": "56kbps",
+    "64k": "64kbps",
+    "96k": "96kbps",
+    "128k": "128kbps",
+    "192k": "192kbps",
+    "256k": "256kbps",
+    "320k": "320kbps",
+}
+
+# Common YouTube video resolutions
+COMMON_VIDEO_RESOLUTIONS = {
+    "144p": "144p",
+    "240p": "240p",
+    "360p": "360p",
+    "480p": "480p",
+    "720p": "720p",
+    "1080p": "1080p",
+    "1440p": "1440p",
+    "2160p": "2160p",  # 4K
+}
+
+# Boolean string parsing constants
+BOOLEAN_TRUE_VALUES = ('true', '1', 'yes', 'y')
+BOOLEAN_FALSE_VALUES = ('false', '0', 'no', 'n')
+
+# FPS preference constants
+FPS_ANY = 0      # Accept any FPS
+FPS_30 = 30      # Prefer 30 FPS (lower bandwidth, older devices)
+FPS_60 = 60      # Prefer 60 FPS (smooth motion, higher bandwidth)
+
+def parse_bool_string(value: Any) -> bool:
+    """Parse a boolean value from string or bool.
+    
+    Args:
+        value: String ('true'/'false'/'yes'/'no'/'1'/'0'/'y'/'n') or bool
+        
+    Returns:
+        bool: Parsed boolean value
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in BOOLEAN_TRUE_VALUES
+    return bool(value)
+
+
 # Domain exceptions / base
 class DownloadError(Exception):
     """Base exception for download-related errors."""
 
 # Models / result objects
-@dataclass(frozen=True)
+
+@dataclass
 class DownloadOptions:
+    """Centralized download preferences (mirrors preferences.py DEFAULT_PREFS)."""
+    default_download_directory: str = "~/Downloads"
     audio_only: bool = False
     audio_mp3: bool = False
-    preferred_abr: str = ""
-    preferred_resolution: str = ""
+    warn_me: bool = False
     preferred_audio_quality: str = ""
     preferred_video_quality: str = ""
-    preferred_format: str = ""
+    preferred_resolution: str = ""
+    preferred_abr: str = ""
     preferred_mime: str = ""
+    preferred_format: str = ""
+    preferred_fps: int = 0  # 0=any, 30=prefer 30fps, 60=prefer 60fps
+    loglevel: str = "WARNING"
+    donotconvert: bool = False
+    no_dir_date: bool = False
 
     @classmethod
-    def from_preferences(cls, prefs: Dict[str, Any]) -> 'DownloadOptions':
-        return cls(
-            audio_only=prefs.get("audio_only", False),
-            audio_mp3=prefs.get("audio_mp3", False),
-            preferred_abr=prefs.get("preferred_abr", ""),
-            preferred_resolution=prefs.get("preferred_resolution", ""),
-            preferred_audio_quality=prefs.get("preferred_audio_quality", "best"),
-            preferred_video_quality=prefs.get("preferred_video_quality", "best"),
-            preferred_format=prefs.get("preferred_format", ""),
-            preferred_mime=prefs.get("preferred_mime", "")
-        )
+    def from_preferences(cls, prefs: Dict) -> "DownloadOptions":
+        """Load from preferences dict."""
+        return cls(**{k: v for k, v in prefs.items() if k in cls.__dataclass_fields__})
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return asdict(self)
+    
+    def update_from_dict(self, data: Dict) -> None:
+        """Update options from dictionary (only non-None values)."""
+        for key, value in data.items():
+            if value is not None and hasattr(self, key):
+                setattr(self, key, value)
 
 @dataclass
 class DownloadResult:
     success: bool
     errors: List[str]
+    video_title: str = ""
+    video_url: str = ""
+    
+    def __str__(self) -> str:
+        """String representation for display."""
+        status = "✓" if self.success else "✗"
+        if self.success:
+            return f"{status} {self.video_title}"
+        else:
+            error_msg = "; ".join(self.errors) if self.errors else "Unknown error"
+            return f"{status} {self.video_title}: {error_msg}"
 
 # Retry helper (stateless)
 def retry_call(callable_fn: Callable[[], Any],

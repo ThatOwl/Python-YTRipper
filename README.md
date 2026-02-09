@@ -7,38 +7,67 @@ Designed for private use, easy extension, and experimentation — provides a pro
 
 - heavily supported by copilot as learning objectives are architecture, unit-testing, API-integration and error handling. (Not primarily coding or efficiency)
 - not all copied/inspired code sections are referenced yet
-- current state many thing do not work properly including [argcomplete](https://pypi.org/project/argcomplete/)
+### Current state: 
+- Downloads for videos and playlists work
+- Many smaller things and cases (yt related bugs) do not work properly including [argcomplete](https://pypi.org/project/argcomplete/)
 ---
 
 ## Features
 
-- Download single YouTube videos or entire playlists
-- Download audio-only (convert to MP3/M4A) or full video (merge separate audio/video streams)
-- Thumbnail download and optional embedding as cover art
-- Centralized logging with configurable verbosity
-- Retry wrapper for transient network/IO errors
-- Modular design: YouTubeDownloader, StreamConverter, ThumbnailHandler
-- Safe filename sanitization and collision-resistant temp filenames
-
+- Download YouTube videos and playlists
+- Audio-only or video download options
+- Interactive menu mode
+- Command-line mode for automation
+- Thumbnail extraction
+- Stream conversion and merging
 ---
 
-## Quick Start
+## Installation
 
 Prerequisites:
 - Python 3.9+
 - ffmpeg installed and available on PATH
-- Recommended: use a virtualenv
+- Usage of virtualenv
 
 Install project dependencies:
 ```bash
 sudo apt install python3-full python3-venv
 ```
 
-In the directory where this project is clone to do this manually:
-(optionally use [install.sh](https://github.com/RF-at-FH-Joanneum/Python-YTRipper/blob/main/install.sh) script)
+### Quick Setup (Linux)
+
+1. **Download and run the installer:**
+   ```bash
+   wget https://raw.githubusercontent.com/RF-at-FH-Joanneum/Python-YTRipper/main/install.sh
+   chmod +x install.sh
+   ./install.sh
+   ```
+
+2. **The installer will:**
+   - Detect existing installations (even if directory was renamed)
+   - Offer to update or use existing installation
+   - Clone the repository
+   - Create a virtual environment
+   - Install all dependencies automatically
+
+3. **Follow the prompts:**
+   - Option 1: Update (fresh clone, backs up old version to `*_backup`)
+   - Option 2: Use existing installation (preserves settings)
+   - Option 3: Cancel
+
+
+### Manual Installation
+
 ```bash
+# Clone the repository
+git clone https://github.com/RF-at-FH-Joanneum/Python-YTRipper.git
+cd Python-YTRipper
+
+# Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
@@ -51,28 +80,35 @@ curl -sS https://bootstrap.pypa.io/get-pip.py | python
 python3 -m pip install -r requirements.txt
 ```
 
-Run the interactive CLI (from the project root):
-Or use the [star_app.sh](https://github.com/RF-at-FH-Joanneum/Python-YTRipper/blob/main/start_app.sh)
+--- 
+
+## Usage
+
+### Interactive Loop Mode (Recommended)
 ```bash
-python3 -m source.cl_interface
+./start_w_args.sh --loop
+```
+Repeatedly shows command menu after each operation.
+
+### Interactive Menu Mode
+```bash
+./start_w_args.sh --menu
+```
+Enter interactive mode with full feature menu.
+
+### Command Mode
+```bash
+# Single command (exits after completion)
+python3 source/yt_ripper.py <URL> [options]
+
+# Show help
+./start_w_args.sh --help
 ```
 
-One-shot CLI example (interactive prompt accepts the same arguments):
-```
-# At the prompt:
-yt> https://www.youtube.com/watch?v=VIDEO_ID -a --clear -d ./downloads
-```
-
-Or run a module-level download from Python:
-```python
-from source.pytube_interface import YouTubeDownloader, DownloadOptions
-
-opts = DownloadOptions.from_preferences({
-    "audio_only": True,
-    "preferred_quality": "",
-})
-ytd = YouTubeDownloader()
-ytd.download("https://www.youtube.com/watch?v=VIDEO_ID", download_dir="./downloads", options=opts)
+### Manual Virtual Environment Activation
+```bash
+source .venv/bin/activate
+python3 source/yt_ripper.py --help
 ```
 
 ---
@@ -88,17 +124,24 @@ Important preferences:
 - `preferred_[video|audio]_quality`
 
 ---
+## Project Structure
 
-## Project layout
-
-- `source/`
-  - `pytube_interface.py` — main downloader and orchestration
-  - `stream_converter.py` — ffmpeg helpers (merge/convert)
-  - `url_handler.py` — URL detection/validation utilities
-  - `cl_interface.py` — interactive CLI
-  - `logger.py` — centralized logger factory
-- `tests/` — unit / manual tests
-- `.venv/`, `requirements.txt`
+```
+Python-YTRipper/
+├── source/
+│   ├── yt_ripper.py          # Entry point
+│   ├── core/                 # Core functionality
+│   │   ├── pytube_interface.py
+│   │   ├── stream_converter.py
+│   │   └── ...
+│   └── cli/                  # CLI interfaces
+│       ├── cli_interactive.py
+│       └── cli_command.py
+├── tests/                    # Test files
+├── install.sh                # Automated installer
+├── start_w_args.sh           # Run script with arguments
+└── requirements.txt          # Python dependencies
+```
 
 ---
 
@@ -108,13 +151,12 @@ Important preferences:
 - Download options are represented as an immutable dataclass (`DownloadOptions`, frozen) — safe to share between threads.
 - Low-level helpers log full diagnostics and raise domain-specific exceptions; the CLI/top level logs concise user-facing messages.
 
-- Not yet implemented: _Temporary filenames use a short UUID suffix to avoid collisions when multiple downloads run concurrently._
 
 ---
 
 ## Concurrency considerations
 
-- The library is designed to be safe for multi-threaded use when following the recommended patterns:
+- The library shall be designed to be safe for multi-threaded use when following the recommended patterns:
   - Keep `DownloadOptions` immutable.
   - Use stateless downloader instance or create one downloader per task.
   - Missing: _Avoid sharing mutable state (e.g., per-download temp filenames are generated)._
@@ -122,24 +164,26 @@ Important preferences:
 
 ---
 
+## Development
+
+### Running Tests
+- not yet implemented
+
+### Debugging in VS Code
+See launch.json for debug configurations.
+
 ## Troubleshooting
 
-- ModuleNotFoundError: No module named 'source'  
-  Run the script from project root and use `python -m source.cl_interface ...` or add the project root to `PYTHONPATH` / `sys.path`. The CLI uses package-style invocation.
-- ffmpeg errors (codec incompatibility): try encoding instead of copy:
-  - `vcodec='libx264'` and `acodec='aac'` produce broadly compatible MP4 files (slower).
-- Downloaded file extension doesn't match stream subtype: use the path returned by `stream.download()` instead of guessing file extensions.
-- If thumbnail embedding fails for MP3, the code uses the proper ffmpeg mapping (image as second input, `-map 0:a -map 1:v`).
+**Issue: ModuleNotFoundError**
+- Make sure you're running from the repository root
+- Ensure virtual environment is activated: `source .venv/bin/activate`
 
----
+**Issue: FFmpeg not found**
+- Install FFmpeg: `sudo apt install ffmpeg` (Ubuntu/Debian)
 
-## Tests
-
-Run tests with pytest from project root:
-```bash
-pytest -q
-```
-Note: some tests may depend on network connectivity; many tests are intended as manual/integration checks.
+**Issue: Installation fails**
+- Check Python version: `python3 --version` (requires 3.8+)
+- Ensure pip is installed: `python3 -m pip --version`
 
 ---
 
