@@ -61,6 +61,7 @@ class DownloadOptions:
     preferred_format: str = ""
     loglevel: str = "WARNING"
     donotconvert: bool = False
+    no_dir_date: bool = False
 
     @classmethod
     def from_preferences(cls, prefs: Dict) -> "DownloadOptions":

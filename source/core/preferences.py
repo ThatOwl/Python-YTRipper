@@ -26,7 +26,8 @@ DEFAULT_PREFS: Dict = {
     "preferred_mime": "",
     "preferred_format": "",
     "loglevel": "WARNING",
-    "donotconvert": False
+    "donotconvert": False,
+    "no_dir_date": False
 }
 
 def current_username() -> str:

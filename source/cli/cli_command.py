@@ -48,6 +48,8 @@ class CommandCLI(CLIBase):
                            help='Output directory (supports ~ expansion)')
         parser.add_argument('-w', '--warn_me', type=str, default=str(self.options.warn_me),
                            help='Enable warning prompts (true/false)')
+        parser.add_argument('-nd', '--no_dir_date', action='store_true', default=self.options.no_dir_date,
+                           help='Disable auto date prefix for playlist directory')
         parser.add_argument('--save-config', action='store_true', help='Save current options to config file')
         
         return parser
@@ -71,6 +73,7 @@ class CommandCLI(CLIBase):
             'preferred_abr': args.preferred_abr or None,
             'default_download_directory': args.default_download_directory or None,
             'warn_me': args.warn_me.lower() in ('true', '1', 'yes', 'y') if args.warn_me else self.options.warn_me,
+            'no_dir_date': args.no_dir_date,
         }
         
         self.options.update_from_dict(args_dict)

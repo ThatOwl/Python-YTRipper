@@ -367,7 +367,12 @@ class YouTubeDownloader:
         Returns:
             List[DownloadResult]: A list of results for each video download in the playlist.
         """
-        date = datetime.today().strftime('%Y_%m_')
+        
+        if not options.no_dir_date:
+            date = datetime.today().strftime('%Y_%m_')
+        else:
+            date = ""
+        
         results: List[DownloadResult] = []
         try:
             playlist_obj = self._get_playlist_obj(playlist_url)
