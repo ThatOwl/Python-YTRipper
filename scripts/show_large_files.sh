@@ -1,4 +1,17 @@
 #!/usr/bin/env bash
+# Script to find and list large media files in the current directory and subdirectories.
+# Usage: show_large_files.sh [options]
+# Options:
+#   -m <minutes>       Minimum duration to consider (default: 8)
+#   -s <field>         Sort by: duration | size | name (default: duration)
+#   -p <jobs>          Parallel ffprobe jobs (default: CPU cores)
+#   -c                 Output to console (colorized if TTY)
+#   -t <file>          Output to text file
+#   -v <file>          Output to CSV file
+#   -j <file>          Output to JSON file
+
+# This script uses ffprobe to analyze media files and outputs those that exceed the specified duration threshold.
+# It supports parallel processing for faster analysis and can output results in various formats. Colorized console output is provided if the terminal supports it.
 set -euo pipefail
 
 # ---------------- CONFIG DEFAULTS ----------------
@@ -9,8 +22,8 @@ OUT_CONSOLE=false
 OUT_TXT=""
 OUT_CSV=""
 OUT_JSON=""
-JOBS=$(nproc 2>/dev/null || echo 4)
-EXTENSIONS=("mp3" "m4a" "mp4") #check
+JOBS=$(( ($(nproc 2>/dev/null || echo 8) + 1) / 2 ))
+EXTENSIONS=("mp3" "m4a" "mp4")
 
 # ---------------- COLOR HANDLING ----------------
 

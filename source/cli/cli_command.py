@@ -110,6 +110,15 @@ class CommandCLI(CLIBase):
                 logger.warning(f"Unknown resolution '{self.options.preferred_resolution}'; ignoring.")
                 self.options.preferred_resolution = ""
 
+    #TODO: delete this when moving to new architecture as is redundant with url_handler urlh.is_youtube_url()
+    def _is_valid_url(self, url: str) -> bool:
+        """Check if URL is valid and non-empty."""
+        if not url or not url.strip():
+            return False
+        # Basic validation: must contain youtube domain
+        url_lower = url.lower()
+        return any(domain in url_lower for domain in ["youtube.com", "youtu.be"])
+
     def _download_single_url(self, url: str, expanded_dir: Path) -> int:
         """Download a single URL. Returns 0 on success, 1 on failure."""
         try:
@@ -168,6 +177,17 @@ class CommandCLI(CLIBase):
                 logger.error(f"Failed to load batch file: {e}")
                 return 1
             
+            # Filter out invalid/empty URLs
+            valid_urls = []
+            skipped_count = 0
+            for idx, url in enumerate(urls, 1):
+                if self._is_valid_url(url):
+                    valid_urls.append(url)
+                else:
+                    logger.warning(f"Skipping invalid/empty URL at line {idx}: '{url}'")
+                    skipped_count += 1
+            
+            
             if not urls:
                 logger.warning("No URLs found in batch file.")
                 return 1
@@ -203,7 +223,7 @@ class CommandCLI(CLIBase):
                 try:
                     self.ytd.info(url=args.url, output=print)
                 except Exception as e:
-                    logger.error(f"Failed to fetch info: {e}")
+                    logger.error(f"Failed to fetch info: {e}") 
                     return 1
             else:
                 print("------ Starting Download ------")

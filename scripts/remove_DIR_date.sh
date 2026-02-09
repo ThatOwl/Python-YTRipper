@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+# execute in parent directory of music directories, will rename directories starting with "2026_02_" to remove the date prefix
 prefix="2026_02_"
 
 for d in */; do
