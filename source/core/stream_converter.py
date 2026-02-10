@@ -52,7 +52,7 @@ class StreamConverter:
                     fpg
                     .output(
                         audio_input, image_input, output,
-                        acodec='aac',
+                        vcodec='copy', acodec='aac', strict='experimental',
                         # map audio + image, set metadata for cover art
                         extra_args=[
                             '-map', '0:a',
@@ -183,53 +183,94 @@ class StreamConverter:
         #--- check if this is actually supported
         used_a_codec = 'aac' if ext_out == '.m4a' else 'mp3' if ext_out == '.mp3' else None
         
-        logger.debug("Converting audio to m4a with ffmpeg...")
+        logger.debug(f"Converting audio to {ext_out} with ffmpeg...")
         # ensure output has proper extension so ffmpeg can pick container
-        if not output_path.suffix.lower() == ".m4a":
-            logger.warning(f"Output path does not have .m4a extension: {output_path}. Adjusting accordingly.")
+        if not output_path.suffix.lower() in ['.m4a', '.mp3']:
+            logger.warning(f"Output path does not have .m4a or .mp3 extension: {output_path}. Adjusting to .m4a.")
             output_path = output_path.with_suffix('.m4a')
+            ext_out = '.m4a'
+            used_a_codec = 'aac'
 
-        audio_input = fpg.input(str(audio_path))
-        image_input = fpg.input(str(thumbnail_path)) if thumbnail_path else None
-        output = str(output_path)
+        # Use a temporary output file to avoid overwriting input files in-place
+        temp_output_path = Path(output_path).parent / f".{Path(output_path).stem}.tmp{ext_out}"
+
         try:
-            if thumbnail_path and os.path.exists(thumbnail_path):
-                (
-                    fpg
-                    .output(
-                        audio_input, image_input, output,
-                        acodec=used_a_codec,
-                        # map audio + image, set metadata for cover art
-                        extra_args=[
-                            '-map', '0:a',
-                            '-map', '1:v',
-                            '-metadata:s:v', 'title=Album cover',
-                            '-metadata:s:v', 'comment=Cover (front)'
-                        ]
+            if thumbnail_path and os.path.exists(thumbnail_path) and ext_out == '.mp3':
+                # Embed cover art in MP3 using ID3v2 tags
+                logger.debug("Embedding cover art in MP3 using ID3v2 tags...")
+                try:
+                    audio_input = fpg.input(str(audio_path))
+                    image_input = fpg.input(str(thumbnail_path))
+                    (
+                        fpg
+                        .output(
+                            audio_input, image_input, str(temp_output_path),
+                            acodec='libmp3lame',
+                            q=4,
+                            map='0:a:0',
+                            map='1',
+                            metadata='Title=Title',
+                        )
+                        .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
                     )
-                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
-                )
+                    os.remove(thumbnail_path)
+                    logger.info("Cover art embedded in MP3.")
+                except Exception as embed_err:
+                    logger.warning(f"Failed to embed cover art: {embed_err}. Proceeding without cover art.")
+                    os.remove(thumbnail_path)
+                    # Fall back to audio-only conversion
+                    audio_input = fpg.input(str(audio_path))
+                    (
+                        fpg
+                        .output(
+                            audio_input, str(temp_output_path),
+                            acodec=used_a_codec, strict='experimental',
+                        )
+                        .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)   
+                    )
+            elif thumbnail_path and os.path.exists(thumbnail_path):
+                # m4a doesn't support cover art well, just skip
+                logger.warning(f"Cover art embedding is not supported for {ext_out} format. Skipping thumbnail.")
                 os.remove(thumbnail_path)
-                logger.info(f"Audio file saved to: {output}")
-                os.remove(audio_path)
+                if ext_in != ext_out:
+                    audio_input = fpg.input(str(audio_path))
+                    (
+                        fpg
+                        .output(
+                            audio_input, str(temp_output_path),
+                            vcodec='copy', acodec=used_a_codec, strict='experimental',
+                        )
+                        .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)   
+                    )
+                else:
+                    os.rename(audio_path, temp_output_path)
             elif ext_in != ext_out:
+                audio_input = fpg.input(str(audio_path))
                 (
                     fpg
                     .output(
-                        audio_input, output,
+                        audio_input, str(temp_output_path),
                         vcodec='copy', acodec=used_a_codec, strict='experimental',
                     )
                     .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)   
                 )
-                logger.info(f"Audio file saved to: {output}")
-                os.remove(audio_path)
             else:
-                # if input is already the desired format, just rename to output "extension"(?)
-                os.rename(audio_path, output)
-                logger.info(f"Renamed audio file to: {output}")
+                # if input is already the desired format, just copy to temp file
+                os.rename(audio_path, temp_output_path)
+            
+            # Move temp file to final location
+            os.remove(audio_path)
+            os.rename(temp_output_path, output_path)
+            logger.info(f"Audio file saved to: {output_path}")
                             
         except Exception as e:
             stderr = getattr(e, 'stderr', None)
             logger.exception(f"Error during ffmpeg audio conversion: {stderr.decode() if stderr else e}")
             logger.info("Keeping original audio file.")
+            # Clean up temp file if it exists
+            if temp_output_path.exists():
+                try:
+                    os.remove(temp_output_path)
+                except Exception as cleanup_err:
+                    logger.warning(f"Failed to clean up temp file {temp_output_path}: {cleanup_err}")
             raise e  # propagate for upstream handling

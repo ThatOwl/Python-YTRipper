@@ -139,6 +139,7 @@ class YouTubeDownloader:
             logger.debug("Unexpected exception while fetching playlist %s", playlist_url, exc_info=True)
             raise PlaylistFetchError(f"An error occurred while fetching the playlist {playlist_url}: {e}") from e
 
+    #TODO: remove most non UTF-8 chars and reserved filename chars (keep it simple for now, can improve later if needed)
     def _sanitize_filename(self, title: str) -> str:
         return re.sub(r'[\\/*?:"<>|]', "", title)
 
@@ -327,7 +328,7 @@ class YouTubeDownloader:
         try:
             if options.audio_only:
                 audio_path_str = self._download_stream_type(video_obj, download_dir, options, base_filename, self.StreamType.AUDIO)
-                thumbnail_path = None #FIXME self.thumbnail_handler.download_thumbnail(video_obj, download_dir, base_filename)
+                thumbnail_path = self.thumbnail_handler.download_thumbnail(video_obj, download_dir, base_filename) #FIXME self.thumbnail_handler.download_thumbnail(video_obj, download_dir, base_filename)
                 output_path = Path(download_dir) / f"{base_filename}{'.mp3' if options.audio_mp3 else '.m4a'}"
                 if not audio_path_str:
                     msg = "no audio stream available"
