@@ -87,6 +87,7 @@ class DownloadOptions:
     loglevel: str = "WARNING"
     donotconvert: bool = False
     no_dir_date: bool = False
+    actual_audio_bitrate: str = ""  # e.g. "128kbps" — set at runtime from selected stream
 
     @classmethod
     def from_preferences(cls, prefs: Dict) -> "DownloadOptions":

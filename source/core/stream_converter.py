@@ -167,88 +167,133 @@ class StreamConverter:
             raise e  # Re-raise the exception for upstream handling
 
 
-    # will replace convert_to_m4a and convert_to_mp3
+    # replaces convert_to_m4a and convert_to_mp3
     @staticmethod
-    def convert_audio(audio_path: Path, output_path: Path, thumbnail_path: Path | None = None) -> None:
-        """Converts audio to m4a or mp3 format.
-        
+    def convert_audio(
+        audio_path: Path,
+        output_path: Path,
+        thumbnail_path: Path | None = None,
+        audio_bitrate: str = "",
+        audio_mp3: bool = False,
+    ) -> None:
+        """Converts audio (always re-encodes — source is Opus, not AAC).
+
+        Uses a safe temp-file pattern: writes to a .tmp file first, then
+        replaces the target only on success.
+
         Args:
             audio_path (Path): The path to the source audio file.
-            output_path (Path): The path where the converted m4a file will be saved.
-            thumbnail_path (Path | None, optional): The path to the thumbnail image file. Defaults to None.
+            output_path (Path): The desired output path (extension may be corrected).
+            thumbnail_path (Path | None, optional): Thumbnail image to embed as cover art.
+            audio_bitrate (str, optional): Target bitrate e.g. "128kbps". Falls back
+                to VBR qscale if empty.
+            audio_mp3 (bool): If True encode to MP3 (libmp3lame), otherwise to M4A (AAC).
         """
-        ext_out = os.path.splitext(output_path)[1].lower()
-        ext_in = os.path.splitext(audio_path)[1].lower()
-        
-        #--- check if this is actually supported
-        used_a_codec = 'aac' if ext_out == '.m4a' else 'mp3' if ext_out == '.mp3' else None
-        
-        logger.debug("Converting audio to m4a with ffmpeg...")
-        # ensure output has proper extension so ffmpeg can pick container
-        if not output_path.suffix.lower() == ".m4a":
-            logger.warning(f"Output path does not have .m4a extension: {output_path}. Adjusting accordingly.")
-            output_path = output_path.with_suffix('.m4a')
+
+        # ── Codec & extension from the flag ──────────────────────────────
+        if audio_mp3:
+            used_a_codec = "libmp3lame"
+            target_ext = ".mp3"
+        else:
+            used_a_codec = "aac"
+            target_ext = ".m4a"
+
+        # Ensure output_path carries the correct extension
+        if output_path.suffix.lower() != target_ext:
+            logger.warning(
+                f"Output extension mismatch ({output_path.suffix}), adjusting to {target_ext}."
+            )
+            output_path = output_path.with_suffix(target_ext)
+
+        logger.debug(f"Converting audio to {target_ext} ({used_a_codec}) with ffmpeg...")
+
+        # ── Bitrate kwargs ────────────────────────────────────────────────
+        # pytubefix returns e.g. "160kbps" but ffmpeg expects "160k"
+        if audio_bitrate:
+            ffmpeg_bitrate = audio_bitrate.replace("kbps", "k").replace("mbps", "M")
+            bitrate_kwargs = {"audio_bitrate": ffmpeg_bitrate}
+            logger.debug(f"Using source-matched audio bitrate: {ffmpeg_bitrate} (raw: {audio_bitrate})")
+        else:
+            bitrate_kwargs = {"qscale:a": 3}
+            logger.debug("No source bitrate provided, using VBR qscale:a=3")
+
+        # ── Temporary output file (safe conversion pattern) ───────────────
+        temp_output = output_path.with_name(output_path.stem + ".tmp" + output_path.suffix)
 
         audio_input = fpg.input(str(audio_path))
         image_input = fpg.input(str(thumbnail_path)) if thumbnail_path else None
-        output = str(output_path)
+
         try:
-            if thumbnail_path and os.path.exists(thumbnail_path):
+            if thumbnail_path and thumbnail_path.exists():
                 (
                     fpg
                     .output(
-                        audio_input, image_input, output,
+                        audio_input,
+                        image_input,
+                        str(temp_output),
                         acodec=used_a_codec,
-                        # map audio + image, set metadata for cover art
+                        **bitrate_kwargs,
                         extra_args=[
-                            '-map', '0:a',
-                            '-map', '1:v',
-                            '-metadata:s:v', 'title=Album cover',
-                            '-metadata:s:v', 'comment=Cover (front)'
-                        ]
+                            "-map", "0:a",
+                            "-map", "1:v",
+                            "-metadata:s:v", "title=Album cover",
+                            "-metadata:s:v", "comment=Cover (front)",
+                        ],
                     )
-                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
+                    .run(
+                        capture_stdout=True,
+                        capture_stderr=True,
+                        overwrite_output=True,
+                        quiet=True,
+                    )
                 )
-                os.remove(thumbnail_path)
-                logger.info(f"Audio file saved to: {output}")
-                os.remove(audio_path)
-            elif ext_in != ext_out:
+                thumbnail_path.unlink()
+            else:
                 (
                     fpg
                     .output(
-                        audio_input, output,
-                        acodec=used_a_codec, strict='experimental', **{'qscale:a': 3}
+                        audio_input,
+                        str(temp_output),
+                        acodec=used_a_codec,
+                        **bitrate_kwargs,
                     )
-                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)   
-                )
-                logger.info(f"Audio file saved to: {output}")
-                os.remove(audio_path)
-            else: #TODO: pytube uses opus! -> we need aac
-                (
-                    fpg
-                    .output(
-                        audio_input, output,
-                        acodec='aac', strict='experimental', **{'qscale:a': 3}
+                    .run(
+                        capture_stdout=True,
+                        capture_stderr=True,
+                        overwrite_output=True,
+                        quiet=True,
                     )
-                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)   
                 )
-                logger.info(f"Audio file saved to: {output}")
-                os.remove(audio_path)
-                            
+
+            # ✅ Conversion succeeded — replace safely
+            audio_path.unlink()  # remove original (opus)
+            os.replace(temp_output, output_path)
+
+            logger.info(f"Audio file saved to: {output_path}")
+
         except Exception as e:
-            stderr = getattr(e, 'stderr', None)
-            logger.exception(f"Error during ffmpeg audio conversion: {stderr.decode() if stderr else e}")
+            stderr = getattr(e, "stderr", None)
+            logger.exception(
+                f"Error during ffmpeg audio conversion: {stderr.decode() if stderr else e}"
+            )
+
+            # Clean up temp file if conversion failed
+            if temp_output.exists():
+                temp_output.unlink()
+
             logger.info("Keeping original audio file.")
-            raise e  # propagate for upstream handling
+            raise
 
     @staticmethod
-    def temp_convert_audio(audio_path: Path, output_path: Path, thumbnail_path: Path | None = None) -> None:
+    def temp_convert_audio(audio_path: Path, output_path: Path, thumbnail_path: Path | None = None, audio_bitrate: str = "") -> None:
         """Converts audio to m4a format using AAC.
         
         Args:
             audio_path (Path): The path to the source audio file.
             output_path (Path): The path where the converted m4a file will be saved.
             thumbnail_path (Path | None, optional): The path to the thumbnail image file. Defaults to None.
+            audio_bitrate (str, optional): Target audio bitrate e.g. "128kbps". When set, uses
+                CBR at this rate instead of VBR qscale. Defaults to "".
         """
 
         logger.debug("Converting audio to m4a with ffmpeg...")
@@ -259,6 +304,16 @@ class StreamConverter:
                 f"Output path does not have .m4a extension: {output_path}. Adjusting accordingly."
             )
             output_path = output_path.with_suffix(".m4a")
+
+        # Build bitrate kwargs: prefer explicit bitrate over VBR qscale
+        # pytubefix returns e.g. "160kbps" but ffmpeg expects "160k"
+        if audio_bitrate:
+            ffmpeg_bitrate = audio_bitrate.replace("kbps", "k").replace("mbps", "M")
+            bitrate_kwargs = {"audio_bitrate": ffmpeg_bitrate}
+            logger.debug(f"Using source-matched audio bitrate: {ffmpeg_bitrate} (raw: {audio_bitrate})")
+        else:
+            bitrate_kwargs = {"qscale:a": 3}
+            logger.debug("No source bitrate provided, using VBR qscale:a=3")
 
         # Temporary output file (safe conversion pattern)
         temp_output = output_path.with_name(output_path.stem + ".tmp" + output_path.suffix)
@@ -275,7 +330,7 @@ class StreamConverter:
                         image_input,
                         str(temp_output),
                         acodec="aac",
-                        **{"qscale:a": 3},  # VBR quality setting
+                        **bitrate_kwargs,
                         extra_args=[
                             "-map", "0:a",
                             "-map", "1:v",
@@ -300,7 +355,7 @@ class StreamConverter:
                         audio_input,
                         str(temp_output),
                         acodec="aac",
-                        **{"qscale:a": 3}  # VBR quality setting
+                        **bitrate_kwargs
                     )
                     .run(
                         capture_stdout=True,

@@ -288,6 +288,8 @@ class YouTubeDownloader:
             # Log selected stream details
             if str_type == self.StreamType.AUDIO:
                 logger.debug(f"Selected audio stream: {stream.abr}, {stream.mime_type}")
+                # Capture the actual bitrate so the converter can match it
+                options.actual_audio_bitrate = stream.abr or ""
             else:
                 logger.debug(f"Selected video stream: {stream.resolution}, {stream.mime_type}")
             
@@ -303,6 +305,7 @@ class YouTubeDownloader:
                 timeout=5,
                 max_retries=3
             )
+            
             logger.debug(f"{self.stream_type_map[str_type]} stream downloaded to: {downloaded_path}")
             return downloaded_path
         except Exception as e:
@@ -335,7 +338,12 @@ class YouTubeDownloader:
                     return DownloadResult(success=False, errors=[msg], video_title=video_title, video_url=video_url)
                 audio_path = Path(audio_path_str)
                 if not options.donotconvert:
-                    self.stream_converter.convert_audio(audio_path, output_path, thumbnail_path=thumbnail_path)
+                    self.stream_converter.convert_audio(
+                        audio_path, output_path,
+                        thumbnail_path=thumbnail_path,
+                        audio_bitrate=options.actual_audio_bitrate,
+                        audio_mp3=options.audio_mp3,
+                    )
                 
             else:
                 video_path_str = self._download_stream_type(video_obj, download_dir, options, base_filename, self.StreamType.VIDEO)
@@ -468,7 +476,7 @@ class YouTubeDownloader:
             for stream in video_obj.streams.filter(type='video').order_by('resolution').desc():
                 output(f"- {stream.resolution}, {stream.mime_type}, {stream.fps}fps")
             output(f"Best video: {video_obj.streams.filter(type='video').order_by('resolution').desc().first()}")
-
+            
             output("  Audio:")
             for stream in video_obj.streams.filter(type='audio').order_by('abr').desc():
                 output(f"- {stream.mime_type}, {stream.abr}")
