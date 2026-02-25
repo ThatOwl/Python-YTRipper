@@ -5,6 +5,7 @@
 - how to minimize exception handling 
 
 ## big
+- adapt stream_converter to accept any file-format
 - path handling and renaming o file .. including .mp4/mp3 bullshit
 - FIX path being "STR" or "PATH" type !!!
     - > path is cumbersome revise solution

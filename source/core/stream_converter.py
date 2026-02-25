@@ -217,19 +217,114 @@ class StreamConverter:
                     fpg
                     .output(
                         audio_input, output,
-                        vcodec='copy', acodec=used_a_codec, strict='experimental',
+                        acodec=used_a_codec, strict='experimental', **{'qscale:a': 3}
                     )
                     .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)   
                 )
                 logger.info(f"Audio file saved to: {output}")
                 os.remove(audio_path)
-            else:
-                # if input is already the desired format, just rename to output "extension"(?)
-                os.rename(audio_path, output)
-                logger.info(f"Renamed audio file to: {output}")
+            else: #TODO: pytube uses opus! -> we need aac
+                (
+                    fpg
+                    .output(
+                        audio_input, output,
+                        acodec='aac', strict='experimental', **{'qscale:a': 3}
+                    )
+                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)   
+                )
+                logger.info(f"Audio file saved to: {output}")
+                os.remove(audio_path)
                             
         except Exception as e:
             stderr = getattr(e, 'stderr', None)
             logger.exception(f"Error during ffmpeg audio conversion: {stderr.decode() if stderr else e}")
             logger.info("Keeping original audio file.")
             raise e  # propagate for upstream handling
+
+    @staticmethod
+    def temp_convert_audio(audio_path: Path, output_path: Path, thumbnail_path: Path | None = None) -> None:
+        """Converts audio to m4a format using AAC.
+        
+        Args:
+            audio_path (Path): The path to the source audio file.
+            output_path (Path): The path where the converted m4a file will be saved.
+            thumbnail_path (Path | None, optional): The path to the thumbnail image file. Defaults to None.
+        """
+
+        logger.debug("Converting audio to m4a with ffmpeg...")
+
+        # Ensure correct extension
+        if output_path.suffix.lower() != ".m4a":
+            logger.warning(
+                f"Output path does not have .m4a extension: {output_path}. Adjusting accordingly."
+            )
+            output_path = output_path.with_suffix(".m4a")
+
+        # Temporary output file (safe conversion pattern)
+        temp_output = output_path.with_name(output_path.stem + ".tmp" + output_path.suffix)
+
+        audio_input = fpg.input(str(audio_path))
+        image_input = fpg.input(str(thumbnail_path)) if thumbnail_path else None
+
+        try:
+            if thumbnail_path and thumbnail_path.exists():
+                (
+                    fpg
+                    .output(
+                        audio_input,
+                        image_input,
+                        str(temp_output),
+                        acodec="aac",
+                        **{"qscale:a": 3},  # VBR quality setting
+                        extra_args=[
+                            "-map", "0:a",
+                            "-map", "1:v",
+                            "-metadata:s:v", "title=Album cover",
+                            "-metadata:s:v", "comment=Cover (front)"
+                        ]
+                    )
+                    .run(
+                        capture_stdout=True,
+                        capture_stderr=True,
+                        overwrite_output=True,
+                        quiet=True
+                    )
+                )
+
+                thumbnail_path.unlink()
+
+            else:
+                (
+                    fpg
+                    .output(
+                        audio_input,
+                        str(temp_output),
+                        acodec="aac",
+                        **{"qscale:a": 3}  # VBR quality setting
+                    )
+                    .run(
+                        capture_stdout=True,
+                        capture_stderr=True,
+                        overwrite_output=True,
+                        quiet=True
+                    )
+                )
+
+            # ✅ Conversion succeeded — now replace safely
+            audio_path.unlink()  # remove original
+            os.replace(temp_output, output_path)
+
+            logger.info(f"Audio file saved to: {output_path}")
+
+        except Exception as e:
+            stderr = getattr(e, "stderr", None)
+            logger.exception(
+                f"Error during ffmpeg audio conversion: {stderr.decode() if stderr else e}"
+            )
+
+            # Clean up temp file if conversion failed
+            if temp_output.exists():
+                temp_output.unlink()
+
+            logger.info("Keeping original audio file.")
+            raise
