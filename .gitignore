@@ -209,3 +209,4 @@ __marimo__/
 #Test outputs and config
 temp_test_download/
 config/
+.batch_fix/

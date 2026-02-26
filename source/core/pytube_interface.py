@@ -324,6 +324,16 @@ class YouTubeDownloader:
         base_filename: str = self._sanitize_filename(video_obj.title)
         video_title = video_obj.title
         video_url = video_obj.watch_url
+
+        # Efficiency safeguard: skip download if target file already exists
+        if options.audio_only:
+            ext = '.mp3' if options.audio_mp3 else '.m4a'
+        else:
+            ext = '.mp4'
+        target_file = Path(download_dir) / f"{base_filename}{ext}"
+        if target_file.exists():
+            logger.info(f'⏭ Skipping (already exists): {video_title} -> {target_file.name}')
+            return DownloadResult(success=True, errors=[], video_title=video_title, video_url=video_url)
         
         logger.info(f'Downloading {"soundtrack" if options.audio_only else "video"}: {video_title}')
         
