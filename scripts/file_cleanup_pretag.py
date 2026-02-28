@@ -1,17 +1,44 @@
 import os
 import re
 import csv
+import json
+import shutil
+import time
+import difflib
+import argparse
 from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4
+from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TPE1, TALB, TRCK
+try:
+    import musicbrainzngs
+    _MB_AVAILABLE = True
+except ImportError:
+    _MB_AVAILABLE = False
 
 CONFIDENCE_THRESHOLD = 85
 AUDIO_EXTENSIONS = (".mp3", ".m4a")
 
+# MusicBrainz enrichment settings
+MB_APP_NAME = "file_cleanup_pretag"
+MB_APP_VERSION = "1.0"
+MB_CONTACT = "github.com/ThatOwl"
+MB_MIN_SCORE = 75        # Minimum MB API score (0-100) to accept a result
+MB_TITLE_MIN_SIM = 0.75  # Minimum fuzzy title similarity to accept a result (raised from 0.60 to reduce false positives)
+MB_REQUEST_DELAY = 1.1   # Seconds between MB requests (rate limit is 1/sec)
+
+# Genre/category folder names that should NOT be treated as artist names
+GENRE_FOLDERS = {
+    "filmmusik", "serienmusik", "spielemusik", "musik", "music",
+    "soundtracks", "soundtrack", "loose", "various", "various artists",
+    "compilations", "downloads", "unsorted", "misc", "other",
+}
+
 JUNK_PATTERNS = [
+    r"^\d{4}(?:_\d{2}){0,2}_",
     r"\(Official.*?\)",
     r"\(Full Album.*?\)",
-    r"FULL ALBUM",
-    r"\(Soundtrack.*?\)",
+    r"Full Album",
+    r"\(.*?Soundtrack.*?\)",
     r"\(.*?Trailer.*?\)",
     r"\(\d+\)$",
     r"\(Remastered.*?\)",
@@ -19,9 +46,16 @@ JUNK_PATTERNS = [
     r"\(Stereo.*?\)",
     r"\(Live.*?\)",
     r"\(HD.*?\)",
+    r"\(debut.*?\)",
     r"\(Audio.*?\)",
     r"\(Video.*?\)",
     r"\(.*?Version.*?\)",
+    r"\(.*?Remix.*?\)",
+    r"\(.*?Music\)",
+    r"\[.*?\]",
+    r"\blyrics?\b",
+    r"\.wmv$",
+    r"\bHQ\b",
 ]
 
 ALLOWED_CHARS = r"[^a-zA-Z0-9äöüÄÖÜß&'\-\. ]"
@@ -29,9 +63,164 @@ ALLOWED_CHARS = r"[^a-zA-Z0-9äöüÄÖÜß&'\-\. ]"
 def clean_string(text):
     for pattern in JUNK_PATTERNS:
         text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+    text = text.replace("_", " ")
     text = re.sub(ALLOWED_CHARS, "", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def clean_folder_album(text):
+    """Clean album text extracted from folder name."""
+    # Strip date prefix: "2008_KungFu" → "KungFu", "2026_02_Name" → "Name"
+    text = re.sub(r"^\d{4}(?:_\d{2}){0,2}_", "", text)
+    text = text.replace("_", " ")
+    text = re.sub(r"\(Full Album.*?\)", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"Full Album", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\+\s*Vid[ée]o", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\(Expanded Edition.*?\)", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\(Original Motion Picture Soundtrack\)", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\(Original Game Soundtrack.*?\)", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\(Soundtrack\)", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*-?\s*Album\s*Playlist\s*$", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*-\s*Full\s*$", "", text, flags=re.IGNORECASE)
+    # Only strip standalone "Soundtrack" / "Ost" when it's the ENTIRE text
+    text = re.sub(r"^\s*Soundtrack\s*$", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"^\s*Ost\s*$", "", text, flags=re.IGNORECASE)
+    text = re.sub(ALLOWED_CHARS, "", text)
+    text = re.sub(r"[\s\-]+$", "", text)  # Strip trailing dashes/whitespace
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _strip_artist_from_title(title, artist):
+    """Remove artist name from the beginning/end of the title if present."""
+    if not artist or not title:
+        return title
+    a = artist.lower().strip()
+    t = title.strip()
+    t_lower = t.lower()
+    # Strip from beginning: "Ray Charles Moonlight" → "Moonlight"
+    if t_lower.startswith(a) and len(t) > len(a):
+        after = t[len(a):]
+        stripped = re.sub(r"^[\s\-]+", "", after).strip()
+        if stripped:
+            return stripped
+    # Strip from end: "Moonlight Ray Charles" → "Moonlight"
+    if t_lower.endswith(a) and len(t) > len(a):
+        before = t[: len(t) - len(a)]
+        stripped = re.sub(r"[\s\-]+$", "", before).strip()
+        if stripped:
+            return stripped
+    return title
+
+
+def _find_dash_outside_parens(text):
+    """Return index of first ' - ' NOT inside parentheses, or -1."""
+    depth = 0
+    i = 0
+    while i < len(text) - 2:
+        if text[i] == '(':
+            depth += 1
+        elif text[i] == ')':
+            depth = max(0, depth - 1)
+        elif text[i:i + 3] == ' - ' and depth == 0:
+            return i
+        i += 1
+    return -1
+
+
+def parse_folder_name(raw_folder_name):
+    """Parse raw folder name into artist and album components.
+
+    Works on the raw name BEFORE character cleaning so that special
+    separators (em-dash, special unicode chars) are still available.
+    """
+    raw = raw_folder_name.strip()
+
+    # Strip date prefix: "2026_02_Rammstein" or "2008_KungFu" or "2020_01_28_X"
+    m = re.match(r"^\d{4}(?:_\d{2}){0,2}_(.+)$", raw)
+    if m:
+        raw = m.group(1).strip()
+
+    # 1. Em-dash separator: "Artist – Album"
+    for sep in [" – ", " — "]:
+        if sep in raw:
+            parts = raw.split(sep, 1)
+            artist_raw = parts[0].strip()
+            album_raw = parts[1].strip()
+            artist_clean = clean_string(artist_raw)
+            # Handle "Ray Charles, The Very Best Of" → strip artist repetition
+            m_prefix = re.match(
+                re.escape(artist_clean) + r"\s*,\s*",
+                album_raw,
+                re.IGNORECASE,
+            )
+            if m_prefix:
+                album_raw = album_raw[m_prefix.end():]
+            album = clean_folder_album(album_raw)
+            return {"artist": artist_clean, "album": album}
+
+    # 2. Dash separator (only outside parentheses): "Artist - Album (junk)"
+    dash_pos = _find_dash_outside_parens(raw)
+    if dash_pos >= 0:
+        left = raw[:dash_pos].strip()
+        right = raw[dash_pos + 3:].strip()
+        # If right side is just a year, treat left as album (no artist)
+        if re.match(r"^\d{4}$", right):
+            return {"artist": "", "album": clean_string(left)}
+        # If right side is just "Soundtrack" / "OST", album = left side
+        if re.match(
+            r"^(Soundtrack|OST|Ost|SoundTrack)$", right, re.IGNORECASE
+        ):
+            return {"artist": "", "album": clean_string(left)}
+        artist = clean_string(left)
+        album = clean_folder_album(right)
+        return {"artist": artist, "album": album}
+
+    # 3. Special character separators (⌛, ♫, etc.)
+    m = re.match(r"(.+?)\s*[⌛🎵🎶♫♪]\s*(.+)", raw)
+    if m:
+        artist = clean_string(m.group(1).strip())
+        album = clean_folder_album(m.group(2).strip())
+        return {"artist": artist, "album": album}
+
+    # 4. "Artist (album info, year)" pattern
+    m = re.match(r"^(.+?)\s*\((.+)\)\s*$", raw)
+    if m:
+        artist = clean_string(m.group(1).strip())
+        info = m.group(2).strip()
+        # Strip common suffixes inside parentheses
+        info = re.sub(r"\s*-\s*Full\s*$", "", info, flags=re.IGNORECASE)
+        album = re.sub(r",?\s*\d{4}\s*", "", info).strip().rstrip(",").strip()
+        if (
+            re.match(
+                r"^(full\s*album|soundtrack|re-?release|reissue|remaster(ed)?)$",
+                album,
+                re.IGNORECASE,
+            )
+            or not album
+        ):
+            album = ""
+        else:
+            album = clean_string(album)
+        return {"artist": artist, "album": album}
+
+    # 5. "Something Full Album" suffix → album only, no clear artist
+    stripped = re.sub(
+        r"\s+Full\s+Album\s*$", "", raw, flags=re.IGNORECASE
+    ).strip()
+    if stripped != raw:
+        return {"artist": "", "album": clean_string(stripped)}
+
+    # 6. "Something Soundtrack/OST" suffix → album, not artist
+    stripped = re.sub(
+        r"\s+(Soundtrack|OST|Ost|SoundTrack)\s*$", "", raw, flags=re.IGNORECASE
+    ).strip()
+    if stripped != raw:
+        return {"artist": "", "album": clean_string(raw)}
+
+    # 7. Fallback: treat as artist only
+    return {"artist": clean_string(raw), "album": ""}
 
 def read_tags(path):
     try:
@@ -53,52 +242,131 @@ def strong_tags(title, artist):
 def weak_tags(title, artist):
     return bool(title) and not artist
 
-def parse_filename(filename, folder_artist=None):
+def _matches_artist(text, folder_artist):
+    """Check if text matches (or starts with) the known folder artist."""
+    t = text.lower().strip()
+    fa = folder_artist.lower().strip()
+    if t == fa:
+        return True
+    if t.startswith(fa) and len(t) > len(fa) and not t[len(fa)].isalpha():
+        return True
+    return False
+
+
+def parse_filename(filename, folder_artist=None, folder_album=None):
     name = os.path.splitext(filename)[0]
     cleaned = clean_string(name)
 
-    # 1️⃣ Track Artist - Title
-    m = re.match(r"(\d+)[\.\- ]+(.+?) - (.+)", cleaned)
+    # 1. Track + Artist - Title: "03 Hans Zimmer - Dragon Racing"
+    m = re.match(r"(\d+)[\.\ - ]+(.+?) - (.+)", cleaned)
     if m:
+        track = m.group(1)
+        artist = m.group(2)
+        title = m.group(3)
+        # Detect reversal: title side matches folder artist
+        if folder_artist and _matches_artist(title, folder_artist):
+            artist, title = title, artist
         return {
-            "track": m.group(1),
-            "artist": m.group(2),
-            "title": m.group(3),
-            "confidence": 95
+            "track": track,
+            "artist": artist,
+            "title": title,
+            "album": folder_album or "",
+            "confidence": 95,
         }
 
-    # 2️⃣ Artist - Title
+    # 2. Artist - Title (with reversal detection)
     m = re.match(r"(.+?) - (.+)", cleaned)
     if m:
+        left = m.group(1).strip()
+        right = m.group(2).strip()
+        if folder_artist and _matches_artist(right, folder_artist):
+            # Reversed: "Title - Artist" or "Title - Artist and collaborators"
+            use_artist = (
+                right if right.lower() != folder_artist.lower() else folder_artist
+            )
+            return {
+                "track": "",
+                "artist": use_artist,
+                "title": left,
+                "album": folder_album or "",
+                "confidence": 90,
+            }
         return {
             "track": "",
-            "artist": m.group(1),
-            "title": m.group(2),
-            "confidence": 90
+            "artist": left,
+            "title": right,
+            "album": folder_album or "",
+            "confidence": 90,
         }
 
-    # 3️⃣ Track Title
-    m = re.match(r"(\d+)[\.\- ]+(.+)", cleaned)
-    if m and folder_artist:
+    # 3. Track + Title (folder provides artist, or at least album)
+    m = re.match(r"(\d+)[\.\ - ]+(.+)", cleaned)
+    if m and (folder_artist or folder_album):
         return {
             "track": m.group(1),
-            "artist": folder_artist,
+            "artist": folder_artist or "",
             "title": m.group(2),
-            "confidence": 85
+            "album": folder_album or "",
+            "confidence": 85 if folder_artist else 60,
         }
 
-    # 4️⃣ Title only
+    # 4. Filename starts with known artist name (no separator)
+    #    e.g. "ray charles see see rider" → title = "see see rider"
+    if folder_artist and len(cleaned) > len(folder_artist):
+        fa_lower = folder_artist.lower()
+        cl_lower = cleaned.lower()
+        if cl_lower.startswith(fa_lower) and not cl_lower[len(fa_lower)].isalpha():
+            remainder = cleaned[len(folder_artist):].strip()
+            remainder = re.sub(r"^[\-\s]+", "", remainder).strip()
+            if remainder:
+                return {
+                    "track": "",
+                    "artist": folder_artist,
+                    "title": remainder,
+                    "album": folder_album or "",
+                    "confidence": 85,
+                }
+
+    # 5. "Title by Artist" pattern
     if folder_artist:
+        m = re.match(
+            r"(.+?)\s+by\s+" + re.escape(folder_artist) + r"\s*$",
+            cleaned,
+            re.IGNORECASE,
+        )
+        if m:
+            return {
+                "track": "",
+                "artist": folder_artist,
+                "title": m.group(1),
+                "album": folder_album or "",
+                "confidence": 85,
+            }
+
+    # 6. Title only (folder provides artist)
+    if folder_artist:
+        conf = 85 if folder_album else 70
         return {
             "track": "",
             "artist": folder_artist,
             "title": cleaned,
-            "confidence": 70
+            "album": folder_album or "",
+            "confidence": conf,
+        }
+
+    # 7. Title only (folder provides album but no artist)
+    if folder_album:
+        return {
+            "track": "",
+            "artist": "",
+            "title": cleaned,
+            "album": folder_album,
+            "confidence": 60,
         }
 
     return None
 
-def analyze_directory(root_path):
+def analyze_directory(root_path, out_dir="./.batch_fix"):
     unmatched_files = []
     unmatched_dirs = []
     report_rows = []
@@ -108,8 +376,34 @@ def analyze_directory(root_path):
         if not audio_files:
             continue
 
-        folder_artist = os.path.basename(root)
-        folder_artist = clean_string(folder_artist)
+        folder_info = parse_folder_name(os.path.basename(root))
+        folder_artist = folder_info["artist"]
+        folder_album = folder_info["album"]
+
+        # Nested folder support: Genre/Album/tracks or Artist/Album/tracks
+        # If immediate folder has no album, check grandparent for context
+        parent_dir = os.path.dirname(root)
+        if parent_dir != root_path and parent_dir != root:
+            grandparent_name = os.path.basename(parent_dir)
+            if grandparent_name and grandparent_name != os.path.basename(root_path):
+                gp_clean = clean_string(grandparent_name).lower()
+                is_genre = gp_clean in GENRE_FOLDERS
+
+                if is_genre and not folder_album:
+                    # Grandparent is a genre category, not an artist.
+                    # Treat immediate folder as album, artist from filename.
+                    folder_album = clean_folder_album(
+                        os.path.basename(root)
+                    )
+                    folder_artist = ""
+                elif not is_genre:
+                    gp_info = parse_folder_name(grandparent_name)
+                    if gp_info["artist"] and not folder_album:
+                        # Grandparent is artist, immediate folder is album
+                        folder_artist = gp_info["artist"]
+                        folder_album = clean_folder_album(
+                            os.path.basename(root)
+                        )
 
         dir_unmatched = 0
 
@@ -120,19 +414,25 @@ def analyze_directory(root_path):
             if strong_tags(title, artist):
                 continue
 
-            result = parse_filename(file, folder_artist)
+            result = parse_filename(file, folder_artist, folder_album)
 
             if not result:
                 unmatched_files.append(full_path)
                 dir_unmatched += 1
                 continue
 
+            # Post-processing: strip artist name from title if embedded
+            result["title"] = _strip_artist_from_title(
+                result["title"], result["artist"]
+            )
+
             report_rows.append([
                 full_path,
                 result["artist"],
                 result["title"],
                 result["track"],
-                result["confidence"]
+                result["album"],
+                result["confidence"],
             ])
 
             if result["confidence"] < CONFIDENCE_THRESHOLD:
@@ -143,23 +443,665 @@ def analyze_directory(root_path):
             unmatched_dirs.append(root)
 
     # Write reports
-    with open("./.batch_fix/dry_run_report.csv", "w", newline="", encoding="utf-8") as f:
+    os.makedirs(out_dir, exist_ok=True)
+    with open(os.path.join(out_dir, "dry_run_report.csv"), "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["Path", "Artist", "Title", "Track", "Confidence"])
+        writer.writerow(["Path", "Artist", "Title", "Track", "Album", "Confidence"])
         writer.writerows(report_rows)
 
-    with open("./.batch_fix/unmatched_files.txt", "w", encoding="utf-8") as f:
+    with open(os.path.join(out_dir, "unmatched_files.txt"), "w", encoding="utf-8") as f:
         for u in unmatched_files:
             f.write(u + "\n")
 
-    with open("./.batch_fix/unmatched_directories.txt", "w", encoding="utf-8") as f:
+    with open(os.path.join(out_dir, "unmatched_directories.txt"), "w", encoding="utf-8") as f:
         for d in unmatched_dirs:
             f.write(d + "\n")
 
-    print("Dry run complete.")
-    print(f"Proposed matches: {len(report_rows)}")
-    print(f"Unmatched files: {len(unmatched_files)}")
-    print(f"Unmatched directories: {len(unmatched_dirs)}")
+    print(f"  Proposed matches     : {len(report_rows)}")
+    print(f"  Unmatched files      : {len(unmatched_files)}")
+    print(f"  Unmatched directories: {len(unmatched_dirs)}")
+
+    return report_rows, unmatched_files, unmatched_dirs
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — safe write (tag copies)
+# ---------------------------------------------------------------------------
+
+def _backup_tags_raw(path):
+    """Read all existing tags from a file. Returns a serialisable dict."""
+    try:
+        if path.lower().endswith(".mp3"):
+            try:
+                tags = ID3(path)
+                return {k: str(v) for k, v in tags.items()}
+            except ID3NoHeaderError:
+                return {}
+        else:
+            audio = MP4(path)
+            if not audio.tags:
+                return {}
+            out = {}
+            for k, v in audio.tags.items():
+                try:
+                    out[k] = [str(x) for x in v] if isinstance(v, list) else str(v)
+                except Exception:
+                    out[k] = repr(v)
+            return out
+    except Exception:
+        return {}
+
+
+def _get_tag_field(backup, *keys):
+    """Extract the first non-empty value from a tag backup dict, trying each key."""
+    for k in keys:
+        v = backup.get(k, "")
+        if isinstance(v, list):
+            v = v[0] if v else ""
+        if v:
+            return str(v)
+    return ""
+
+
+def write_tags(path, artist="", title="", track="", album=""):
+    """Write ID3/MP4 tags to path. Only overwrites non-empty fields.
+
+    Returns True on success or an error string on failure.
+    """
+    try:
+        if path.lower().endswith(".mp3"):
+            try:
+                tags = ID3(path)
+            except ID3NoHeaderError:
+                tags = ID3()  # creates a new tag
+            if title:
+                tags["TIT2"] = TIT2(encoding=3, text=title)
+            if artist:
+                tags["TPE1"] = TPE1(encoding=3, text=artist)
+            if album:
+                tags["TALB"] = TALB(encoding=3, text=album)
+            if track:
+                tags["TRCK"] = TRCK(encoding=3, text=str(track))
+            tags.save(path)
+        else:  # .m4a / MP4
+            audio = MP4(path)
+            if audio.tags is None:
+                audio.add_tags()
+            if title:
+                audio.tags["\xa9nam"] = [title]
+            if artist:
+                audio.tags["\xa9ART"] = [artist]
+            if album:
+                audio.tags["\xa9alb"] = [album]
+            if track:
+                try:
+                    trk_num = int(str(track).split("/")[0])
+                    audio.tags["trkn"] = [(trk_num, 0)]
+                except (ValueError, TypeError):
+                    pass
+            audio.save()
+        return True
+    except Exception as exc:
+        return str(exc)
+
+
+def write_tags_to_copies(
+    csv_in,
+    target_dir,
+    min_confidence=None,
+    prefer_mb=True,
+    mb_only=False,
+    log_dir=None,
+):
+    """Phase 2 – copy qualifying files to target_dir and write tags.
+
+    Args:
+        csv_in:         CSV produced by analyze_directory or enrich_with_musicbrainz.
+        target_dir:     Root directory for tagged copies. Source paths are mirrored
+                        under target_dir (leading '/' stripped, so
+                        /mnt/d/Musik/Foo/bar.mp3 → target_dir/mnt/d/Musik/Foo/bar.mp3).
+        min_confidence: Only process rows with Confidence >= this value.
+                        Defaults to CONFIDENCE_THRESHOLD.
+        prefer_mb:      If the CSV has MB_* columns with a score, prefer those
+                        values; fall back to rule-based fields if MB fields are empty.
+        mb_only:        If True, skip any row where MusicBrainz did not return a
+                        match (MB_Score is empty). Implies the CSV must have MB_*
+                        columns (run --enrich / --enrich-all first).
+        log_dir:        Where to write write_log.csv and tag_backup.json.
+                        Defaults to the directory that contains csv_in.
+    """
+    if min_confidence is None:
+        min_confidence = CONFIDENCE_THRESHOLD
+    if log_dir is None:
+        log_dir = os.path.dirname(os.path.abspath(csv_in))
+
+    with open(csv_in, encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+
+    if not rows:
+        print("Phase 2: CSV is empty, nothing to do.")
+        return
+
+    has_mb = "MB_Score" in rows[0]
+
+    if mb_only:
+        # MB match IS the quality gate — bypass confidence threshold entirely
+        if not has_mb:
+            print("[Phase 2] --mb-only requested but CSV has no MB_Score column.")
+            print("  Run --enrich or --enrich-all first to add MB columns.")
+            return
+        qualifying = [r for r in rows if r.get("MB_Score")]
+        skipped_conf = 0
+        skipped_no_mb = len(rows) - len(qualifying)
+    else:
+        qualifying = [r for r in rows if int(r["Confidence"]) >= min_confidence]
+        skipped_conf = len(rows) - len(qualifying)
+        skipped_no_mb = 0
+
+    print(f"\n{'='*60}")
+    print(f"Phase 2 — safe write to copies")
+    print(f"  CSV            : {csv_in}")
+    print(f"  Target dir     : {target_dir}")
+    print(f"  Min confidence : {min_confidence}")
+    print(f"  Qualifying     : {len(qualifying)}  (skipped {skipped_conf} below threshold, {skipped_no_mb} no MB match)")
+    print(f"  MB columns     : {'yes, prefer_mb=True' if has_mb and prefer_mb else 'no / prefer_mb=False'}")
+    print(f"  MB-only mode   : {'yes — only files with a MB match will be copied' if mb_only else 'no'}")
+    print(f"{'='*60}")
+
+    os.makedirs(target_dir, exist_ok=True)
+    os.makedirs(log_dir, exist_ok=True)
+
+    LOG_FIELDS = [
+        "Source", "Dest", "Confidence",
+        "Artist_written", "Title_written", "Track_written", "Album_written",
+        "Artist_before",  "Title_before",  "Album_before",
+        "Status",
+    ]
+    log_rows = []
+    tag_backups = {}
+    ok = errors = 0
+
+    for i, row in enumerate(qualifying, 1):
+        src = row["Path"]
+        if not os.path.isfile(src):
+            print(f"  [{i}/{len(qualifying)}] MISSING: {src}")
+            log_rows.append({
+                "Source": src, "Dest": "", "Confidence": row["Confidence"],
+                "Artist_written": "", "Title_written": "",
+                "Track_written": "",  "Album_written": "",
+                "Artist_before": "",  "Title_before": "",  "Album_before": "",
+                "Status": "ERROR: source not found",
+            })
+            errors += 1
+            continue
+
+        # Mirror path under target_dir (strip leading /)
+        rel = src.lstrip("/")
+        dest = os.path.join(target_dir, rel)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+
+        # Copy source → dest (always overwrite; we own the target dir)
+        shutil.copy2(src, dest)
+
+        # Backup destination tags (from the fresh copy)
+        backup = _backup_tags_raw(dest)
+        tag_backups[dest] = backup
+
+        # Resolve which field values to write
+        if has_mb and prefer_mb and row.get("MB_Score"):
+            artist = row.get("MB_Artist") or row["Artist"]
+            title  = row.get("MB_Title")  or row["Title"]
+            album  = row.get("MB_Album")  or row["Album"]
+        else:
+            artist = row["Artist"]
+            title  = row["Title"]
+            album  = row["Album"]
+        track = row["Track"]
+
+        result = write_tags(dest, artist=artist, title=title,
+                            track=track, album=album)
+        if result is True:
+            status = "ok"
+            ok += 1
+        else:
+            status = f"ERROR: {result}"
+            errors += 1
+
+        if i % 50 == 0 or i == len(qualifying):
+            print(f"  [{i}/{len(qualifying)}] ok={ok} errors={errors}")
+
+        log_rows.append({
+            "Source":         src,
+            "Dest":           dest,
+            "Confidence":     row["Confidence"],
+            "Artist_written": artist,
+            "Title_written":  title,
+            "Track_written":  track,
+            "Album_written":  album,
+            "Artist_before":  _get_tag_field(backup, "TPE1", "\xa9ART"),
+            "Title_before":   _get_tag_field(backup, "TIT2", "\xa9nam"),
+            "Album_before":   _get_tag_field(backup, "TALB", "\xa9alb"),
+            "Status":         status,
+        })
+
+    # Write backup JSON
+    backup_path = os.path.join(log_dir, "tag_backup.json")
+    with open(backup_path, "w", encoding="utf-8") as f:
+        json.dump(tag_backups, f, indent=2, ensure_ascii=False, default=str)
+
+    # Write log CSV
+    log_csv = os.path.join(log_dir, "write_log.csv")
+    with open(log_csv, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=LOG_FIELDS)
+        writer.writeheader()
+        writer.writerows(log_rows)
+
+    print(f"\n  Written OK : {ok}")
+    print(f"  Errors     : {errors}")
+    print(f"  Write log  : {log_csv}")
+    print(f"  Tag backup : {backup_path}")
+    print(f"{'='*60}")
+
+
+# ---------------------------------------------------------------------------
+# MusicBrainz enrichment phase
+# ---------------------------------------------------------------------------
+
+def _similarity(a, b):
+    """Return fuzzy similarity ratio (0-1) between two strings."""
+    a = re.sub(r"\s+", " ", a.lower().strip())
+    b = re.sub(r"\s+", " ", b.lower().strip())
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def _normalise_mb_text(text):
+    """Normalise MB response text: fix non-standard hyphens, strip extra spaces."""
+    if not text:
+        return ""
+    # MB sometimes uses Unicode hyphens (‐ U+2010, – U+2013, — U+2014)
+    text = text.replace("\u2010", "-").replace("\u2013", "-").replace("\u2014", "-")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _clean_title_for_mb(title):
+    """Strip YouTube/streaming suffix junk from title before sending to MB.
+
+    clean_string handles parenthesised junk; this handles bare suffixes.
+    """
+    patterns = [
+        # "Official Music Video", "Official Audio", "Official Lyric Video", etc.
+        r"\s+Official\s+(?:Music\s+)?(?:Video|Audio|Lyric\s+Video|Visualizer).*$",
+        # "Video Remastered", "Video Winner", etc.
+        r"\s+Video\s+\w.*$",
+        # "LYRICS Video" (LYRICS already stripped by clean_string; catch Video)
+        r"\s+Video\b.*$",
+        # "Remastered In 1080p", "Remastered 2009" type suffixes
+        r"\s+Remaster(?:ed)?\b.*$",
+        # "4K", "HD", "HQ" standalone at end
+        r"\s+(?:4K|HD|HQ)\b.*$",
+        # Resolution markers: "1080p", "720p"
+        r"\s+\d{3,4}p\b.*$",
+        # "Dir. SomeProduction"
+        r"\s+[Dd]ir\.\s+.*$",
+        # "ft. @Handle" or featuring tags
+        r"\s+ft\.\s+@\S+.*$",
+        # "on The Ed Sullivan Show", "from The Concert in Central Park"
+        r"\s+(?:on|from)\s+[Tt]he\s+.+$",
+        # Trailing year + format: "1968 VINYL LP", "2009 Album"
+        r"\s+\d{4}\s+(?:VINYL|LP|Album|EP|Stereo|Mono)\b.*$",
+        # Bare year at end: " - 1968" or "  1968"
+        r"\s+[-–]\s+\d{4}\s*$",
+        # Episode references that crept in
+        r"\s+Episode\s+\d.*$",
+    ]
+    t = title
+    for pat in patterns:
+        t = re.sub(pat, "", t, flags=re.IGNORECASE)
+    return t.strip()
+
+
+def lookup_musicbrainz(artist, title, album=""):
+    """Query MusicBrainz for a single recording.
+
+    Returns a dict with keys {artist, title, album, mb_score} on success,
+    or None if no sufficiently confident match was found.
+
+    Strategy (most to least specific):
+      1. cleaned_title + artist [+ album if non-generic]
+      2. cleaned_title + artist  (drop album)
+      3. cleaned_title only      (relaxed — drops artist guard)
+    The fuzzy title-similarity check guards against false positives.
+    """
+    if not _MB_AVAILABLE:
+        return None
+
+    clean_title = _clean_title_for_mb(title)
+    if not clean_title:
+        return None
+
+    # Generic/noisy album labels that add no value to the query
+    _generic_albums = {"various artists", "various", "best of", "greatest hits",
+                       "compilation", "playlist", "mix", ""}
+
+    use_album = (
+        album
+        and album.lower().strip() not in _generic_albums
+        and len(album) > 3
+    )
+
+    def _run(recording, artist_kw=None, release_kw=None):
+        """Call MB search_recordings with keyword args and return recording list."""
+        kwargs = {"limit": 5}
+        if recording:
+            kwargs["recording"] = recording
+        if artist_kw:
+            kwargs["artist"] = artist_kw
+        if release_kw:
+            kwargs["release"] = release_kw
+        try:
+            time.sleep(MB_REQUEST_DELAY)
+            result = musicbrainzngs.search_recordings(**kwargs)
+            return result.get("recording-list", [])
+        except Exception as exc:
+            print(f"    [MB] Error: {exc}")
+            return []
+
+    def _pick(recordings):
+        """Return the first recording that passes score and similarity checks."""
+        for rec in recordings:
+            mb_score = int(rec.get("ext:score", 0))
+            if mb_score < MB_MIN_SCORE:
+                break
+            mb_title  = _normalise_mb_text(rec.get("title", ""))
+            mb_artist = _normalise_mb_text(rec.get("artist-credit-phrase", ""))
+            releases  = rec.get("release-list", [])
+            mb_album  = _normalise_mb_text(releases[0].get("title", "") if releases else "")
+            sim = _similarity(clean_title, mb_title)
+            if sim >= MB_TITLE_MIN_SIM:
+                return {"artist": mb_artist, "title": mb_title,
+                        "album": mb_album, "mb_score": mb_score}
+        return None
+
+    # Attempt 1: title + artist + album (when album is meaningful)
+    if artist and use_album:
+        hit = _pick(_run(clean_title, artist_kw=artist, release_kw=album))
+        if hit:
+            return hit
+
+    # Attempt 2: title + artist
+    if artist:
+        hit = _pick(_run(clean_title, artist_kw=artist))
+        if hit:
+            return hit
+
+    # Attempt 3: title only (accept higher false-positive risk; require sim >= 0.75)
+    recs = _run(clean_title)
+    for rec in recs:
+        mb_score = int(rec.get("ext:score", 0))
+        if mb_score < MB_MIN_SCORE:
+            break
+        mb_title  = _normalise_mb_text(rec.get("title", ""))
+        mb_artist = _normalise_mb_text(rec.get("artist-credit-phrase", ""))
+        releases  = rec.get("release-list", [])
+        mb_album  = _normalise_mb_text(releases[0].get("title", "") if releases else "")
+        sim = _similarity(clean_title, mb_title)
+        if sim >= 0.75:   # stricter without artist anchor
+            return {"artist": mb_artist, "title": mb_title,
+                    "album": mb_album, "mb_score": mb_score}
+
+    return None
+
+
+def enrich_with_musicbrainz(csv_in, csv_out, confidence_ceiling=None):
+    """Read dry_run_report.csv, query MusicBrainz for qualifying entries,
+    and write mb_enriched_report.csv with added columns.
+
+    Args:
+        csv_in:  Path to the existing dry-run CSV.
+        csv_out: Path for the enriched output CSV.
+        confidence_ceiling: Only enrich entries with Confidence *strictly below*
+                            this value. None = enrich ALL entries.
+    """
+    if not _MB_AVAILABLE:
+        print("musicbrainzngs not installed. Run: pip install musicbrainzngs")
+        return
+
+    musicbrainzngs.set_useragent(MB_APP_NAME, MB_APP_VERSION, MB_CONTACT)
+
+    with open(csv_in, encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+
+    fieldnames = [
+        "Path", "Artist", "Title", "Track", "Album", "Confidence",
+        "MB_Artist", "MB_Title", "MB_Album", "MB_Score",
+    ]
+
+    if confidence_ceiling is None:
+        targets_idx = set(range(len(rows)))
+    else:
+        targets_idx = {i for i, r in enumerate(rows) if int(r["Confidence"]) < confidence_ceiling}
+
+    print(f"\nMusicBrainz enrichment: {len(targets_idx)} entries to query"
+          f" (ceiling={confidence_ceiling})")
+
+    out_rows = []
+    matched = 0
+    queried = 0
+
+    for i, row in enumerate(rows):
+        mb_artist = mb_title = mb_album = mb_score_val = ""
+
+        if i in targets_idx:
+            artist = row["Artist"].strip()
+            title = row["Title"].strip()
+            album = row["Album"].strip()
+            queried += 1
+
+            print(f"  [{queried}/{len(targets_idx)}] {os.path.basename(row['Path'])[:55]}")
+
+            match = lookup_musicbrainz(artist, title, album)
+
+            if match:
+                mb_artist = match["artist"]
+                mb_title  = match["title"]
+                mb_album  = match["album"]
+                mb_score_val = str(match["mb_score"])
+                matched += 1
+                print(f"    + MB({mb_score_val}) {mb_artist!r} – {mb_title!r} / {mb_album!r}")
+            else:
+                print(f"    – no match")
+
+        out_rows.append({
+            "Path":       row["Path"],
+            "Artist":     row["Artist"],
+            "Title":      row["Title"],
+            "Track":      row["Track"],
+            "Album":      row["Album"],
+            "Confidence": row["Confidence"],
+            "MB_Artist":  mb_artist,
+            "MB_Title":   mb_title,
+            "MB_Album":   mb_album,
+            "MB_Score":   mb_score_val,
+        })
+
+    with open(csv_out, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(out_rows)
+
+    print(f"\nEnrichment complete: {matched}/{queried} resolved → {csv_out}")
+
 
 if __name__ == "__main__":
-    analyze_directory("/mnt/d/Program_Targets/MusicBrainz")
+    # -----------------------------------------------------------------------
+    # Confidence model reference:
+    #   95  – Track + Artist + Title all parsed from filename            (best)
+    #   90  – Artist - Title parsed from filename (incl. reversal)
+    #   85  – One of: Track+Title from file + artist from folder;
+    #                 Title from file + artist AND album from folder;
+    #                 Artist-prefix strip / "by Artist" in filename
+    #   70  – Title from file + artist from folder (no album context)   (skip)
+    #   60  – Track or Title from file + album from folder, no artist   (skip)
+    # Write threshold = 85: entries >= 85 are written; < 85 are candidates
+    # for MusicBrainz enrichment (--enrich) or manual review.
+    # -----------------------------------------------------------------------
+    parser = argparse.ArgumentParser(
+        description="Batch audio metadata cleanup pipeline"
+    )
+    parser.add_argument(
+        "roots",
+        nargs="*",
+        default=["/mnt/d/Program_Targets/MusicBrainz"],
+        metavar="ROOT",
+        help="One or more root directories to scan (default: /mnt/d/Program_Targets/MusicBrainz)",
+    )
+    parser.add_argument(
+        "--out-dir",
+        default="./.batch_fix",
+        metavar="DIR",
+        help="Base output directory (default: %(default)s). "
+             "When scanning >1 root, each gets its own subdirectory.",
+    )
+    parser.add_argument(
+        "--enrich",
+        action="store_true",
+        help="Run MusicBrainz enrichment on low-confidence results "
+             "(confidence < --conf-ceiling) after the dry run",
+    )
+    parser.add_argument(
+        "--enrich-all",
+        action="store_true",
+        help="Run MusicBrainz enrichment on ALL entries (not just low-confidence)",
+    )
+    parser.add_argument(
+        "--conf-ceiling",
+        type=int,
+        default=CONFIDENCE_THRESHOLD,
+        metavar="N",
+        help="Enrich entries with confidence strictly below N (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--dry-run-only",
+        action="store_true",
+        help="Skip enrichment even if --enrich is set (for testing)",
+    )
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Phase 2: copy qualifying files to --target and write tags",
+    )
+    parser.add_argument(
+        "--target",
+        default="/mnt/d/Program_Targets/TaggingTarget",
+        metavar="DIR",
+        help="Destination directory for tagged copies (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--from-csv",
+        default=None,
+        metavar="CSV",
+        help="Read this CSV for Phase 2 instead of the auto-generated one "
+             "(e.g. point at mb_enriched_report.csv)",
+    )
+    parser.add_argument(
+        "--no-prefer-mb",
+        action="store_true",
+        help="Do not prefer MB_* column values over rule-based ones in Phase 2",
+    )
+    parser.add_argument(
+        "--mb-only",
+        action="store_true",
+        help="Phase 2: only copy/tag files where MusicBrainz returned a match "
+             "(requires --enrich or --enrich-all to have been run first)",
+    )
+    args = parser.parse_args()
+
+    roots = args.roots
+    base_out = args.out_dir
+    multi = len(roots) > 1
+
+    combined_rows = []
+    combined_unmatched_files = []
+    combined_unmatched_dirs = []
+
+    for root_path in roots:
+        if not os.path.isdir(root_path):
+            print(f"[SKIP] Not a directory: {root_path}")
+            continue
+
+        label = os.path.basename(root_path.rstrip("/\\")) or root_path
+        out_dir = os.path.join(base_out, label) if multi else base_out
+
+        print(f"\n{'='*60}")
+        print(f"Scanning: {root_path}")
+        print(f"Output  : {out_dir}")
+        print(f"{'='*60}")
+
+        rows, uf, ud = analyze_directory(root_path, out_dir=out_dir)
+        combined_rows.extend(rows)
+        combined_unmatched_files.extend(uf)
+        combined_unmatched_dirs.extend(ud)
+
+    if multi:
+        # Write combined report to base output dir
+        os.makedirs(base_out, exist_ok=True)
+        combined_csv = os.path.join(base_out, "combined_report.csv")
+        with open(combined_csv, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Path", "Artist", "Title", "Track", "Album", "Confidence"])
+            writer.writerows(combined_rows)
+        print(f"\n{'='*60}")
+        print(f"COMBINED TOTALS")
+        print(f"  Roots scanned        : {len(roots)}")
+        print(f"  Total proposed       : {len(combined_rows)}")
+        print(f"  Total unmatched files: {len(combined_unmatched_files)}")
+        print(f"  Total unmatched dirs : {len(combined_unmatched_dirs)}")
+        if combined_rows:
+            from collections import Counter
+            dist = Counter(r[5] for r in combined_rows)
+            print("  Confidence breakdown :")
+            for conf in sorted(dist, reverse=True):
+                pct = dist[conf] / len(combined_rows) * 100
+                print(f"    {conf:>3}: {dist[conf]:>5} ({pct:.1f}%)")
+        print(f"  Combined CSV         : {combined_csv}")
+        print(f"{'='*60}")
+
+    run_enrich = (args.enrich or args.enrich_all) and not args.dry_run_only
+    if run_enrich:
+        csv_in = os.path.join(base_out, "combined_report.csv") if multi \
+                 else os.path.join(base_out, "dry_run_report.csv")
+        csv_out_path = os.path.join(base_out, "mb_enriched_report.csv")
+        if not _MB_AVAILABLE:
+            print("\nmusicbrainzngs not installed. Run: pip install musicbrainzngs")
+        else:
+            ceiling = None if args.enrich_all else args.conf_ceiling
+            enrich_with_musicbrainz(
+                csv_in=csv_in,
+                csv_out=csv_out_path,
+                confidence_ceiling=ceiling,
+            )
+
+    if args.write:
+        # Determine which CSV to read for Phase 2:
+        # 1. Explicit --from-csv  2. mb_enriched if it exists  3. combined/dry-run
+        if args.from_csv:
+            phase2_csv = args.from_csv
+        else:
+            enriched_csv = os.path.join(base_out, "mb_enriched_report.csv")
+            default_csv  = os.path.join(base_out, "combined_report.csv") if multi \
+                           else os.path.join(base_out, "dry_run_report.csv")
+            phase2_csv = enriched_csv if os.path.isfile(enriched_csv) else default_csv
+
+        if not os.path.isfile(phase2_csv):
+            print(f"\n[Phase 2] CSV not found: {phase2_csv}")
+            print("  Run a dry-run scan first (without --write) to generate it.")
+        else:
+            write_tags_to_copies(
+                csv_in=phase2_csv,
+                target_dir=args.target,
+                min_confidence=CONFIDENCE_THRESHOLD,
+                prefer_mb=not args.no_prefer_mb,
+                mb_only=args.mb_only,
+                log_dir=base_out,
+            )

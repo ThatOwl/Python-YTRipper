@@ -6,3 +6,6 @@ requests
 ffmpeg-python 
 urllib3 
 argcomplete
+# (Additional) Should be in separate file
+musicbrainzngs
+mutagen
