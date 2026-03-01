@@ -6,6 +6,7 @@ import shutil
 import time
 import difflib
 import argparse
+from collections import Counter, defaultdict
 from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4
 from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TPE1, TALB, TRCK
@@ -19,7 +20,7 @@ CONFIDENCE_THRESHOLD = 85
 AUDIO_EXTENSIONS = (".mp3", ".m4a")
 
 # MusicBrainz enrichment settings
-MB_APP_NAME = "file_cleanup_pretag"
+MB_APP_NAME = "python-autotagger"
 MB_APP_VERSION = "1.0"
 MB_CONTACT = "github.com/ThatOwl"
 MB_MIN_SCORE = 75        # Minimum MB API score (0-100) to accept a result
@@ -59,6 +60,18 @@ JUNK_PATTERNS = [
 ]
 
 ALLOWED_CHARS = r"[^a-zA-Z0-9äöüÄÖÜß&'\-\. ]"
+
+
+def _safe_label(text):
+    """Create a filesystem-safe label from folder names."""
+    label = re.sub(r"[^\w\-.]+", "_", text.strip())
+    label = re.sub(r"_+", "_", label).strip("._")
+    return label or "root"
+
+
+def _dated_prefix(root_name):
+    """Return YYYY_MM_DD_<root-name> prefix for report files."""
+    return f"{time.strftime('%Y_%m_%d')}_{_safe_label(root_name)}"
 
 def clean_string(text):
     for pattern in JUNK_PATTERNS:
@@ -253,6 +266,43 @@ def _matches_artist(text, folder_artist):
     return False
 
 
+def _normalise_compare_text(text):
+    """Normalise text for lightweight fuzzy contains checks."""
+    t = (text or "").lower().strip()
+    t = t.replace("&", " and ")
+    t = re.sub(r"[^a-z0-9\s]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def _looks_like_albumish_prefix(text, folder_album=""):
+    """Return True when left side of 'X - Title' looks like album/OST label.
+
+    Examples: "Starsector OST", "Subnautica Soundtrack", "Original Score".
+    """
+    left = _normalise_compare_text(text)
+    if not left:
+        return False
+
+    albumish_tokens = (
+        " ost",
+        " soundtrack",
+        " original soundtrack",
+        " score",
+        " original score",
+        " full ost",
+    )
+    if any(token in f" {left} " for token in albumish_tokens):
+        return True
+
+    album_norm = _normalise_compare_text(folder_album)
+    if album_norm:
+        if left in album_norm or album_norm in left:
+            return True
+
+    return False
+
+
 def parse_filename(filename, folder_artist=None, folder_album=None):
     name = os.path.splitext(filename)[0]
     cleaned = clean_string(name)
@@ -279,6 +329,18 @@ def parse_filename(filename, folder_artist=None, folder_album=None):
     if m:
         left = m.group(1).strip()
         right = m.group(2).strip()
+
+        # If left side is album-ish (e.g. "Starsector OST - Battle Ambience"),
+        # don't treat it as artist; trust folder artist and keep right as title.
+        if folder_artist and _looks_like_albumish_prefix(left, folder_album):
+            return {
+                "track": "",
+                "artist": folder_artist,
+                "title": right,
+                "album": folder_album or "",
+                "confidence": 85,
+            }
+
         if folder_artist and _matches_artist(right, folder_artist):
             # Reversed: "Title - Artist" or "Title - Artist and collaborators"
             use_artist = (
@@ -366,10 +428,14 @@ def parse_filename(filename, folder_artist=None, folder_album=None):
 
     return None
 
-def analyze_directory(root_path, out_dir="./.batch_fix"):
+def analyze_directory(root_path, out_dir="./.batch_fix", report_prefix=None):
     unmatched_files = []
     unmatched_dirs = []
     report_rows = []
+
+    if report_prefix is None:
+        root_label = os.path.basename(root_path.rstrip("/\\")) or "root"
+        report_prefix = _dated_prefix(root_label)
 
     for root, dirs, files in os.walk(root_path):
         audio_files = [f for f in files if f.lower().endswith(AUDIO_EXTENSIONS)]
@@ -444,24 +510,35 @@ def analyze_directory(root_path, out_dir="./.batch_fix"):
 
     # Write reports
     os.makedirs(out_dir, exist_ok=True)
-    with open(os.path.join(out_dir, "dry_run_report.csv"), "w", newline="", encoding="utf-8") as f:
+    dry_run_csv = os.path.join(out_dir, f"{report_prefix}_dry_run_report.csv")
+    unmatched_files_txt = os.path.join(out_dir, f"{report_prefix}_unmatched_files.txt")
+    unmatched_dirs_txt = os.path.join(out_dir, f"{report_prefix}_unmatched_directories.txt")
+
+    with open(dry_run_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["Path", "Artist", "Title", "Track", "Album", "Confidence"])
         writer.writerows(report_rows)
 
-    with open(os.path.join(out_dir, "unmatched_files.txt"), "w", encoding="utf-8") as f:
+    with open(unmatched_files_txt, "w", encoding="utf-8") as f:
         for u in unmatched_files:
             f.write(u + "\n")
 
-    with open(os.path.join(out_dir, "unmatched_directories.txt"), "w", encoding="utf-8") as f:
+    with open(unmatched_dirs_txt, "w", encoding="utf-8") as f:
         for d in unmatched_dirs:
             f.write(d + "\n")
 
     print(f"  Proposed matches     : {len(report_rows)}")
     print(f"  Unmatched files      : {len(unmatched_files)}")
     print(f"  Unmatched directories: {len(unmatched_dirs)}")
+    print(f"  Dry-run report       : {dry_run_csv}")
+    print(f"  Unmatched files list : {unmatched_files_txt}")
+    print(f"  Unmatched dirs list  : {unmatched_dirs_txt}")
 
-    return report_rows, unmatched_files, unmatched_dirs
+    return report_rows, unmatched_files, unmatched_dirs, {
+        "dry_run_csv": dry_run_csv,
+        "unmatched_files_txt": unmatched_files_txt,
+        "unmatched_dirs_txt": unmatched_dirs_txt,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -552,6 +629,7 @@ def write_tags_to_copies(
     prefer_mb=True,
     mb_only=False,
     log_dir=None,
+    report_prefix=None,
 ):
     """Phase 2 – copy qualifying files to target_dir and write tags.
 
@@ -567,13 +645,16 @@ def write_tags_to_copies(
         mb_only:        If True, skip any row where MusicBrainz did not return a
                         match (MB_Score is empty). Implies the CSV must have MB_*
                         columns (run --enrich / --enrich-all first).
-        log_dir:        Where to write write_log.csv and tag_backup.json.
+        log_dir:        Where to write <prefix>_write_log.csv and
+                <prefix>_tag_backup.json.
                         Defaults to the directory that contains csv_in.
     """
     if min_confidence is None:
         min_confidence = CONFIDENCE_THRESHOLD
     if log_dir is None:
         log_dir = os.path.dirname(os.path.abspath(csv_in))
+    if report_prefix is None:
+        report_prefix = _safe_label(os.path.splitext(os.path.basename(csv_in))[0])
 
     with open(csv_in, encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
@@ -685,12 +766,12 @@ def write_tags_to_copies(
         })
 
     # Write backup JSON
-    backup_path = os.path.join(log_dir, "tag_backup.json")
+    backup_path = os.path.join(log_dir, f"{report_prefix}_tag_backup.json")
     with open(backup_path, "w", encoding="utf-8") as f:
         json.dump(tag_backups, f, indent=2, ensure_ascii=False, default=str)
 
     # Write log CSV
-    log_csv = os.path.join(log_dir, "write_log.csv")
+    log_csv = os.path.join(log_dir, f"{report_prefix}_write_log.csv")
     with open(log_csv, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=LOG_FIELDS)
         writer.writeheader()
@@ -761,6 +842,35 @@ def _clean_title_for_mb(title):
     return t.strip()
 
 
+def _artist_query_candidates(artist):
+    """Return ordered artist query candidates for MB lookups.
+
+    Order is conservative:
+      1) full artist string
+      2) first side of "A & B"
+      3) second side of "A & B"
+    """
+    base = (artist or "").strip()
+    if not base:
+        return []
+
+    candidates = [base]
+    # Duo fallback: "Artist A & Artist B"
+    parts = [p.strip() for p in re.split(r"\s*&\s*", base) if p.strip()]
+    if len(parts) >= 2:
+        candidates.extend([parts[0], parts[1]])
+
+    # Preserve order while removing duplicates.
+    out = []
+    seen = set()
+    for cand in candidates:
+        key = _normalise_artist_key(cand)
+        if key and key not in seen:
+            out.append(cand)
+            seen.add(key)
+    return out
+
+
 def lookup_musicbrainz(artist, title, album=""):
     """Query MusicBrainz for a single recording.
 
@@ -789,6 +899,7 @@ def lookup_musicbrainz(artist, title, album=""):
         and album.lower().strip() not in _generic_albums
         and len(album) > 3
     )
+    artist_candidates = _artist_query_candidates(artist)
 
     def _run(recording, artist_kw=None, release_kw=None):
         """Call MB search_recordings with keyword args and return recording list."""
@@ -824,16 +935,18 @@ def lookup_musicbrainz(artist, title, album=""):
         return None
 
     # Attempt 1: title + artist + album (when album is meaningful)
-    if artist and use_album:
-        hit = _pick(_run(clean_title, artist_kw=artist, release_kw=album))
-        if hit:
-            return hit
+    if artist_candidates and use_album:
+        for artist_candidate in artist_candidates:
+            hit = _pick(_run(clean_title, artist_kw=artist_candidate, release_kw=album))
+            if hit:
+                return hit
 
     # Attempt 2: title + artist
-    if artist:
-        hit = _pick(_run(clean_title, artist_kw=artist))
-        if hit:
-            return hit
+    if artist_candidates:
+        for artist_candidate in artist_candidates:
+            hit = _pick(_run(clean_title, artist_kw=artist_candidate))
+            if hit:
+                return hit
 
     # Attempt 3: title only (accept higher false-positive risk; require sim >= 0.75)
     recs = _run(clean_title)
@@ -853,15 +966,102 @@ def lookup_musicbrainz(artist, title, album=""):
     return None
 
 
-def enrich_with_musicbrainz(csv_in, csv_out, confidence_ceiling=None):
-    """Read dry_run_report.csv, query MusicBrainz for qualifying entries,
-    and write mb_enriched_report.csv with added columns.
+def _normalise_artist_key(text):
+    """Normalise artist strings for robust equality checks."""
+    if not text:
+        return ""
+    text = text.lower()
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"[^a-z0-9]+", "", text)
+    return text
+
+
+def _artists_equivalent(left, right):
+    """Case/spacing/punctuation-tolerant artist equality."""
+    return bool(left and right) and _normalise_artist_key(left) == _normalise_artist_key(right)
+
+
+def _build_dominant_artist_map(rows, threshold=0.70, min_files=5):
+    """Return per-directory dominant artist context.
+
+    Output format:
+        {
+            "/abs/dir": {
+                "artist": "Sammy Davis Jr.",
+                "ratio": 0.82,
+                "total": 34,
+            },
+            ...
+        }
+    """
+    by_dir = defaultdict(list)
+    for row in rows:
+        path = (row.get("Path") or "").strip()
+        artist = (row.get("Artist") or "").strip()
+        if not path or not artist:
+            continue
+        by_dir[os.path.dirname(path)].append(artist)
+
+    dominant = {}
+    for directory, artists in by_dir.items():
+        total = len(artists)
+        if total < min_files:
+            continue
+        counts = Counter(artists)
+        top_artist, top_count = counts.most_common(1)[0]
+        ratio = top_count / total
+        if ratio >= threshold:
+            dominant[directory] = {
+                "artist": top_artist,
+                "ratio": ratio,
+                "total": total,
+            }
+    return dominant
+
+
+def _title_retry_variants(title):
+    """Generate conservative title variants for retry lookups."""
+    variants = []
+    seen = set()
+
+    def _add(value):
+        v = (value or "").strip()
+        if v and v not in seen:
+            variants.append(v)
+            seen.add(v)
+
+    _add(title)
+    # Fallback for malformed parse where title still contains an artist prefix.
+    if title and " - " in title:
+        _add(title.split(" - ", 1)[1])
+    return variants
+
+
+def enrich_with_musicbrainz(
+    csv_in,
+    csv_out,
+    confidence_ceiling=None,
+    dominant_retry=True,
+    dominant_threshold=0.70,
+    dominant_min_files=5,
+    dominant_fixme_suffix="",
+):
+    """Read a dry-run CSV, query MusicBrainz for qualifying entries,
+    and write an enriched CSV with added MB_* columns.
 
     Args:
         csv_in:  Path to the existing dry-run CSV.
         csv_out: Path for the enriched output CSV.
         confidence_ceiling: Only enrich entries with Confidence *strictly below*
-                            this value. None = enrich ALL entries.
+                    this value. None = enrich ALL entries.
+        dominant_retry:     If True, identify dominant-artist directories and
+                    retry likely outliers with the dominant artist.
+        dominant_threshold: Dominance ratio needed to activate retry (0-1).
+        dominant_min_files: Minimum number of files in a directory to evaluate
+                    dominance.
+        dominant_fixme_suffix:
+                    Optional suffix appended to Artist for unresolved
+                    outliers (e.g. " (FIXME)"). Empty = no suffix.
     """
     if not _MB_AVAILABLE:
         print("musicbrainzngs not installed. Run: pip install musicbrainzngs")
@@ -875,6 +1075,7 @@ def enrich_with_musicbrainz(csv_in, csv_out, confidence_ceiling=None):
     fieldnames = [
         "Path", "Artist", "Title", "Track", "Album", "Confidence",
         "MB_Artist", "MB_Title", "MB_Album", "MB_Score",
+        "MB_MatchSource", "Dir_Dominant_Artist", "Review_Flag",
     ]
 
     if confidence_ceiling is None:
@@ -885,12 +1086,32 @@ def enrich_with_musicbrainz(csv_in, csv_out, confidence_ceiling=None):
     print(f"\nMusicBrainz enrichment: {len(targets_idx)} entries to query"
           f" (ceiling={confidence_ceiling})")
 
+    dominant_map = {}
+    if dominant_retry:
+        dominant_map = _build_dominant_artist_map(
+            rows,
+            threshold=dominant_threshold,
+            min_files=dominant_min_files,
+        )
+        print(
+            f"  Dominant retry      : enabled "
+            f"(dirs={len(dominant_map)}, threshold={dominant_threshold:.2f}, min_files={dominant_min_files})"
+        )
+    else:
+        print("  Dominant retry      : disabled")
+
     out_rows = []
     matched = 0
     queried = 0
+    dominant_retries = 0
+    dominant_retry_hits = 0
 
     for i, row in enumerate(rows):
         mb_artist = mb_title = mb_album = mb_score_val = ""
+        mb_match_source = ""
+        review_flag = ""
+        out_artist_value = row["Artist"]
+        dir_dominant_artist = ""
 
         if i in targets_idx:
             artist = row["Artist"].strip()
@@ -900,7 +1121,64 @@ def enrich_with_musicbrainz(csv_in, csv_out, confidence_ceiling=None):
 
             print(f"  [{queried}/{len(targets_idx)}] {os.path.basename(row['Path'])[:55]}")
 
+            directory = os.path.dirname((row.get("Path") or "").strip())
+            dominant_ctx = dominant_map.get(directory)
+            dominant_artist = ""
+            if dominant_ctx:
+                dominant_artist = dominant_ctx["artist"]
+                dir_dominant_artist = dominant_artist
+
             match = lookup_musicbrainz(artist, title, album)
+            if match:
+                mb_match_source = "base"
+
+            likely_outlier = (
+                bool(dominant_ctx)
+                and artist
+                and not _artists_equivalent(artist, dominant_ctx["artist"])
+            )
+
+            should_retry_dominant = (
+                likely_outlier
+                and (
+                    not match
+                    or not _artists_equivalent(match.get("artist", ""), dominant_artist)
+                )
+            )
+
+            if should_retry_dominant:
+                dominant_retries += 1
+                best_retry = None
+                for retry_title in _title_retry_variants(title):
+                    candidate = lookup_musicbrainz(dominant_artist, retry_title, album)
+                    if not candidate:
+                        continue
+                    if not _artists_equivalent(candidate.get("artist", ""), dominant_artist):
+                        continue
+                    if not best_retry or candidate["mb_score"] > best_retry["mb_score"]:
+                        best_retry = candidate
+
+                if best_retry:
+                    use_retry = False
+                    if not match:
+                        use_retry = True
+                    else:
+                        # Conservative replacement: only replace if retry is
+                        # clearly better OR current MB result disagrees with
+                        # dominant artist and retry agrees.
+                        if best_retry["mb_score"] >= match["mb_score"] + 2:
+                            use_retry = True
+                        elif not _artists_equivalent(match.get("artist", ""), dominant_artist):
+                            use_retry = True
+                    if use_retry:
+                        match = best_retry
+                        mb_match_source = "dominant_retry"
+                        dominant_retry_hits += 1
+
+            if likely_outlier and not match:
+                review_flag = "dominant_outlier_no_match"
+                if dominant_fixme_suffix:
+                    out_artist_value = (row["Artist"] + dominant_fixme_suffix).strip()
 
             if match:
                 mb_artist = match["artist"]
@@ -908,13 +1186,16 @@ def enrich_with_musicbrainz(csv_in, csv_out, confidence_ceiling=None):
                 mb_album  = match["album"]
                 mb_score_val = str(match["mb_score"])
                 matched += 1
-                print(f"    + MB({mb_score_val}) {mb_artist!r} – {mb_title!r} / {mb_album!r}")
+                if mb_match_source == "dominant_retry":
+                    print(f"    + MB({mb_score_val}) {mb_artist!r} – {mb_title!r} / {mb_album!r} [dominant retry]")
+                else:
+                    print(f"    + MB({mb_score_val}) {mb_artist!r} – {mb_title!r} / {mb_album!r}")
             else:
                 print(f"    – no match")
 
         out_rows.append({
             "Path":       row["Path"],
-            "Artist":     row["Artist"],
+            "Artist":     out_artist_value,
             "Title":      row["Title"],
             "Track":      row["Track"],
             "Album":      row["Album"],
@@ -923,6 +1204,9 @@ def enrich_with_musicbrainz(csv_in, csv_out, confidence_ceiling=None):
             "MB_Title":   mb_title,
             "MB_Album":   mb_album,
             "MB_Score":   mb_score_val,
+            "MB_MatchSource": mb_match_source,
+            "Dir_Dominant_Artist": dir_dominant_artist,
+            "Review_Flag": review_flag,
         })
 
     with open(csv_out, "w", encoding="utf-8", newline="") as f:
@@ -931,6 +1215,8 @@ def enrich_with_musicbrainz(csv_in, csv_out, confidence_ceiling=None):
         writer.writerows(out_rows)
 
     print(f"\nEnrichment complete: {matched}/{queried} resolved → {csv_out}")
+    if dominant_retry:
+        print(f"  Dominant retries: {dominant_retries} (hits: {dominant_retry_hits})")
 
 
 if __name__ == "__main__":
@@ -982,6 +1268,31 @@ if __name__ == "__main__":
         help="Enrich entries with confidence strictly below N (default: %(default)s)",
     )
     parser.add_argument(
+        "--dominant-threshold",
+        type=float,
+        default=0.70,
+        metavar="RATIO",
+        help="Directory dominance ratio (0-1) required to retry outliers with dominant artist during enrichment (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--dominant-min-files",
+        type=int,
+        default=5,
+        metavar="N",
+        help="Minimum files per directory before dominant-artist retry is considered (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--no-dominant-retry",
+        action="store_true",
+        help="Disable dominant-artist retry logic during MusicBrainz enrichment",
+    )
+    parser.add_argument(
+        "--dominant-fixme-suffix",
+        default="",
+        metavar="TEXT",
+        help="Optional suffix appended to Artist on unresolved dominant-outlier rows during enrichment (e.g. ' (FIXME)')",
+    )
+    parser.add_argument(
         "--dry-run-only",
         action="store_true",
         help="Skip enrichment even if --enrich is set (for testing)",
@@ -1002,7 +1313,7 @@ if __name__ == "__main__":
         default=None,
         metavar="CSV",
         help="Read this CSV for Phase 2 instead of the auto-generated one "
-             "(e.g. point at mb_enriched_report.csv)",
+               "(e.g. point at *_mb_enriched_report.csv)",
     )
     parser.add_argument(
         "--no-prefer-mb",
@@ -1024,6 +1335,10 @@ if __name__ == "__main__":
     combined_rows = []
     combined_unmatched_files = []
     combined_unmatched_dirs = []
+    dry_run_csv_paths = []
+    scanned_labels = []
+    combined_csv = None
+    enriched_csv_path = None
 
     for root_path in roots:
         if not os.path.isdir(root_path):
@@ -1032,21 +1347,30 @@ if __name__ == "__main__":
 
         label = os.path.basename(root_path.rstrip("/\\")) or root_path
         out_dir = os.path.join(base_out, label) if multi else base_out
+        report_prefix = _dated_prefix(label)
+        scanned_labels.append(label)
 
         print(f"\n{'='*60}")
         print(f"Scanning: {root_path}")
         print(f"Output  : {out_dir}")
         print(f"{'='*60}")
 
-        rows, uf, ud = analyze_directory(root_path, out_dir=out_dir)
+        rows, uf, ud, report_paths = analyze_directory(
+            root_path,
+            out_dir=out_dir,
+            report_prefix=report_prefix,
+        )
         combined_rows.extend(rows)
         combined_unmatched_files.extend(uf)
         combined_unmatched_dirs.extend(ud)
+        dry_run_csv_paths.append(report_paths["dry_run_csv"])
 
     if multi:
         # Write combined report to base output dir
         os.makedirs(base_out, exist_ok=True)
-        combined_csv = os.path.join(base_out, "combined_report.csv")
+        combined_csv = os.path.join(
+            base_out, f"{time.strftime('%Y_%m_%d')}_combined_report.csv"
+        )
         with open(combined_csv, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["Path", "Artist", "Title", "Track", "Album", "Confidence"])
@@ -1069,17 +1393,28 @@ if __name__ == "__main__":
 
     run_enrich = (args.enrich or args.enrich_all) and not args.dry_run_only
     if run_enrich:
-        csv_in = os.path.join(base_out, "combined_report.csv") if multi \
-                 else os.path.join(base_out, "dry_run_report.csv")
-        csv_out_path = os.path.join(base_out, "mb_enriched_report.csv")
+        csv_in = combined_csv if multi else (dry_run_csv_paths[0] if dry_run_csv_paths else None)
+        if multi:
+            enrich_prefix = f"{time.strftime('%Y_%m_%d')}_combined"
+        else:
+            enrich_label = scanned_labels[0] if scanned_labels else "root"
+            enrich_prefix = _dated_prefix(enrich_label)
+        enriched_csv_path = os.path.join(base_out, f"{enrich_prefix}_mb_enriched_report.csv")
+        if not csv_in:
+            print("\nNo dry-run report available for enrichment.")
+            run_enrich = False
         if not _MB_AVAILABLE:
             print("\nmusicbrainzngs not installed. Run: pip install musicbrainzngs")
-        else:
+        elif run_enrich:
             ceiling = None if args.enrich_all else args.conf_ceiling
             enrich_with_musicbrainz(
                 csv_in=csv_in,
-                csv_out=csv_out_path,
+                csv_out=enriched_csv_path,
                 confidence_ceiling=ceiling,
+                dominant_retry=not args.no_dominant_retry,
+                dominant_threshold=args.dominant_threshold,
+                dominant_min_files=args.dominant_min_files,
+                dominant_fixme_suffix=args.dominant_fixme_suffix,
             )
 
     if args.write:
@@ -1088,15 +1423,18 @@ if __name__ == "__main__":
         if args.from_csv:
             phase2_csv = args.from_csv
         else:
-            enriched_csv = os.path.join(base_out, "mb_enriched_report.csv")
-            default_csv  = os.path.join(base_out, "combined_report.csv") if multi \
-                           else os.path.join(base_out, "dry_run_report.csv")
-            phase2_csv = enriched_csv if os.path.isfile(enriched_csv) else default_csv
+            default_csv = combined_csv if multi else (dry_run_csv_paths[0] if dry_run_csv_paths else "")
+            phase2_csv = (
+                enriched_csv_path
+                if enriched_csv_path and os.path.isfile(enriched_csv_path)
+                else default_csv
+            )
 
         if not os.path.isfile(phase2_csv):
             print(f"\n[Phase 2] CSV not found: {phase2_csv}")
             print("  Run a dry-run scan first (without --write) to generate it.")
         else:
+            phase2_prefix = _safe_label(os.path.splitext(os.path.basename(phase2_csv))[0])
             write_tags_to_copies(
                 csv_in=phase2_csv,
                 target_dir=args.target,
@@ -1104,4 +1442,5 @@ if __name__ == "__main__":
                 prefer_mb=not args.no_prefer_mb,
                 mb_only=args.mb_only,
                 log_dir=base_out,
+                report_prefix=phase2_prefix,
             )

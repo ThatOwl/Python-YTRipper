@@ -1,4 +1,4 @@
-# file_cleanup_pretag.py — Usage Documentation
+# python-autotagger.py — Usage Documentation
 
 Batch audio metadata cleanup and tagging pipeline for `.mp3` and `.m4a` files.  
 Parses artist / title / track / album from filenames and folder structure, optionally
@@ -22,28 +22,40 @@ pip install mutagen musicbrainzngs
 
 ```bash
 # Dry run only — inspect what the tool would do, writes nothing
-python3 scripts/file_cleanup_pretag.py /mnt/d/Music/Rammstein
+python3 scripts/python-autotagger.py /mnt/d/Music/Rammstein
 
 # Dry run on multiple roots — per-root reports + combined CSV
-python3 scripts/file_cleanup_pretag.py /mnt/d/Musik /mnt/d/Program_Targets/RipperTarget
+python3 scripts/python-autotagger.py /mnt/d/Musik /mnt/d/Program_Targets/RipperTarget
 
 # Dry run + MusicBrainz enrichment for low-confidence entries (conf < 85)
-python3 scripts/file_cleanup_pretag.py /mnt/d/Music/Deadpool --enrich
+python3 scripts/python-autotagger.py /mnt/d/Music/Deadpool --enrich
 
 # Dry run + MusicBrainz enrichment for ALL entries
-python3 scripts/file_cleanup_pretag.py /mnt/d/Music/60s_Hits --enrich-all
+python3 scripts/python-autotagger.py /mnt/d/Music/60s_Hits --enrich-all
 
 # Dry run → enrich all → copy+tag only MB-matched files to staging dir
-python3 scripts/file_cleanup_pretag.py /mnt/d/Music/60s_Hits \
+python3 scripts/python-autotagger.py /mnt/d/Music/60s_Hits \
     --enrich-all --write --mb-only
 
 # Skip scan, run Phase 2 write directly from an existing CSV
-python3 scripts/file_cleanup_pretag.py --write \
+python3 scripts/python-autotagger.py --write \
     --from-csv .batch_fix/mb_enriched_report.csv
 
 # Override output and target directories
-python3 scripts/file_cleanup_pretag.py /mnt/d/Music \
+python3 scripts/python-autotagger.py /mnt/d/Music \
     --out-dir /tmp/my_fix --target /mnt/staging/tagged
+
+# Tune dominant-artist retry sensitivity
+python3 scripts/python-autotagger.py /mnt/d/Music/Compilations \
+  --enrich-all --dominant-threshold 0.80 --dominant-min-files 8
+
+# Disable dominant retry completely (pure base MB behavior)
+python3 scripts/python-autotagger.py /mnt/d/Music/Compilations \
+  --enrich-all --no-dominant-retry
+
+# Mark unresolved dominant-outlier rows for manual review
+python3 scripts/python-autotagger.py /mnt/d/Music/Compilations \
+  --enrich-all --dominant-fixme-suffix " (FIXME)"
 ```
 
 ---
@@ -57,6 +69,10 @@ python3 scripts/file_cleanup_pretag.py /mnt/d/Music \
 | `--enrich` | off | After scan: query MusicBrainz for entries with confidence < `--conf-ceiling` |
 | `--enrich-all` | off | After scan: query MusicBrainz for **every** entry |
 | `--conf-ceiling N` | `85` | Upper bound for `--enrich` targeting (entries strictly below this value) |
+| `--dominant-threshold RATIO` | `0.70` | During enrichment, retry likely outliers in a directory when one artist dominates this ratio |
+| `--dominant-min-files N` | `5` | Minimum files required in a directory before dominant-artist retry is considered |
+| `--no-dominant-retry` | off | Disable dominant-artist retry logic during enrichment |
+| `--dominant-fixme-suffix TEXT` | empty | Optional suffix appended to unresolved dominant-outlier `Artist` values (example: ` (FIXME)`) |
 | `--dry-run-only` | off | Suppress Phase 2 even when `--enrich` is set — useful to re-run scan part only |
 | `--write` | off | **Phase 2**: copy qualifying files to `--target` and write tags |
 | `--target DIR` | `/mnt/d/Program_Targets/TaggingTarget` | Destination for tagged copies |
@@ -85,6 +101,8 @@ Walks every subdirectory of each ROOT. For each audio file:
    - Genre category folders (`Filmmusik`, `Spielemusik`, `Serienmusik`, …) are detected
      and not confused for artist names
 3. **Parse the filename** using 7 ordered patterns with confidence scores (see below).
+   - If a name looks like `Album/OST Label - Track Title` and folder artist is known,
+     the left side is treated as album-ish context (not artist), and folder artist is used.
 4. **Strip artist from title** if the artist name is embedded in the title string.
 5. Record the result in the report CSV.
 
@@ -120,6 +138,14 @@ for each qualifying entry. Three progressively-relaxed query attempts are made:
 2. `title + artist`
 3. `title only` (requires tighter fuzzy similarity ≥ 0.75)
 
+When `artist` is a duo in the form `Artist A & Artist B`, artist-based queries use:
+
+1. full duo string (`Artist A & Artist B`)
+2. first artist (`Artist A`)
+3. second artist (`Artist B`)
+
+and stop on first acceptable match.
+
 A match is accepted only when:
 - The MB API score ≥ `MB_MIN_SCORE` (default: 75)
 - The MB title similarity to the queried title ≥ `MB_TITLE_MIN_SIM` (default: 0.75)
@@ -128,6 +154,19 @@ Before querying, YouTube-style junk is stripped from the title (e.g. "Official M
 Video", "Remastered In 1080p", "on The Ed Sullivan Show", episode references, etc.).
 
 Rate limit: one HTTP call per 1.1 s (respects MusicBrainz's 1 req/s cap).
+
+#### Dominant-artist retry (conservative)
+
+To reduce false artist matches in mostly single-artist folders, enrichment can run
+an extra retry pass per directory:
+
+- If a directory has at least `--dominant-min-files` entries and one artist covers
+  at least `--dominant-threshold` (default 70%), that artist is treated as dominant.
+- Rows with a different parsed artist are considered likely outliers.
+- Those outliers are retried against MusicBrainz with the dominant artist, using
+  conservative replacement rules (it does not force replacement aggressively).
+- If no good retry match is found, the row is left as-is; optionally append a marker
+  via `--dominant-fixme-suffix " (FIXME)"` for manual review.
 
 ---
 
@@ -164,7 +203,7 @@ per-root reports are in `out_dir/<RootName>/`; the combined report is in `out_di
 | `unmatched_files.txt` | 1 | Files with confidence < 85 or no parse result |
 | `unmatched_directories.txt` | 1 | Directories where >50% of files were unmatched |
 | `combined_report.csv` | 1 (multi-root) | Union of all per-root dry_run_report.csv files |
-| `mb_enriched_report.csv` | 1.5 | dry_run/combined CSV + four extra columns: `MB_Artist`, `MB_Title`, `MB_Album`, `MB_Score` |
+| `mb_enriched_report.csv` | 1.5 | dry_run/combined CSV + MB and review metadata columns (see below) |
 | `write_log.csv` | 2 | Per-file write record: source, dest, fields before and after, status |
 | `tag_backup.json` | 2 | Raw tag dump of every file before writing (keyed by destination path) |
 
@@ -189,6 +228,9 @@ per-root reports are in `out_dir/<RootName>/`; the combined report is in `out_di
 | `MB_Title` | Title from MusicBrainz |
 | `MB_Album` | Album/release title from MusicBrainz |
 | `MB_Score` | Raw MusicBrainz API relevance score (0–100) |
+| `MB_MatchSource` | `base` or `dominant_retry` when a dominant-artist retry supplied the accepted match |
+| `Dir_Dominant_Artist` | Dominant artist detected for the file's directory (empty if none) |
+| `Review_Flag` | Review marker for unresolved likely outliers (currently `dominant_outlier_no_match`) |
 
 #### `write_log.csv`
 
@@ -209,10 +251,10 @@ per-root reports are in `out_dir/<RootName>/`; the combined report is in `out_di
 
 ```bash
 # 1. Dry run — inspect the CSV, check confidence distribution
-python3 scripts/file_cleanup_pretag.py /mnt/d/Musik
+python3 scripts/python-autotagger.py /mnt/d/Musik
 
 # 2. If happy with Phase 1 results, write to staging
-python3 scripts/file_cleanup_pretag.py /mnt/d/Musik --write
+python3 scripts/python-autotagger.py /mnt/d/Musik --write
 
 # 3. Verify staging, then move to final location manually
 ```
@@ -221,12 +263,12 @@ python3 scripts/file_cleanup_pretag.py /mnt/d/Musik --write
 
 ```bash
 # 1. Scan + enrich all entries via MusicBrainz
-python3 scripts/file_cleanup_pretag.py "/mnt/d/Music/60s Hits Playlist" --enrich-all
+python3 scripts/python-autotagger.py "/mnt/d/Music/60s Hits Playlist" --enrich-all
 
 # 2. Review .batch_fix/mb_enriched_report.csv
 
 # 3. Write only MB-matched files to staging
-python3 scripts/file_cleanup_pretag.py "/mnt/d/Music/60s Hits Playlist" \
+python3 scripts/python-autotagger.py "/mnt/d/Music/60s Hits Playlist" \
     --enrich-all --write --mb-only
 
 # Result: only songs MB could confidently identify are copied and tagged
@@ -235,7 +277,7 @@ python3 scripts/file_cleanup_pretag.py "/mnt/d/Music/60s Hits Playlist" \
 ### Workflow C — Multiple mixed roots, stress test
 
 ```bash
-python3 scripts/file_cleanup_pretag.py \
+python3 scripts/python-autotagger.py \
     /mnt/d/Musik \
     /mnt/d/Program_Targets/RipperTarget \
     --out-dir /tmp/batch_results
@@ -245,11 +287,36 @@ python3 scripts/file_cleanup_pretag.py \
 # Combined:          /tmp/batch_results/combined_report.csv
 ```
 
+### Workflow D — OST folder with album-like prefixes in filenames
+
+```bash
+# Example file names: "Starsector OST - Battle Ambience.m4a"
+# Parser treats "Starsector OST" as album-ish prefix, not as artist.
+python3 scripts/python-autotagger.py \
+  "/mnt/d/Program_Targets/RipperTarget/Stian Stark & Joel Baylis - Starsector Full OST" \
+  --enrich-all --dominant-fixme-suffix " (FIXME)"
+
+# Output to inspect:
+# .batch_fix/*_dry_run_report.csv (Artist should be folder artist, not "Starsector OST")
+# .batch_fix/*_mb_enriched_report.csv
+```
+
+### Workflow E — Duo artist query fallback
+
+```bash
+python3 scripts/python-autotagger.py \
+  "/mnt/d/Program_Targets/RipperTarget/Ben Prunty & Simon Chylinski - Subnautica Full OST" \
+  --enrich-all --out-dir .batch_fix/duo_artist_test
+
+# MB query order for artist field:
+# 1) "Ben Prunty & Simon Chylinski" 2) "Ben Prunty" 3) "Simon Chylinski"
+```
+
 ---
 
 ## Constants you may want to tune
 
-In the top of `scripts/file_cleanup_pretag.py`:
+In the top of `scripts/python-autotagger.py`:
 
 | Constant | Default | Effect |
 |---|---|---|

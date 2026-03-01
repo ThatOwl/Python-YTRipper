@@ -84,6 +84,13 @@ python3 -m pip install -r requirements.txt
 
 ## Usage
 
+### Auto-tagging pipeline (separate script)
+
+For batch metadata parsing/enrichment/tagging workflows, see:
+
+- `scripts/python-autotagger.py`
+- `README_auto_tagging.md` (full CLI reference, examples, CSV outputs, safety notes)
+
 ### Interactive Loop Mode (Recommended)
 ```bash
 ./start_w_args.sh --loop
