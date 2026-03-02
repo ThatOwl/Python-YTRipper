@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # Script to find and list large media files in the current directory and subdirectories.
-# Usage: show_large_files.sh [options]
+# Usage: show_large_files.sh [options] [rootdir]
 # Options:
 #   -m <minutes>       Minimum duration to consider (default: 8)
 #   -s <field>         Sort by: duration | size | name (default: duration)
 #   -p <jobs>          Parallel ffprobe jobs (default: CPU cores)
-#   -c                 Output to console (colorized if TTY)
-#   -t <file>          Output to text file
-#   -v <file>          Output to CSV file
-#   -j <file>          Output to JSON file
+#   -c, --console      Output to console (colorized if TTY)
+#   -t, --text         Output to auto-named text file
+#   -v, --csv          Output to auto-named CSV file
 
 # This script uses ffprobe to analyze media files and outputs those that exceed the specified duration threshold.
 # It supports parallel processing for faster analysis and can output results in various formats. Colorized console output is provided if the terminal supports it.
@@ -19,11 +18,11 @@ set -euo pipefail
 MIN_SECONDS=$((8 * 60))
 SORT_BY="duration"
 OUT_CONSOLE=false
-OUT_TXT=""
-OUT_CSV=""
-OUT_JSON=""
+OUT_TEXT=false
+OUT_CSV=false
 JOBS=$(( ($(nproc 2>/dev/null || echo 8) + 1) / 2 ))
 EXTENSIONS=("mp3" "m4a" "mp4")
+ROOT_DIR="."
 
 # ---------------- COLOR HANDLING ----------------
 
@@ -42,13 +41,15 @@ fi
 
 usage() {
   cat <<EOF
-Usage: $0 [options]
+Usage: $0 [options] [rootdir]
+
+Path:
+  rootdir            Directory tree to scan (default: current directory)
 
 Output:
-  -c                 Output to console (colorized if TTY)
-  -t <file>          Output to text file
-  -v <file>          Output to CSV file
-  -j <file>          Output to JSON file
+  -c, --console      Output to console (colorized if TTY)
+  -t, --text         Output to text file named: <date>_<rootdir>_Large-Files.txt
+  -v, --csv          Output to CSV file named:  <date>_<rootdir>_Large-Files.csv
 
 Filtering & sorting:
   -m <minutes>       Minimum duration (default: 8)
@@ -63,18 +64,17 @@ Dependencies:
     - ffprobe        (from ffmpeg)  → media duration detection
 
 Examples:
-  $0 -c -t out.txt -v out.csv
-  $0 -j media.json -m 20 -s size
+  $0 --console --text /mnt/d/media
+  $0 -c --csv -m 20 -s size /mnt/d/media
 EOF
 }
 
 # ---------------- ARG PARSING ----------------
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -c) OUT_CONSOLE=true ;;
-    -t) OUT_TXT="$2"; shift ;;
-    -v) OUT_CSV="$2"; shift ;;
-    -j) OUT_JSON="$2"; shift ;;
+    -c|--console) OUT_CONSOLE=true ;;
+    -t|--text) OUT_TEXT=true ;;
+    -v|--csv) OUT_CSV=true ;;
     -m) MIN_SECONDS=$(( $2 * 60 )); shift ;;
     -s) SORT_BY="$2"; shift ;;
     -p) JOBS="$2"; shift ;;
@@ -90,10 +90,33 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     -h|--help) usage; exit 0 ;;
-    *) echo "Unknown option: $1"; usage; exit 1 ;;
+    -*) echo "Unknown option: $1"; usage; exit 1 ;;
+    *)
+      if [[ "$ROOT_DIR" != "." ]]; then
+        echo "Only one rootdir may be provided"
+        usage
+        exit 1
+      fi
+      ROOT_DIR="$1"
+      ;;
   esac
   shift
 done
+
+if [[ ! -d "$ROOT_DIR" ]]; then
+  echo "ERROR: rootdir does not exist or is not a directory: $ROOT_DIR" >&2
+  exit 1
+fi
+
+ROOT_BASENAME=$(basename -- "$(realpath "$ROOT_DIR")")
+if [[ -z "$ROOT_BASENAME" || "$ROOT_BASENAME" == "/" || "$ROOT_BASENAME" == "." ]]; then
+  ROOT_BASENAME="root"
+fi
+
+ROOT_SAFE=$(printf '%s' "$ROOT_BASENAME" | sed 's/[^[:alnum:]_.-]/_/g')
+DATE_STAMP=$(date +%Y_%m_%d)
+OUT_TXT="${DATE_STAMP}_${ROOT_SAFE}_Large-Files.txt"
+OUT_CSV_FILE="${DATE_STAMP}_${ROOT_SAFE}_Large-Files.csv"
 # ---------------- DEP CHECK ----------------
 
 command -v ffprobe >/dev/null || {
@@ -128,7 +151,7 @@ scan_file() {
 export -f scan_file
 
 mapfile -t ROWS < <(
-  find . -type f \( -iname "*.mp3" -o -iname "*.m4a" -o -iname "*.mp4" \) -print0 |
+  find "$ROOT_DIR" -type f \( -iname "*.mp3" -o -iname "*.m4a" -o -iname "*.mp4" \) -print0 |
   xargs -0 -n1 -P "$JOBS" bash -c 'scan_file "$0"'
 )
 
@@ -163,7 +186,7 @@ dur_color() {
 
 # ---------------- FILE OUTPUTS ----------------
 
-if [[ -n "$OUT_TXT" ]]; then
+if $OUT_TEXT; then
   for r in "${ROWS[@]}"; do
     IFS='|' read -r sec size size_h dir name <<< "$r"
     printf "%s\t | \t%s\t | \t%s\t | \t%s\n" \
@@ -171,7 +194,7 @@ if [[ -n "$OUT_TXT" ]]; then
   done > "$OUT_TXT"
 fi
 
-if [[ -n "$OUT_CSV" ]]; then
+if $OUT_CSV; then
   {
     echo "filesize,duration,directory,filename"
     for r in "${ROWS[@]}"; do
@@ -179,23 +202,7 @@ if [[ -n "$OUT_CSV" ]]; then
       printf "\"%s\",\"%s\",\"%s\",\"%s\"\n" \
         "$size_h" "$(fmt_duration "$sec")" "$dir" "$name"
     done
-  } > "$OUT_CSV"
-fi
-
-if [[ -n "$OUT_JSON" ]]; then
-  {
-    echo "["
-    first=true
-    for r in "${ROWS[@]}"; do
-      IFS='|' read -r sec size size_h dir name <<< "$r"
-      $first || echo ","
-      first=false
-      printf '  {"filesize":"%s","duration":"%s","seconds":%s,"directory":"%s","filename":"%s"}' \
-        "$size_h" "$(fmt_duration "$sec")" "$sec" "${dir//\"/\\\"}" "${name//\"/\\\"}"
-    done
-    echo
-    echo "]"
-  } > "$OUT_JSON"
+  } > "$OUT_CSV_FILE"
 fi
 
 # ---------------- CONSOLE (LAST) ----------------

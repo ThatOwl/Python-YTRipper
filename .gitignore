@@ -210,3 +210,4 @@ __marimo__/
 temp_test_download/
 config/
 .batch_fix/
+scripts/extend_videos_longer.py

@@ -61,6 +61,19 @@ JUNK_PATTERNS = [
 
 ALLOWED_CHARS = r"[^a-zA-Z0-9äöüÄÖÜß&'\-\. ]"
 
+# Filename cleanup patterns for stripping leading track numbers.
+# Applied to filename stem only (extension is preserved).
+TRACK_PREFIX_PATTERNS = [
+    # "01 - Title", "1. Title", "003_Title"
+    r"^\s*(?:0?\d{1,2}|1\d{2})\s*[-._)\]]+\s*",
+    # "[03] Title", "(03) Title"
+    r"^\s*[\[(](?:0?\d{1,2}|1\d{2})[\])]\s*",
+    # "Track 03 - Title"
+    r"^\s*track\s*(?:0?\d{1,2}|1\d{2})\s*[-._)\]]+\s*",
+    # "03 Title" (space-separated)
+    r"^\s*(?:0?\d{1,2}|1\d{2})\s+",
+]
+
 
 def _safe_label(text):
     """Create a filesystem-safe label from folder names."""
@@ -1037,6 +1050,111 @@ def _title_retry_variants(title):
     return variants
 
 
+def _strip_track_prefix_from_stem(stem):
+    """Return (new_stem, pattern_index) after removing leading track prefix."""
+    current = (stem or "").strip()
+    first_pattern_idx = 0
+    changed = True
+    passes = 0
+
+    while changed and passes < 5:
+        passes += 1
+        changed = False
+        for idx, pattern in enumerate(TRACK_PREFIX_PATTERNS, 1):
+            updated = re.sub(pattern, "", current, count=1, flags=re.IGNORECASE)
+            updated = updated.strip()
+            if updated and updated != current:
+                if first_pattern_idx == 0:
+                    first_pattern_idx = idx
+                current = updated
+                changed = True
+                break
+
+    if first_pattern_idx:
+        return current, first_pattern_idx
+    return stem, 0
+
+
+def strip_track_prefixes_recursively(
+    roots,
+    dry_run=True,
+    safe_copy_dir=None,
+    include_exts=AUDIO_EXTENSIONS,
+):
+    """Recursively strip track-number filename prefixes.
+
+    This operation never touches audio tags; it only renames files.
+    If safe_copy_dir is provided, roots are copied first and renames are applied
+    in the copied tree.
+    """
+    if not roots:
+        print("No roots provided for --strip-track-prefix mode.")
+        return
+
+    include_exts = tuple(ext.lower() for ext in include_exts)
+
+    plan = []
+    for root in roots:
+        if not os.path.isdir(root):
+            print(f"[SKIP] Not a directory: {root}")
+            continue
+
+        active_root = root
+        if safe_copy_dir:
+            label = os.path.basename(root.rstrip("/\\")) or "root"
+            active_root = os.path.join(safe_copy_dir, label)
+            os.makedirs(safe_copy_dir, exist_ok=True)
+            print(f"\n[copy] {root} -> {active_root}")
+            shutil.copytree(root, active_root, dirs_exist_ok=True)
+
+        for dirpath, _, files in os.walk(active_root):
+            for filename in files:
+                ext = os.path.splitext(filename)[1].lower()
+                if ext not in include_exts:
+                    continue
+                stem, _ = os.path.splitext(filename)
+                new_stem, pattern_idx = _strip_track_prefix_from_stem(stem)
+                if pattern_idx == 0:
+                    continue
+                new_name = f"{new_stem}{ext}"
+                old_path = os.path.join(dirpath, filename)
+                new_path = os.path.join(dirpath, new_name)
+                plan.append((old_path, new_path, pattern_idx))
+
+    if not plan:
+        print("\nNo matching filename track prefixes found.")
+        return
+
+    print(f"\nFilename cleanup plan: {len(plan)} rename(s)")
+    for idx, (old_path, new_path, pattern_idx) in enumerate(plan[:20], 1):
+        print(f"  [{idx}] p{pattern_idx}: {old_path} -> {new_path}")
+    if len(plan) > 20:
+        print(f"  ... and {len(plan) - 20} more")
+
+    if dry_run:
+        print("\nDry-run only: no files were renamed.")
+        return
+
+    renamed = 0
+    collisions = 0
+    errors = 0
+    for old_path, new_path, _ in plan:
+        if old_path == new_path:
+            continue
+        if os.path.exists(new_path):
+            collisions += 1
+            print(f"[skip-collision] {new_path}")
+            continue
+        try:
+            os.rename(old_path, new_path)
+            renamed += 1
+        except Exception as exc:
+            errors += 1
+            print(f"[rename-error] {old_path} -> {new_path} ({exc})")
+
+    print(f"\nRename complete: renamed={renamed}, collisions={collisions}, errors={errors}")
+
+
 def enrich_with_musicbrainz(
     csv_in,
     csv_out,
@@ -1326,7 +1444,31 @@ if __name__ == "__main__":
         help="Phase 2: only copy/tag files where MusicBrainz returned a match "
              "(requires --enrich or --enrich-all to have been run first)",
     )
+    parser.add_argument(
+        "--strip-track-prefix",
+        action="store_true",
+        help="Standalone mode: recursively strip leading track-number prefixes from filenames only (never edits tags)",
+    )
+    parser.add_argument(
+        "--strip-dry-run",
+        action="store_true",
+        help="With --strip-track-prefix: preview planned renames without changing files",
+    )
+    parser.add_argument(
+        "--strip-safe-copy-dir",
+        default=None,
+        metavar="DIR",
+        help="With --strip-track-prefix: copy each root to DIR/<root-name> and run rename there (safe test mode)",
+    )
     args = parser.parse_args()
+
+    if args.strip_track_prefix:
+        strip_track_prefixes_recursively(
+            roots=args.roots,
+            dry_run=args.strip_dry_run,
+            safe_copy_dir=args.strip_safe_copy_dir,
+        )
+        raise SystemExit(0)
 
     roots = args.roots
     base_out = args.out_dir

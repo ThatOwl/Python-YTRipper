@@ -56,6 +56,18 @@ python3 scripts/python-autotagger.py /mnt/d/Music/Compilations \
 # Mark unresolved dominant-outlier rows for manual review
 python3 scripts/python-autotagger.py /mnt/d/Music/Compilations \
   --enrich-all --dominant-fixme-suffix " (FIXME)"
+
+# Filename-only cleanup: preview recursive track-prefix removal
+python3 scripts/python-autotagger.py /mnt/d/Musik \
+  --strip-track-prefix --strip-dry-run
+
+# Filename-only cleanup: test safely on copied tree
+python3 scripts/python-autotagger.py /mnt/d/Musik \
+  --strip-track-prefix --strip-safe-copy-dir /tmp/strip_test
+
+# Filename-only cleanup: apply in-place (renames files, never edits tags)
+python3 scripts/python-autotagger.py /mnt/d/Musik \
+  --strip-track-prefix
 ```
 
 ---
@@ -79,6 +91,9 @@ python3 scripts/python-autotagger.py /mnt/d/Music/Compilations \
 | `--from-csv CSV` | _(auto)_ | Feed a specific CSV into Phase 2 instead of the auto-generated one |
 | `--mb-only` | off | Phase 2: copy only files that have a MusicBrainz match (requires prior `--enrich`/`--enrich-all`) |
 | `--no-prefer-mb` | off | Phase 2: ignore MB columns even when present; use rule-based fields only |
+| `--strip-track-prefix` | off | Standalone mode: recursively remove leading track-number prefixes from filenames only (never edits tags) |
+| `--strip-dry-run` | off | With `--strip-track-prefix`: preview rename plan only, no filesystem changes |
+| `--strip-safe-copy-dir DIR` | _(none)_ | With `--strip-track-prefix`: copy each root to `DIR/<root-name>` and perform renames there for safe testing |
 
 ---
 
@@ -189,6 +204,25 @@ For each copied file:
   (disable with `--no-prefer-mb`)
 - With `--mb-only`: only files with a MusicBrainz match are copied at all;
   confidence threshold is bypassed (MB match IS the quality gate)
+
+---
+
+### Standalone mode — Filename track-prefix cleanup (`--strip-track-prefix`)
+
+This mode is independent from tagging/enrichment and exits after rename processing.
+
+- Recursively scans each provided `ROOT` for `.mp3` and `.m4a`
+- Renames **filename only** (keeps extension), stripping common leading track-number styles
+- Never reads or writes metadata tags
+- Optional dry run: `--strip-dry-run`
+- Optional safe-copy test mode: `--strip-safe-copy-dir DIR`
+
+Examples of prefixes removed:
+
+- `01 - Song Title.mp3` → `Song Title.mp3`
+- `(03) Song Title.m4a` → `Song Title.m4a`
+- `[07] Song Title.mp3` → `Song Title.mp3`
+- `Track 08 - Song Title.mp3` → `Song Title.mp3`
 
 ---
 
