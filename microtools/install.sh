@@ -5,6 +5,65 @@ set -e
 REPO_NAME="Python-YTRipper"
 REPO_MARKER="source/yt_ripper.py"  # unique file to detect repo
 
+install_shell_aliases_config() {
+    local repo_root="$1"
+    local config_dir="$repo_root/config"
+    local config_file="$config_dir/shell_aliases.conf"
+    local legacy_config_file="$repo_root/shell_aliases.conf"
+
+    mkdir -p "$config_dir"
+
+    if [ -f "$legacy_config_file" ] && [ ! -f "$config_file" ]; then
+        mv "$legacy_config_file" "$config_file"
+        echo "Migrated legacy alias config to: $config_file"
+    fi
+
+    if [ -f "$config_file" ]; then
+        echo "Alias config already exists: $config_file"
+        return 0
+    fi
+
+    cat > "$config_file" <<'EOF'
+# Python-YTRipper shell aliases configuration
+# This file is sourced by scripts/shell_aliases.sh.
+# Override these values for your environment.
+
+# Default root scanned by `autotag` / `autotag-mb`
+AUTOTAG_DEFAULT_ROOT="/mnt/d/Program_Targets/MusicBrainz"
+
+# Default target used by `autotag` / `autotag-mb`
+AUTOTAG_DEFAULT_TARGET="/mnt/d/Program_Targets/TaggingTarget"
+
+# Default file used by `ytp` (calls ytf <file>)
+YTF_DEFAULT_FILE="$HOME/RipperTarget/paste-here.txt"
+EOF
+
+    echo "Created alias config: $config_file"
+}
+
+# Ensure shell aliases are sourced from ~/.bashrc
+install_shell_aliases() {
+    local repo_root="$1"
+    local aliases_file="$repo_root/scripts/shell_aliases.sh"
+    local bashrc="$HOME/.bashrc"
+    local source_line="source $aliases_file"
+
+    if [ ! -f "$aliases_file" ]; then
+        echo "Warning: alias file not found: $aliases_file"
+        return 0
+    fi
+
+    touch "$bashrc"
+    # Keep only one shell_aliases source line and make sure it points to this repo.
+    sed -i '/source .*\/scripts\/shell_aliases\.sh/d' "$bashrc"
+    if grep -Fqx "$source_line" "$bashrc"; then
+        echo "Shell aliases already configured in $bashrc"
+    else
+        echo "$source_line" >> "$bashrc"
+        echo "Added shell aliases to $bashrc"
+    fi
+}
+
 # Function to find repo root
 find_repo_root() {
     local current_dir="$PWD"
@@ -66,6 +125,9 @@ if [ -n "$REPO_ROOT" ]; then
                 echo "Virtual environment already active."
             fi
 
+            install_shell_aliases_config "$REPO_ROOT"
+            install_shell_aliases "$REPO_ROOT"
+
             deactivate
             echo "Setup complete. To use the app, run: ./run.sh"
             exit 0
@@ -97,6 +159,9 @@ echo "Installing dependencies..."
 pip install -r requirements.txt
 
 deactivate
+
+install_shell_aliases_config "$(pwd)"
+install_shell_aliases "$(pwd)"
 
 echo ""
 echo "✓ Setup complete."

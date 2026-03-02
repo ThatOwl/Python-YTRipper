@@ -18,6 +18,32 @@ pip install mutagen musicbrainzngs
 
 ---
 
+## Shell helpers and config
+
+If `scripts/shell_aliases.sh` is sourced in your shell, these helpers are available:
+
+- `autotag` → runs autotagger with configured default root/target and `--enrich-all --write`
+- `autotag-mb` → same as `autotag` plus `--mb-only`
+- `stripnum <dir>` → filename-only track-prefix cleanup (`--strip-track-prefix`)
+- `ytf`, `ytp`, `ytl`, `ytl-h`, `slf`, `slf-h`
+
+Config file location:
+
+- `config/shell_aliases.conf`
+
+Config keys:
+
+- `AUTOTAG_DEFAULT_ROOT`
+- `AUTOTAG_DEFAULT_TARGET`
+- `YTF_DEFAULT_FILE`
+
+Related docs:
+
+- `scripts/README_show_large_files.md`
+- `scripts/README_batch_convert.md`
+
+---
+
 ## Quick-start examples
 
 ```bash
