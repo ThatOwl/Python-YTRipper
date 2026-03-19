@@ -29,8 +29,20 @@ class StreamConverter:
         try:
             (
                 fpg
-                .output(fpg.input(str(video_path)), fpg.input(str(audio_path)), str(temp_output_path), vcodec='copy', acodec='aac', strict='experimental')
-                .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
+                .output(
+                    fpg.input(str(video_path)), 
+                    fpg.input(str(audio_path)), 
+                    str(temp_output_path), 
+                    vcodec='copy', 
+                    acodec='aac', 
+                    strict='experimental'
+                    )
+                .run(
+                    capture_stdout=True, 
+                    capture_stderr=True,
+                    overwrite_output=True, 
+                    quiet=True
+                    )
             )
             
             # Remove input files
@@ -76,7 +88,7 @@ class StreamConverter:
             audio_mp3 (bool): If True encode to MP3 (libmp3lame), otherwise to M4A (AAC).
         """
 
-        # ── Codec & extension from the flag ──────────────────────────────
+        # Codec & extension from the flag
         if audio_mp3:
             used_a_codec = "libmp3lame"
             target_ext = ".mp3"
@@ -93,7 +105,7 @@ class StreamConverter:
 
         logger.debug(f"Converting audio to {target_ext} ({used_a_codec}) with ffmpeg...")
 
-        # ── Bitrate kwargs ────────────────────────────────────────────────
+        # Bitrate kwargs
         # pytubefix returns e.g. "160kbps" but ffmpeg expects "160k"
         if audio_bitrate:
             ffmpeg_bitrate = audio_bitrate.replace("kbps", "k").replace("mbps", "M")
@@ -103,7 +115,7 @@ class StreamConverter:
             bitrate_kwargs = {"qscale:a": 3}
             logger.debug("No source bitrate provided, using VBR qscale:a=3")
 
-        # ── Temporary output file (safe conversion pattern) ───────────────
+        # Temporary output file (safe conversion pattern)
         temp_output = output_path.with_name(output_path.stem + ".tmp" + output_path.suffix)
 
         audio_input = fpg.input(str(audio_path))

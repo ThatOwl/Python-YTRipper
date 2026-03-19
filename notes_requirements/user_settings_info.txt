@@ -7,7 +7,7 @@
     "preferred_video_quality": "",                      // "HIGH", "LOW", "MEDIUM", or "" for default ... logic defined in _select_stream() 
     "preferred_abr": "",                                // e.g., "128k", "192k", or "" for default ... only direct match -> fallback quality
     "preferred_resolution": "",                         // e.g., "1080p", "720p", or "" for default ... only direct match -> fallback quality
-    "preferred_fps": 0,                                 // true or false or "0"  yt does not have multiple per resolution mostly => will be used for datasaver (60/30 fps)
+    "preferred_fps": 0,                                 // "60", "30" or "0"  yt does not have multiple per resolution mostly => will be used for datasaver
     "preferred_mime": "",                               // to be deleted ... e.g., "audio/mp3", "video/mp4", or "" for default
     "preferred_format": "",                             // currently not implemented
     "loglevel": "INFO",                                 // "DEBUG", "INFO", "WARNING", "ERROR"
