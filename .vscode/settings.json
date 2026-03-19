@@ -1,5 +1,6 @@
 {
-    "python.testing.cwd": "/media/SharedStorage/GitRepos/Python-YTRipper",
+    "python.defaultInterpreterPath": "/home/localuser/GitRepos/Python-YTRipper-1/.venv/bin/python",
+    "python.testing.cwd": "/home/localuser/GitRepos/Python-YTRipper-1",
     "python.testing.unittestArgs": [
         "-v",
         "-s",

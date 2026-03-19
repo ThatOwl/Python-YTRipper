@@ -3,7 +3,7 @@ from pathlib import Path
 import ffmpeg as fpg
 from core.logger import get_logger
 
-logger = get_logger(__name__, 'sc_debug.log')
+logger = get_logger(__name__, 'stream_converter_debug.log')
 
 class StreamConverter:
     """Handles conversion and merging of audio/video streams."""
