@@ -60,6 +60,7 @@ class CommandCLI(CLIBase):
 
     def enable_argcomplete(self, parser: argparse.ArgumentParser):
         """Attempt to enable argcomplete if installed."""
+        #FIXME
         try:
             import argcomplete
             argcomplete.autocomplete(parser)

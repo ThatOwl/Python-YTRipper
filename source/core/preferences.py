@@ -6,13 +6,13 @@ from dataclasses import dataclass, asdict
 import getpass
 
 # ---------- CONSTANTS FOR SETUP & RESTORE -------------------
-CURRENT_DIR = Path(__file__).resolve().parent   # → Python-YTRipper/source/core
-SOURCE_DIR = CURRENT_DIR.parent                 # → Python-YTRipper/source
-PROJECT_ROOT = SOURCE_DIR.parent                # → Python-YTRipper
-CONFIG_DIR = PROJECT_ROOT / "config"
-LOGS_DIR = PROJECT_ROOT / "logs"
+CURRENT_DIR: Path = Path(__file__).resolve().parent   # → Python-YTRipper/source/core
+SOURCE_DIR: Path = CURRENT_DIR.parent                 # → Python-YTRipper/source
+PROJECT_ROOT: Path = SOURCE_DIR.parent                # → Python-YTRipper
+CONFIG_DIR: Path = PROJECT_ROOT / "config"
+LOGS_DIR: Path = PROJECT_ROOT / "logs"
 
-PATH_TO_LOGS = LOGS_DIR
+PATH_TO_LOGS: Path = LOGS_DIR
 
 DEFAULT_PREFS: Dict = {
     "default_download_directory": "~/Downloads",
@@ -39,7 +39,7 @@ def current_username() -> str:
         home = os.environ.get("HOME", "")
         return Path(home).name if home else ""
 
-PATH_TO_PREFERENCES = CONFIG_DIR / f"user_settings_{current_username()}.json"
+PATH_TO_PREFERENCES: Path = CONFIG_DIR / f"user_settings_{current_username()}.json"
 
 def read_preferences() -> Dict:
     """

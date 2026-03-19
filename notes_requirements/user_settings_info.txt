@@ -1,10 +1,16 @@
 {
-    "default_download_directory": "",                   // e.g., "/home/user/downloads"
-    "download_mode": "AUDIO_ONLY",                      // "AUDIO_ONLY", "", "AUDIO_VIDEO"
-    "warn_me": true,                                    // true or false
-    "preferred_quality": "",                            // "HIGH", "LOW", "MEDIUM", or "" for default
-    "preferred_abr": "",                                // e.g., "128k", "192k", or "" for default
-    "preferred_resolution": "",                         // e.g., "1080p", "720p", or "" for default
-    "preferred_mime": "",                               // e.g., "audio/mp3", "video/mp4", or "" for default
-    "loglevel": "INFO"                                  // "DEBUG", "INFO", "WARNING", "ERROR"
+    "default_download_directory": "",                   // e.g., "/home/<user>/downloads"
+    "audio_only": False,                                // true or false
+    "audio_mp3": False,                                 // true or false ... also sets audio-only
+    "warn_me": true,                                    // true or false ... output preferences each run
+    "preferred_audio_quality": "",
+    "preferred_video_quality": "",                      // "HIGH", "LOW", "MEDIUM", or "" for default ... logic defined in _select_stream() 
+    "preferred_abr": "",                                // e.g., "128k", "192k", or "" for default ... only direct match -> fallback quality
+    "preferred_resolution": "",                         // e.g., "1080p", "720p", or "" for default ... only direct match -> fallback quality
+    "preferred_fps": 0,                                 // true or false or "0"  yt does not have multiple per resolution mostly => will be used for datasaver (60/30 fps)
+    "preferred_mime": "",                               // to be deleted ... e.g., "audio/mp3", "video/mp4", or "" for default
+    "preferred_format": "",                             // currently not implemented
+    "loglevel": "INFO",                                 // "DEBUG", "INFO", "WARNING", "ERROR"
+    "donotconvert": False,                              // true or false ... skip converting raw stream(s) 
+    "no_dir_date": False                                // true or false ... do not use date prefix when generating a playlist directory
 }

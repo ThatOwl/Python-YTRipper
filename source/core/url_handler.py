@@ -117,6 +117,7 @@ class URLHandler:
         Return a clean YouTube video URL (https://www.youtube.com/watch?v=VIDEOID).
         If 'start_radio' is present it will be logged and removed.
         """
+        #TODO: check if this can handle "-" at the end of video ids (some tests show that it runs into errors)
         try:
             parsed = ulp.urlparse(url)
             qs = ulp.parse_qs(parsed.query)

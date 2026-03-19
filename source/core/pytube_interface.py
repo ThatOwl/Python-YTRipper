@@ -425,6 +425,7 @@ class YouTubeDownloader:
 
         for i, video in enumerate(playlist_obj.videos):
             logger.info(f'[{i + 1}/{len(playlist_obj.videos)}] Processing: {video.title}')
+            #TODO: add urlh.clean_video_link if needed
             result = self.download_single(download_dir=playlist_dir, options=options, video_obj=video)
             results.append(result)
 
@@ -527,6 +528,7 @@ class YouTubeDownloader:
                     results = self.download_playlist(playlist_url=url, download_dir=download_dir, options=options)
                 else:
                     logger.debug("Detected as a single video URL.")
+                    url = self.urlh.clean_video_link(url) or url  # Clean the URL if possible, fallback to original
                     video = self._get_video_obj(url)
                     results.append(self.download_single(video_obj=video, download_dir=download_dir, options=options))
 
