@@ -2,6 +2,7 @@ from dataclasses import dataclass, asdict
 from typing import List, Callable, Tuple, Type, Any, Dict
 import time
 import random
+import re
 
 #TODO currently has no logging; consider adding if needed
 
@@ -65,8 +66,29 @@ def parse_bool_string(value: Any) -> bool:
 
 
 # Domain exceptions / base
+#TODO: might want to split this or adapt some specific behaviour
+# downloader-specific subclasses (keep here for module-local semantics)
+# TODO: improve exception hierarchy if needed and add more specific exceptions
+
 class DownloadError(Exception):
     """Base exception for download-related errors."""
+class VideoFetchError(DownloadError):
+    pass
+
+class PlaylistFetchError(DownloadError):
+    pass
+
+class StreamSelectionError(DownloadError):
+    pass
+
+class StreamDownloadError(DownloadError):
+    pass
+
+class ConversionError(DownloadError):
+    pass
+
+class CombineError(DownloadError):
+    pass
 
 # Models / result objects
 
@@ -154,3 +176,6 @@ def retry_call(callable_fn: Callable[[], Any],
             attempts_left -= 1
             delay *= backoff_factor
             attempt += 1
+
+def sanitize_filename(self, title: str) -> str:
+    return re.sub(r'[\\/*?:"<>|]', "", title)

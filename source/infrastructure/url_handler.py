@@ -1,13 +1,10 @@
 import urllib.parse as ulp
 import requests
-from core.logger import get_logger
+from utility.logger import get_logger
 
-#TODO Add unit tests for this class
-#TODO Add logging instead of print statements
+#TODO Improve logging
 #TODO Add error handling for invalid URLs, etc.
 #TODO Reinforce URL validation in other parts of the code using this class
-#TODO Review code for efficiency and correctness
-
 
 logger = get_logger(__name__, 'uh_debug.log')
 
@@ -24,7 +21,8 @@ class URLHandler:
         "www.youtu.be"
     ]
     
-    def _extract_video_id(self, url: str) -> str | None:
+    @staticmethod
+    def _extract_video_id(url: str) -> str | None:
         u = ulp.urlparse(url)
 
         # Case 1 — standard watch?v=
@@ -82,7 +80,8 @@ class URLHandler:
             #raise e
             return False
     
-    def has_start_radio(self, url: str) -> bool:
+    @staticmethod
+    def has_start_radio(url: str) -> bool:
         """Return True if the URL contains start_radio=1 (or truthy)."""
         try:
             parsed = ulp.urlparse(url)
@@ -111,8 +110,8 @@ class URLHandler:
             logger.exception(f"Error parsing URL for playlist: {e}")
             return False
 
-
-    def clean_video_link(self, url: str) -> str | None:
+    @staticmethod
+    def clean_video_link(url: str) -> str | None:
         """
         Return a clean YouTube video URL (https://www.youtube.com/watch?v=VIDEOID).
         If 'start_radio' is present it will be logged and removed.

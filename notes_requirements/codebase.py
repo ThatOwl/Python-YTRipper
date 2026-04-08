@@ -697,7 +697,7 @@ class YouTubeDownloader:
         self.urlh = URLHandler()
         self.os_handler = os_handler
         if self.os_handler is None:
-            from source.core.os_interactions import OSInteractions
+            from source.infrastructure.os_interactions import OSInteractions
             self.os_handler = OSInteractions()
 
     def _get_video_obj(self, video_url: str) -> ptf.YouTube | Exception:

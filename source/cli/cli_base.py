@@ -1,8 +1,8 @@
 
 import os
-from core.logger import get_logger
-from core.pytube_interface import YouTubeDownloader as YTD
-from core.os_interactions import OSInteractions
+from source.infrastructure.logger import get_logger
+from source.domain.pytube_interface import YouTubeDownloader as YTD
+from source.infrastructure.os_interactions import OSInteractions
 
 logger = get_logger(__name__, 'cli_debug.log')
 class CLIBase:

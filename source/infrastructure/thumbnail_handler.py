@@ -1,8 +1,8 @@
 import os
 import requests
 import pytube as ptf
-from core.logger import get_logger
-from core.utils import retry_call
+from source.infrastructure.logger import get_logger
+from source.infrastructure.utils import retry_call
 
 logger = get_logger(__name__, 'th_debug.log')
 

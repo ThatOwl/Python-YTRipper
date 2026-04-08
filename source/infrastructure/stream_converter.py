@@ -1,12 +1,64 @@
 import os
 from pathlib import Path 
 import ffmpeg as fpg
-from core.logger import get_logger
+from utility.logger import get_logger
 
-logger = get_logger(__name__, 'stream_converter_debug.log')
+logger = get_logger(__name__, 'StreamConverter_debug.log')
+
+#TODO: neccessary ? & decide what to put inside 
+class VideoConversionParameters:
+    actual_video_codec: str = None
+    actual_audio_codec: str = None
+    target_video_codec: str = None
+    target_audio_codec: str = None
+    
 
 class StreamConverter:
     """Handles conversion and merging of audio/video streams."""
+
+    #TODO: implement (variable datatypes open until implementation dictates them)
+    @staticmethod
+    def combine_streams_new(audio, video, conversion_params: VideoConversionParameters): # or combine_parameters object 
+        # implement temp logic 
+        # implement passing 
+        pass
+    
+    #TODO: implement (variable datatypes open until implementation dictates them)
+    @staticmethod
+    def convert_audio_new(audio, target_codec, thumbnail, bitrate):
+        
+        # this can be deleted => logic is moved to MediaAssembler
+        """"# Codec & extension from the flag
+        if audio_mp3:
+            used_a_codec = "libmp3lame"
+            target_ext = ".mp3"
+        else:
+            used_a_codec = "aac"
+            target_ext = ".m4a"""""
+
+        # uneccessary as it will be created locally or with os_interaction
+        """# Ensure output_path carries the correct extension
+        if output_path.suffix.lower() != target_ext:
+            logger.warning(
+                f"Output extension mismatch ({output_path.suffix}), adjusting to {target_ext}."
+            )
+            output_path = output_path.with_suffix(target_ext)"""
+
+        logger.debug(f"Converting audio to ({used_a_codec}) with ffmpeg...")
+
+        # could also be moved to MediaAssembler
+        """# pytubefix returns e.g. "160kbps" but ffmpeg expects "160k"
+        if audio_bitrate:
+            ffmpeg_bitrate = audio_bitrate.replace("kbps", "k").replace("mbps", "M")
+            bitrate_kwargs = {"audio_bitrate": ffmpeg_bitrate}
+            logger.debug(f"Using source-matched audio bitrate: {ffmpeg_bitrate} (raw: {audio_bitrate})")
+        else:
+            bitrate_kwargs = {"qscale:a": 3}
+            logger.debug("No source bitrate provided, using VBR qscale:a=3")"""
+
+
+
+    #TODO: retire 
     @staticmethod
     def combine_streams(audio_path: Path, video_path: Path, output_path: Path) -> None:
         """
@@ -64,8 +116,7 @@ class StreamConverter:
                     logger.warning(f"Failed to clean up temp file {temp_output_path}: {cleanup_err}")
             raise e  # Re-raise the exception for upstream handling
 
-
-    # replaces convert_to_m4a and convert_to_mp3
+    #TODO: retire 
     @staticmethod
     def convert_audio(
         audio_path: Path,

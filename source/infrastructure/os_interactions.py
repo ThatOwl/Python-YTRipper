@@ -4,9 +4,9 @@ import shutil
 import csv
 from typing import Dict, List, Tuple
 
-from core.logger import get_logger
-import core.preferences as preferences
-from core.url_handler import URLHandler
+from source.infrastructure.logger import get_logger
+import source.infrastructure.preferences as preferences
+from source.components.url_handler import URLHandler
 
 logger = get_logger(__name__, 'osi_debug.log')
 

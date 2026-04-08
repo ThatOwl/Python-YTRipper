@@ -4,11 +4,11 @@ import argparse
 from pathlib import Path
 
 from cli.cli_base import CLIBase
-from core.logger import get_logger
-from core.pytube_interface import YouTubeDownloader as YTD
-from core.utils import DownloadOptions, QUALITY_ALIAS_MAP, COMMON_AUDIO_ABR, COMMON_VIDEO_RESOLUTIONS, parse_bool_string
-from core.os_interactions import OSInteractions
-import core.preferences as preferences
+from source.infrastructure.logger import get_logger
+from source.domain.pytube_interface import YouTubeDownloader as YTD
+from source.infrastructure.utils import DownloadOptions, QUALITY_ALIAS_MAP, COMMON_AUDIO_ABR, COMMON_VIDEO_RESOLUTIONS, parse_bool_string
+from source.infrastructure.os_interactions import OSInteractions
+import source.infrastructure.preferences as preferences
 
 logger = get_logger(__name__, 'cli_com_debug.log')
 
