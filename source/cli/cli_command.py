@@ -1,14 +1,12 @@
-import sys
-import os
 import argparse
 from pathlib import Path
 
 from cli.cli_base import CLIBase
-from source.infrastructure.logger import get_logger
-from source.domain.pytube_interface import YouTubeDownloader as YTD
-from source.infrastructure.utils import DownloadOptions, QUALITY_ALIAS_MAP, COMMON_AUDIO_ABR, COMMON_VIDEO_RESOLUTIONS, parse_bool_string
-from source.infrastructure.os_interactions import OSInteractions
-import source.infrastructure.preferences as preferences
+from utility.logger import get_logger
+from utility.utils import DownloadOptions, QUALITY_ALIAS_MAP, COMMON_AUDIO_ABR, COMMON_VIDEO_RESOLUTIONS, parse_bool_string
+from infrastructure.os_interactions import OSInteractions
+import utility.preferences as preferences
+from application.download_orchestrator import DownloadOrchestrator as YTD
 
 logger = get_logger(__name__, 'cli_com_debug.log')
 
@@ -48,7 +46,7 @@ class CommandCLI(CLIBase):
                            help=f'Audio bitrate: {", ".join(COMMON_AUDIO_ABR.keys())}')
         parser.add_argument('-hf', '--high_fps', type=str, default=str(self.options.preferred_fps),
                            help='Prefer 60fps (true) or 30fps (false), or any (empty/0)')
-        parser.add_argument('-o', '--default_download_directory', type=str, default=self.options.default_download_directory,
+        parser.add_argument('-o', '--download_directory', type=str, default=self.options.default_download_directory,
                            help='Output directory (supports ~ expansion)')
         parser.add_argument('-w', '--warn_me', type=str, default=str(self.options.warn_me),
                            help='Enable warning prompts (true/false)')
@@ -78,7 +76,10 @@ class CommandCLI(CLIBase):
         return 30
 
     def _apply_options(self, args) -> None:
-        """Apply CLI arguments to options (shared logic for single/batch)."""
+        """
+        Apply CLI arguments (passed during current run) to self.options (shared logic for single/batch).
+        DELETEME: UPDATE: self.os.expand_path() called directly before any action
+        """
         args_dict = {
             'audio_only': parse_bool_string(args.audio_only),
             'audio_mp3': parse_bool_string(args.audio_mp3),
@@ -87,7 +88,7 @@ class CommandCLI(CLIBase):
             'preferred_resolution': args.preferred_resolution or None,
             'preferred_abr': args.preferred_abr or None,
             'preferred_fps': self._parse_fps_preference(args.high_fps),
-            'default_download_directory': args.default_download_directory or None,
+            'default_download_directory': self.os.expand_path(args.default_download_directory) or None, # was: args.default_download_directory or None
             'warn_me': parse_bool_string(args.warn_me) if args.warn_me else self.options.warn_me,
             'no_dir_date': parse_bool_string(args.no_dir_date) if args.no_dir_date else self.options.no_dir_date,
         }
@@ -129,10 +130,10 @@ class CommandCLI(CLIBase):
                 logger.warning(f"Unknown resolution '{self.options.preferred_resolution}'; ignoring.")
                 self.options.preferred_resolution = ""
 
-    def _download_single_url(self, url: str, expanded_dir: Path) -> int:
+    def _download_single_url(self, url: str) -> int: # was: (self, url: str, expanded_dir: Path) -> int:
         """Download a single URL. Returns 0 on success, 1 on failure."""
         try:
-            results = self.ytd.download(url=url, download_dir=expanded_dir, options=self.options)
+            results = self.ytd.download(url=url, options=self.options) # was download_dir=expanded_dir
             
             # Display results summary
             if results:
@@ -222,8 +223,8 @@ class CommandCLI(CLIBase):
                     logger.warning(f"Invalid params in batch file; using current config: {file_params}")
             
             # Expand download directory AFTER applying batch file parameters
-            expanded_download_dir = self.os.expand_path(self.options.default_download_directory)
-            logger.info(f"Download directory: {expanded_download_dir}")
+            #DELETEME: expanded_download_dir = self.os.expand_path(self.options.default_download_directory) see _apply_options()
+            logger.info(f"Download directory: {self.options.default_download_directory}")
             
             print(f"------ Batch Processing {len(valid_urls)} URLs ------")
             success_count = 0
@@ -231,7 +232,7 @@ class CommandCLI(CLIBase):
             
             for idx, url in enumerate(valid_urls, 1):
                 print(f"\n[{idx}/{len(valid_urls)}] Processing: {url}")
-                if self._download_single_url(url, expanded_download_dir) == 0:
+                if self._download_single_url(url) == 0:
                     success_count += 1
                 else:
                     fail_count += 1
@@ -243,8 +244,8 @@ class CommandCLI(CLIBase):
         # SINGLE MODE: process single URL
         else:
             # Expand download directory for single mode
-            expanded_download_dir = self.os.expand_path(self.options.default_download_directory)
-            logger.info(f"Download directory: {expanded_download_dir}")
+            # DELETEME: expanded_download_dir = self.os.expand_path(self.options.default_download_directory) see _apply_options()
+            logger.info(f"Download directory: {self.options.default_download_directory}")
             
             if args.info:
                 print("Fetching video/playlist info...")
@@ -255,4 +256,4 @@ class CommandCLI(CLIBase):
                     return 1
             else:
                 print("------ Starting Download ------")
-                return self._download_single_url(args.url, expanded_download_dir)
+                return self._download_single_url(args.url)

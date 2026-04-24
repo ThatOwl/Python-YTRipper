@@ -42,15 +42,15 @@ class VideoFetcher(object):
         try:
             video_obj = ptf.YouTube(video_url)
             return video_obj
-        
+
         except ptf_ex.LiveStreamError as e:
             logger.error("Live stream video (not supported): %s", video_url)
             logger.debug("LiveStreamError while fetching %s", video_url, exc_info=True)
-            raise VideoFetchError(f"Live stream video (not supported): {video_url}") from e
+            raise VideoFetchError(f"Live stream videos are not supported: {video_url}") from e
         except ptf_ex.RegexMatchError as e:
             logger.error("Invalid or malformed video URL: %s", video_url)
             logger.debug("RegexMatchError while fetching %s", video_url, exc_info=True)
-            raise VideoFetchError(f"Regex match error for video: {video_url}") from e
+            raise VideoFetchError(f"Invalid or malformed video URL: {video_url}") from e
         except ptf_ex.VideoPrivate as e:
             logger.error("Private video: %s", video_url)
             logger.debug("VideoPrivate while fetching %s", video_url, exc_info=True)
@@ -58,21 +58,21 @@ class VideoFetcher(object):
         except ptf_ex.VideoRegionBlocked as e:
             logger.error("Region-blocked video: %s", video_url)
             logger.debug("VideoRegionBlocked while fetching %s", video_url, exc_info=True)
-            raise VideoFetchError(f"Region-blocked video: {video_url}") from e
+            raise VideoFetchError(f"Video is not available in your region: {video_url}") from e
         except (ptf_ex.AgeCheckRequiredAccountError, ptf_ex.AgeCheckRequiredError) as e:
             logger.error("Age check required for video: %s", video_url)
             logger.debug("Age-check exception while fetching %s", video_url, exc_info=True)
-            raise VideoFetchError(f"Age check required for video: {video_url}") from e
+            raise VideoFetchError(f"Age verification is required to view this video: {video_url}") from e
         except ptf_ex.VideoUnavailable as e:
-            # concise user-facing error
-            logger.error("Video unavailable: %s", video_url)    
-            # full diagnostic to debug/file
+            logger.error("Video unavailable: %s", video_url)
             logger.debug("VideoUnavailable exception while fetching %s", video_url, exc_info=True)
-            raise VideoFetchError(f"video unavailable: {video_url}") from e
+            raise VideoFetchError(f"Could not fetch the video at {video_url}. It appears to be unavailable.") from e
         except Exception as e:
-            logger.error("Failed to fetch video: %s", video_url)
+            logger.error("Failed to fetch video %s", video_url)
             logger.debug("Unexpected exception while fetching %s", video_url, exc_info=True)
-            raise VideoFetchError(f"An error occurred while fetching the video {video_url}: {e}") from e
+            raise VideoFetchError(
+            f"Could not fetch the video at {video_url}. Please check the URL and your network connection."
+            ) from e
 
     #TODO improve error handling
     @staticmethod
@@ -96,4 +96,6 @@ class VideoFetcher(object):
         except Exception as e:
             logger.error("Failed to fetch playlist: %s", playlist_url)
             logger.debug("Unexpected exception while fetching playlist %s", playlist_url, exc_info=True)
-            raise PlaylistFetchError(f"An error occurred while fetching the playlist {playlist_url}: {e}") from e
+            raise PlaylistFetchError(
+                f"Could not fetch the playlist at {playlist_url}. Please check the URL and your network connection."
+            ) from e

@@ -8,13 +8,12 @@ from pytubefix import exceptions as ptf_ex #TODO: handle at border -> fetcher
 import os
 import re
 from enum import Enum
-from datetime import datetime
 from typing import List
 from pathlib import Path 
 
 
 from utility.logger import get_logger
-from utility.utils import StreamDownloadError, ConversionError, CombineError, DownloadOptions, DownloadResult, QUALITY_ALIAS_MAP, sanitize_filename
+from utility.utils import PlaylistFetchError, StreamDownloadError, ConversionError, CombineError, DownloadOptions, DownloadResult, QUALITY_ALIAS_MAP, sanitize_filename
 
 from infrastructure.stream_converter import StreamConverter #TODO:change to MediaAssembler 
 from infrastructure.url_handler import URLHandler # TODO: calls move to video_fetcher ?
@@ -68,42 +67,35 @@ class DownloadOrchestrator:
         Returns:
             List[DownloadResult]: A list of results for each video download in the playlist.
         """
-        
-        if not options.no_dir_date:
-            date = datetime.today().strftime('%Y_%m_')
-        else:
-            date = ""
-        
         results: List[DownloadResult] = []
+        playlist_obj:ptf.Playlist = None
+        playlist_dir: Path = None
+        
         try:
+            # EXCEPT: PlaylistFetchError
             playlist_obj = self.vid_fetcher.get_playlist_obj(playlist_url)
-        except Exception as e:
-            logger.error(f"Failed to fetch playlist object: {e}")
-            return [] #TODO could raise error upstream
-        
-        # Override pytube's video URL regex to capture all videos in the playlist
-        # TODO: put this anywhere in utils / preferences 
-        playlist_obj._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
-        logger.debug(f"Found {len(playlist_obj.video_urls)} videos in the playlist. {playlist_obj.title}")
-        
-        # Build a Path for the playlist directory and ensure it exists
-        playlist_dir = Path(download_dir) / f"{date}{sanitize_filename(playlist_obj.title)}"
 
-        # create new directory for each playlists -> easier for user
-        # TODO: move this to os_interactions as a method
-        try:
-            if not playlist_dir.exists(): #if user retries existing dir, skip creation
-                logger.info(f"Creating playlist download directory: {playlist_dir}")
-                playlist_dir.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            logger.error(f"Failed to create playlist directory {playlist_dir}: {e}")
+            # EXCEPT: IOError
+            playlist_dir = self.os_handler.setup_playlist_dir(download_dir, playlist_obj.title, options.no_dir_date)
+            
+            # Override pytube's video URL regex to capture all videos in the playlist
+            # TODO: put this anywhere in utils / preferences
+            playlist_obj._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
+            logger.debug(f"Found {len(playlist_obj.video_urls)} videos in the playlist. {playlist_obj.title}")
+            
+            for i, video in enumerate(playlist_obj.videos):
+                logger.info(f'[{i + 1}/{len(playlist_obj.videos)}] Processing: {video.title}')
+                #TODO: add urlh.clean_video_link if needed
+                result = self.download_single(download_dir=playlist_dir, options=options, video_obj=video)
+                results.append(result)
+
+        # catch playlist level exceptions, not indivial video exceptions (handled in download_single)
+        except (IOError, PlaylistFetchError) as e:
+            logger.error(f"Failed to process playlist: {e}")
             return results
-
-        for i, video in enumerate(playlist_obj.videos):
-            logger.info(f'[{i + 1}/{len(playlist_obj.videos)}] Processing: {video.title}')
-            #TODO: add urlh.clean_video_link if needed
-            result = self.download_single(download_dir=playlist_dir, options=options, video_obj=video)
-            results.append(result)
+        except Exception as e:
+            logger.error(f"Unexpected error occurred: {e}")
+            return results
 
         # Log summary
         success_count = sum(1 for r in results if r.success)
@@ -115,7 +107,7 @@ class DownloadOrchestrator:
             for result in results:
                 if not result.success:
                     logger.warning(f"  ✗ {result.video_title}: {'; '.join(result.errors)}")
-        
+    
         return results
 
     # split into two methods and export to ??
@@ -257,7 +249,7 @@ class DownloadOrchestrator:
         base_filename: str = self._sanitize_filename(video_obj.title)
         video_title = video_obj.title
         video_url = video_obj.watch_url
-
+        
         # Efficiency safeguard: skip download if target file already exists
         if options.audio_only:
             ext = '.mp3' if options.audio_mp3 else '.m4a'
@@ -287,7 +279,7 @@ class DownloadOrchestrator:
             return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_url)
 
     #TODO: Will be interface with CLI and GUI, so should be more generic 
-    def download(self, url: str, download_dir: Path, options: DownloadOptions) -> List[DownloadResult]:
+    def download(self, url: str, options: DownloadOptions) -> List[DownloadResult]: # was self, url: str, download_dir: Path, options: DownloadOptions) -> List[DownloadResult]:
         """Process a YouTube video or playlist based on the provided URL and options.
         Args:
             url (str): The URL of the YouTube video or playlist to process.
@@ -301,14 +293,12 @@ class DownloadOrchestrator:
             - Download status and any errors encountered during the process.
         """
         results = []
+        download_dir: Path = options.default_download_directory
 
         if self.urlh.is_youtube_url(url) and self.urlh.is_accessible(url):
             logger.debug(f"Valid YouTube URL: {url}")
             try:
-                # export this into a function in os_interactions or download_playlist() (just delegate / method call -> no execution here )
-                if not os.path.exists(download_dir):
-                    os.makedirs(download_dir)
-                    logger.info(f"Created download directory: {download_dir}")
+                OSInteractions.create_directory(download_dir)
 
                 # NEW: if start_radio mix, force single-video download with cleaned URL
                 if self.urlh.has_start_radio(url):

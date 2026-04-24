@@ -3,10 +3,12 @@ from pathlib import Path
 import shutil
 import csv
 from typing import Dict, List, Tuple
+from datetime import datetime
 
-from source.infrastructure.logger import get_logger
-import source.infrastructure.preferences as preferences
-from source.components.url_handler import URLHandler
+from utility.logger import get_logger
+import utility.preferences as preferences
+from infrastructure.url_handler import URLHandler
+from utility.utils import sanitize_filename
 
 logger = get_logger(__name__, 'osi_debug.log')
 
@@ -39,7 +41,8 @@ class OSInteractions:
         pass
 
     # BATCH FILE LOADING
-    def load_batch_urls_txt(self, file_path: Path) -> Tuple[List[str], str]:
+    @staticmethod
+    def load_batch_urls_txt(file_path: Path) -> Tuple[List[str], str]:
         """
         Load URLs from .txt file.
         First line may contain params (format: "param: -a -q low -r 480p")
@@ -67,7 +70,8 @@ class OSInteractions:
         except Exception as e:
             raise IOError(f"Error reading file {file_path}: {e}")
 
-    def load_batch_urls_csv(self, file_path: Path, url_column: int = 0) -> Tuple[List[str], str]:
+    @staticmethod
+    def load_batch_urls_csv(file_path: Path, url_column: int = 0) -> Tuple[List[str], str]:
         """
         Load URLs from .csv file.
         First line may contain params (same format as .txt).
@@ -95,7 +99,8 @@ class OSInteractions:
         except Exception as e:
             raise IOError(f"Error reading CSV file {file_path}: {e}")
 
-    def load_batch_urls(self, file_path: Path, url_column: int = 0) -> Tuple[List[str], str]:
+    @staticmethod
+    def load_batch_urls(file_path: Path, url_column: int = 0) -> Tuple[List[str], str]:
         """
         Auto-detect file format and load batch URLs.
         Returns: (list of URLs, param_string or empty string)
@@ -104,13 +109,14 @@ class OSInteractions:
         suffix = file_path.suffix.lower()
         
         if suffix == ".txt":
-            return self.load_batch_urls_txt(file_path)
+            return OSInteractions.load_batch_urls_txt(file_path)
         elif suffix == ".csv":
-            return self.load_batch_urls_csv(file_path, url_column)
+            return OSInteractions.load_batch_urls_csv(file_path, url_column)
         else:
             raise ValueError(f"Unsupported file format: {suffix}")
-    
-    def filter_valid_urls(self, urls: List[str]) -> Tuple[List[str], int]:
+
+    @staticmethod
+    def filter_valid_urls(urls: List[str]) -> Tuple[List[str], int]:
         """
         Filter out invalid/empty URLs from a list.
         
@@ -131,3 +137,109 @@ class OSInteractions:
                 skipped_count += 1
         
         return valid_urls, skipped_count
+
+    @staticmethod
+    def setup_playlist_dir(download_dir: Path, playlist_title: str, no_dir_date: bool) -> Path:
+        """
+        Set up the directory for the playlist download. Creates any missing directories.
+        Returns the playlist directory path.
+        """
+        download_dir = Path(download_dir)
+        date_prefix = datetime.today().strftime('%Y_%m_') if not no_dir_date else ""
+        playlist_dir = download_dir / f"{date_prefix}{sanitize_filename(playlist_title)}"
+
+        try:
+            created_count = OSInteractions.create_directory(playlist_dir)
+            if created_count:
+                logger.info(f"Created playlist download directory: {playlist_dir} (created {created_count} levels)")
+            else:
+                logger.debug(f"Playlist directory already exists: {playlist_dir}")
+            return playlist_dir
+        except Exception as e:
+            logger.error(f"Failed to create playlist directory {playlist_dir}: {e}")
+            logger.debug("Unexpected error occurred while creating playlist directory %s", playlist_dir, exc_info=True)
+            raise IOError(f"Failed to create playlist directory {playlist_dir}") from e
+
+    #TODO: cleanup or delete a use 
+        """
+        if not os.path.exists(download_dir):
+            os.makedirs(download_dir)
+            logger.info(f"Created download directory: {download_dir}")
+        """
+    def create_directory(dir_path: Path) -> int:
+        """
+        Create a directory and all missing parent directories.
+        Returns the number of directory levels that were created (0 if none).
+        """
+        dir_path = Path(dir_path)
+        # Find how many ancestor directories do not exist (count from the target up to the nearest existing ancestor)
+        missing_count = 0
+        p = dir_path
+        # Use resolve(strict=False) to normalize path without requiring existence
+        try:
+            p = p.resolve(strict=False)
+        except Exception:
+            p = dir_path
+
+        temp = p
+        while not temp.exists():
+            missing_count += 1
+            if temp.parent == temp:
+                # reached filesystem root
+                break
+            temp = temp.parent
+
+        if missing_count == 0:
+            logger.debug(f"Directory already exists, nothing to create: {dir_path}")
+            return 0
+
+        try:
+            # Create all missing directories in one call
+            dir_path.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Created path: {dir_path} (created {missing_count} levels)")
+            return missing_count
+        except Exception as e:
+            logger.error(f"Failed to create directory {dir_path}: {e}")
+            logger.debug("Unexpected error occurred while creating directory %s", dir_path, exc_info=True)
+            raise IOError(f"Failed to create directory {dir_path}") from e
+
+    # TODO: add method to append to batch results file instead of overwriting (for long-running batch processes)
+    # Currently unused !
+    @staticmethod
+    def save_batch_results(results: List[Dict], output_path: Path) -> None:
+        """
+        Save batch download results to a CSV file.
+
+        Args:
+            results: List of dictionaries containing download results (e.g. video_title, video_url, success, errors).
+            output_path: Path to the output CSV file.
+        """
+        try:
+            with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
+                fieldnames = ['video_title', 'video_url', 'success', 'errors']
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+                writer.writeheader()
+                for result in results:
+                    writer.writerow(result)
+            logger.info(f"Batch results saved to {output_path}")
+        except Exception as e:
+            logger.error(f"Failed to save batch results to {output_path}: {e}")
+            logger.debug("Unexpected error occurred while saving batch results to %s", output_path, exc_info=True)
+            raise IOError(f"Failed to save batch results to {output_path}") from e
+
+        try:
+            with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
+                fieldnames = ['video_title', 'video_url', 'success', 'errors']
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)                    
+                writer.writeheader()
+                for result in results:
+                    writer.writerow(result)
+            logger.info(f"Batch results saved to {output_path}")
+        except Exception as e:
+            logger.error(f"Failed to save batch results to {output_path}: {e}")
+            logger.debug("Unexpected error occurred while saving batch results to %s", output_path, exc_info=True)
+            raise IOError(f"Failed to save batch results to {output_path}") from e
+
+        # Optionally, you could return a success status or the output path
+        return
