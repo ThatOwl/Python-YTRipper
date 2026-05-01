@@ -34,7 +34,7 @@ class StreamDownloadService(object):
         """
         
         try:
-            identifier = " " #TODO: add logic to identifiy stream -> better logging (why did it fail, what stream?)
+            identifier = " " #TODO: add logic to identifiy vid/audio stream -> better logging (why did it fail, what stream?)
             
             downloaded_path:Path = Path(stream.download(
                 output_path=str(download_dir),
