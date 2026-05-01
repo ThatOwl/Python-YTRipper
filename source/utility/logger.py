@@ -5,7 +5,7 @@ import os
 from typing import Optional, Dict
 
 # Delegated constants / preference loading
-import core.preferences as preferences
+import utility.preferences as preferences
 
 def _load_preferences() -> Dict:
     """

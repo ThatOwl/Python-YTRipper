@@ -166,6 +166,7 @@ class OSInteractions:
             os.makedirs(download_dir)
             logger.info(f"Created download directory: {download_dir}")
         """
+    @staticmethod
     def create_directory(dir_path: Path) -> int:
         """
         Create a directory and all missing parent directories.

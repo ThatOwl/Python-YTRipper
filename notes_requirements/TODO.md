@@ -1,18 +1,12 @@
 ## research
-- how to inject logger, os, handlers etc.
 - how to properly log
-- how to handle errors upstream
 - how to minimize exception handling 
 
 ## big
-- ! refactor "download_dir" into "options"
+- ! refactor "download_dir" into "options" => DO NOT ... as file-dwnld may create multiple playlists => which have own dwnld-dirs !
 - !!! ONLY DEPEND ON INTERFACES ! => impl. interfaces
 - !! fix path handling and renaming o file ... including .mp4/mp3 bullshit
 - ! add unittesting
-- FIX path being "STR" or "PATH" type !!!
-    - > path is cumbersome revise solution
-    - > problem with many libs expecting str (ffmpeg, pytube)
-    - > NEEDED for LNX / WIN standardization
 - op. adapt stream_converter to accept any file-format
 - op. implement "datasaver" mode (mobile lower quality and warn video length -> size prediction ?)
 
@@ -34,7 +28,6 @@
 
 ## orchestration:
 - read docu and discussion with chat
-- general large refactor ahead
 
 ## pytube_interface:
 - refactor to multiple classes ! (Orchestration)
@@ -64,9 +57,6 @@ def get_info(self, url: str = None, video_obj: ptf.YouTube = None) -> dict:
 - => Tasks (bash etc -> can still be unittested)
 - op. validate user_saettings file for fields and content type
 - op. => later GUI to interface with CLI instead of classes? ... facade-pattern instead? 
-
-Check ext reference:
-025-10-11 16:44:08.266 [info] [CODE REFERENCING] file:///media/SharedStorage/GitRepos/Python-YTRipper/source/cl_interface.py Similar code with 5 license types [Apache-2.0, BSD-3-Clause, GPL-3.0, MIT, unknown] https://github.com/github-copilot/code_referencing?cursor=c1bfb56df0a1d42fe1d04c87549d8753&editor=vscode [Ln 15, Col 24] os.path.join(dir_path, filename)  try:  if os.path.isfile(file_path) or os.path.is...
 
 ## stream converter
 - refactor needed as cleanup

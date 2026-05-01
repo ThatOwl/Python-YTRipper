@@ -9,5 +9,11 @@
         "*_test.py"
     ],
     "python.testing.pytestEnabled": false,
-    "python.testing.unittestEnabled": true
+    "python.testing.unittestEnabled": true,
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportPossiblyUnboundVariable": "none",
+        "reportArgumentType": "none",
+        "reportAssignmentType": "none",
+        "reportReturnType": "none"
+    }
 }

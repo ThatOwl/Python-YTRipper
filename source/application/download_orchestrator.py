@@ -1,13 +1,6 @@
 
-
-
-#TODO: reduce includes after renaming / moving methods is done
-from xml.etree.ElementInclude import include
 import pytubefix as ptf
-from pytubefix import exceptions as ptf_ex #TODO: handle at border -> fetcher
-import os
 import re
-from enum import Enum
 from typing import List
 from pathlib import Path 
 
@@ -50,9 +43,58 @@ class DownloadOrchestrator:
         self.stream_selector = stream_selector or StreamSelector()
         self.stream_download = stream_download or StreamDownloadService()
 
-    
+ # split into two methods and export to ??
+    def info(self, url: str = None, video_obj: ptf.YouTube = None, output: callable = logger.info) -> None:
+        """
+        Print to console or log information about video or playlist.
+
+        Args:
+        url (str): The URL of the YouTube video or playlist.
+        video_obj (ptf.YouTube, optional): A YouTube video object. Defaults to None.
+        output (callable, optional): A callable that takes a string, e.g. `print` or `logger.info`.
+            Defaults to `logger.info`.
+        """
+        
+        if self.urlh.is_youtube_playlist(url):
+            try:
+                playlist_obj = self.vid_fetcher.get_playlist_obj(url)
+            except Exception as e:
+                logger.error(f"Failed to fetch playlist object: {e}")
+                return
+        
+            output(f"Playlist Title: {playlist_obj.title}")
+            output(f"Number of Videos: {len(playlist_obj.videos)}")
+            output("Videos:")
+            for i, video in enumerate(playlist_obj.videos):
+                output(f"{i + 1}. {video.title} ({video.length} seconds)")
+        else:
+            try:
+                if video_obj is None:
+                    video_obj = self.vid_fetcher.get_video_obj(url)
+            except Exception as e:
+                logger.error(f"Failed to fetch video object: {e}")
+                return
+
+            output(f"Video title: {video_obj.title}")
+            output(f"Video length: {video_obj.length} seconds")
+            output(f"Video views: {video_obj.views}")
+            output(f"Video author: {video_obj.author}")
+            output(f"Video description: {video_obj.description[:200]}...")
+            output(f"Thumbnail: {video_obj.thumbnail_url}")
+
+            output("Available streams:")
+            output("  Video:")
+            for stream in video_obj.streams.filter(type='video').order_by('resolution').desc():
+                output(f"- {stream.resolution}, {stream.mime_type}, {stream.fps}fps")
+            output(f"Best video: {video_obj.streams.filter(type='video').order_by('resolution').desc().first()}")
+            
+            output("  Audio:")
+            for stream in video_obj.streams.filter(type='audio').order_by('abr').desc():
+                output(f"- {stream.mime_type}, {stream.abr}")
+            output(f"Best audio: {video_obj.streams.filter(type='audio').order_by('abr').desc().first()}")
+            
     # TODO improve error handling (return exceptions or ...?)
-    def download_playlist(self, playlist_url: str, download_dir: Path, options: DownloadOptions) -> List[DownloadResult]:
+    def download_playlist(self, playlist_url: str, options: DownloadOptions) -> List[DownloadResult]:
         """
         Download all videos from a YouTube playlist as video or audio files.
 
@@ -67,6 +109,7 @@ class DownloadOrchestrator:
         Returns:
             List[DownloadResult]: A list of results for each video download in the playlist.
         """
+        download_dir: Path = Path(options.default_download_directory)
         results: List[DownloadResult] = []
         playlist_obj:ptf.Playlist = None
         playlist_dir: Path = None
@@ -110,59 +153,6 @@ class DownloadOrchestrator:
     
         return results
 
-    # split into two methods and export to ??
-    def info(self, url: str = None, video_obj: ptf.YouTube = None, output: callable = logger.info) -> None:
-        """
-        Print to console or log information about video or playlist.
-
-        Args:
-        url (str): The URL of the YouTube video or playlist.
-        video_obj (ptf.YouTube, optional): A YouTube video object. Defaults to None.
-        output (callable, optional): A callable that takes a string, e.g. `print` or `logger.info`.
-            Defaults to `logger.info`.
-        """
-        #DELETEME
-        #output = output or logger.info
-        
-        if self.urlh.is_youtube_playlist(url):
-            try:
-                playlist_obj = self.vid_fetcher.get_playlist_obj(url)
-            except Exception as e:
-                logger.error(f"Failed to fetch playlist object: {e}")
-                return
-        
-            output(f"Playlist Title: {playlist_obj.title}")
-            output(f"Number of Videos: {len(playlist_obj.videos)}")
-            output("Videos:")
-            for i, video in enumerate(playlist_obj.videos):
-                output(f"{i + 1}. {video.title} ({video.length} seconds)")
-        else:
-            try:
-                if video_obj is None:
-                    video_obj = self.vid_fetcher.get_video_obj(url)
-            except Exception as e:
-                logger.error(f"Failed to fetch video object: {e}")
-                return
-
-            output(f"Video title: {video_obj.title}")
-            output(f"Video length: {video_obj.length} seconds")
-            output(f"Video views: {video_obj.views}")
-            output(f"Video author: {video_obj.author}")
-            output(f"Video description: {video_obj.description[:200]}...")
-            output(f"Thumbnail: {video_obj.thumbnail_url}")
-
-            output("Available streams:")
-            output("  Video:")
-            for stream in video_obj.streams.filter(type='video').order_by('resolution').desc():
-                output(f"- {stream.resolution}, {stream.mime_type}, {stream.fps}fps")
-            output(f"Best video: {video_obj.streams.filter(type='video').order_by('resolution').desc().first()}")
-            
-            output("  Audio:")
-            for stream in video_obj.streams.filter(type='audio').order_by('abr').desc():
-                output(f"- {stream.mime_type}, {stream.abr}")
-            output(f"Best audio: {video_obj.streams.filter(type='audio').order_by('abr').desc().first()}")
-
-    
     def download_single_video(self, video_obj: ptf.YouTube, download_dir: Path, options: DownloadOptions) -> DownloadResult:
         """
         Download a single YouTube video as video or audio.
@@ -199,14 +189,13 @@ class DownloadOrchestrator:
             logger.error(f"✗ {video_title}: Unexpected error - {e}")
             return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_obj.watch_url)
 
-    def download_single_audio(self, video_obj: ptf.YouTube, options: DownloadOptions) -> DownloadResult:
+    def download_single_audio(self, video_obj: ptf.YouTube, options: DownloadOptions, download_dir: Path) -> DownloadResult:
         """
         Download a single YouTube video's audio stream.
 
         Args:
             ...
         """
-        download_dir: Path = options.default_download_directory
 
         try:
             audio_stream = self.stream_selector.select_stream_audio(video_obj, options)
@@ -239,7 +228,7 @@ class DownloadOrchestrator:
     
     #TODO video-fetching done in download() should not be required =>  see that download_playlist() can still interface properly
     # this will be a "facade" as functionality was split (=> reverse? was this sensible)
-    def download_single(self, options: DownloadOptions, video_obj: ptf.YouTube) -> DownloadResult:
+    def download_single(self, options: DownloadOptions, download_dir: Path, video_obj: ptf.YouTube = None, url: str = None) -> DownloadResult:
         """
         Download a single YouTube video as video or audio.
 
@@ -248,7 +237,8 @@ class DownloadOrchestrator:
             download_dir (str): The directory to save the downloaded file.
             audio_only (bool): If True, download audio only. If False, download video.
         """        
-        download_dir: Path = options.default_download_directory # TODO cleanup
+        video_obj = video_obj or self.vid_fetcher.get_video_obj(url) #TODO: does this work ? => video-fetching should ideally be done outside of this method, but this is a fallback if not (e.g. for playlist download)
+        
         base_filename: str = sanitize_filename(video_obj.title)
         video_title = video_obj.title
         video_url = video_obj.watch_url
@@ -261,6 +251,7 @@ class DownloadOrchestrator:
         else:
             ext = '.mp4'
         
+        # refactor this look at: https://vscode.dev/github/RF-at-FH-Joanneum/Python-YTRipper/blob/Restructure_Orchestration_2887-7ee1-42fe-b3eb-f9c44204ae24
         target_file = Path(download_dir) / f"{base_filename}{ext}"
         if target_file.exists(): # does this check for extension ?
             logger.info(f'⏭ Skipping (already exists): {video_title} -> {target_file.name}')
@@ -270,9 +261,9 @@ class DownloadOrchestrator:
         
         try:
             if options.audio_only:
-                self.download_single_audio(video_obj, download_dir, options)
+                self.download_single_audio(video_obj=video_obj, download_dir=download_dir, options=options)
             else:
-                self.download_single_video(video_obj, download_dir, options)
+                self.download_single_video(video_obj=video_obj, download_dir=download_dir, options=options)
 
             logger.info(f'✓ {video_title}')
             return DownloadResult(success=True, errors=[], video_title=video_title, video_url=video_url)
@@ -285,7 +276,7 @@ class DownloadOrchestrator:
             return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_url)
 
     #TODO: Will be interface with CLI and GUI, so should be more generic 
-    def download(self, url: str, options: DownloadOptions) -> List[DownloadResult]: # was self, url: str, download_dir: Path, options: DownloadOptions) -> List[DownloadResult]:
+    def download(self, url: str, options: DownloadOptions) -> List[DownloadResult]:
         """Process a YouTube video or playlist based on the provided URL and options.
         Args:
             url (str): The URL of the YouTube video or playlist to process.
@@ -299,12 +290,12 @@ class DownloadOrchestrator:
             - Download status and any errors encountered during the process.
         """
         results = []
-        download_dir: Path = options.default_download_directory
+        download_dir: Path = Path(options.default_download_directory)
 
         if self.urlh.is_youtube_url(url) and self.urlh.is_accessible(url):
             logger.debug(f"Valid YouTube URL: {url}")
             try:
-                OSInteractions.create_directory(download_dir)
+                self.os_handler.create_directory(download_dir)
 
                 # if start_radio mix, force single-video download with cleaned URL
                 if self.urlh.has_start_radio(url):
@@ -316,12 +307,12 @@ class DownloadOrchestrator:
 
                 if self.urlh.is_youtube_playlist(url):
                     logger.debug("Detected as a playlist URL.")
-                    results = self.download_playlist(playlist_url=url, options=options) # was (playlist_url=url, download_dir=download_dir, options=options)
+                    results = self.download_playlist(playlist_url=url, options=options)
                 else:
                     logger.debug("Detected as a single video URL.")
                     url = self.urlh.clean_video_link(url) or url  # Clean the URL if possible, fallback to original
-                    video = self.vid_fetcher.get_video_obj(video_url=url)  # May raise VideoFetchError, handled in download_single
-                    results.append(self.download_single(video_obj=video, options=options))  # was (video_obj=video, options=options)
+                    #video = self.vid_fetcher.get_video_obj(video_url=url)  # May raise VideoFetchError, handled in download_single
+                    results.append(self.download_single(url=url, options=options, download_dir=download_dir))
 
             except Exception as e:
                 logger.error(f"Download failed: {e}")

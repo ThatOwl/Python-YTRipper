@@ -12,8 +12,6 @@ logger = get_logger( __name__,"StreamDownloader_debug.log")
 
 class StreamDownloadService(object):
     """docstring for StreamDownloadService."""
-    def __init__(self, arg):
-        super(StreamDownloadService, self).__init__()
 
     #TODO: cleanup (mess of parameters) 
     #TODO:  return path or object => find out if ffmpeg performance improves 
@@ -26,22 +24,25 @@ class StreamDownloadService(object):
                 stream (ptf.Stream): The YouTube video stream object to download.
                 download_dir (Path): The directory where the downloaded file will be saved.
             Returns:
-                str: The file path of the downloaded stream, or an empty string if no suitable stream is found.
+                Path | None: The file path of the downloaded stream, or None if no suitable stream is found.
             Logs:
-                - ...
+                - Debug logs for the download process, including the stream identifier and download path.
+                - Exception logs if the download fails, including the error message.
             Raises:
                 StreamDownloadError: If there is an error during the download process.
         """
         
         try:
-            identifier = " " #TODO: add logic to identifiy vid/audio stream -> better logging (why did it fail, what stream?)
+            identifier = "audio" if stream.includes_audio_track and not stream.includes_video_track else "video" if stream.includes_video_track else "Error"
             
-            downloaded_path:Path = Path(stream.download(
+            downloaded_path:Path = Path(stream.download
+                (
                 output_path=str(download_dir),
                 skip_existing=True,
                 timeout=5,
                 max_retries=3
-            ))
+                )
+            )
             
             logger.debug(f"{identifier} stream downloaded to: {downloaded_path}")
             return downloaded_path

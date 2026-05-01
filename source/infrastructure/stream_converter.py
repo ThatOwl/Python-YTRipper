@@ -76,7 +76,7 @@ class StreamConverter:
         logger.debug("Combining video and audio with ffmpeg...")
         
         # Use a temporary output file to avoid overwriting input files
-        temp_output_path = Path(output_path).parent / f".{Path(output_path).stem}.tmp.mp4"
+        temp_output_path = Path(output_path).parent / f".{Path(output_path).stem}_tmp.mp4"
         
         try:
             (

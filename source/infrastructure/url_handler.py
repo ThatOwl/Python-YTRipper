@@ -121,7 +121,7 @@ class URLHandler:
             parsed = ulp.urlparse(url)
             qs = ulp.parse_qs(parsed.query)
             # prefer explicit v parameter, fallback to extractor (handles youtu.be, /shorts/, /embed/)
-            video_id = qs.get("v", [None])[0] or self._extract_video_id(url)
+            video_id = qs.get("v", [None])[0] or URLHandler._extract_video_id(url)
             if not video_id:
                 logger.debug("clean_video_link: no video id found in URL: %s", url)
                 return None

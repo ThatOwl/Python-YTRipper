@@ -88,7 +88,7 @@ class CommandCLI(CLIBase):
             'preferred_resolution': args.preferred_resolution or None,
             'preferred_abr': args.preferred_abr or None,
             'preferred_fps': self._parse_fps_preference(args.high_fps),
-            'default_download_directory': self.os.expand_path(args.default_download_directory) or None, # was: args.default_download_directory or None
+            'default_download_directory': self.os.expand_path(args.download_directory) or None, # was: args.default_download_directory or None
             'warn_me': parse_bool_string(args.warn_me) if args.warn_me else self.options.warn_me,
             'no_dir_date': parse_bool_string(args.no_dir_date) if args.no_dir_date else self.options.no_dir_date,
         }

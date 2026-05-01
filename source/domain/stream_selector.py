@@ -7,9 +7,7 @@ No ffmpeg
 Testable without network
 """
 
-from xml.etree.ElementInclude import include
 import pytubefix as ptf
-from enum import Enum
 
 from utility.logger import get_logger
 from utility.utils import StreamSelectionError, DownloadOptions, DownloadResult, QUALITY_ALIAS_MAP
@@ -22,22 +20,6 @@ logger = get_logger(__name__, 'StreamSelector_debug.log')
 
 class StreamSelector:
     """docstring for StreamSelector."""
-
-    #TODO: moved from StreamDownloader >> implement logging / handling here
-    def dummy():    
-        pass
-
-        """ try:
-            # Use the new stream selector
-            stream: ptf.Stream = self._select_stream(video, str_type, options)
-            
-            # Log selected stream details
-            if str_type == self.StreamType.AUDIO:
-            
-        except StreamSelectionError as e:
-            logger.warning(f"No suitable {self.stream_type_map[str_type]} stream available: {e}")
-            return ""
-        """
     
     @staticmethod
     def select_stream_audio(video: ptf.YouTube, options: DownloadOptions) -> ptf.Stream:
@@ -79,6 +61,22 @@ class StreamSelector:
         except Exception as e:
             raise StreamSelectionError(f"Stream selection failed: {e}") from e
     
+    @staticmethod     # Helper to filter by FPS preference (used in video selection)
+    def _apply_fps_filter(candidates_list:list, preferred_fps:int):
+        """Filter candidates by FPS preference: 0=any, 30=prefer 30fps, 60=prefer 60fps"""
+        if not candidates_list or preferred_fps == 0:
+            return candidates_list
+        # Extract fps from stream strings like "60fps" -> 60
+        result = []
+        for stream_obj in candidates_list:
+            try:
+                stream_fps = int(str(stream_obj.fps).rstrip('fps')) if stream_obj.fps else 0
+                if stream_fps == preferred_fps:
+                    result.append(stream_obj)
+            except (ValueError, AttributeError):
+                pass
+        return result if result else candidates_list  # fallback to all if none match
+
     @staticmethod
     def select_stream_video(video: ptf.YouTube, options: DownloadOptions) -> ptf.Stream:
         """Select a video stream based on DownloadOptions preferences."""
@@ -86,41 +84,25 @@ class StreamSelector:
             q = video.streams.filter(type='video', progressive=False)
             stream = None
 
-            # Helper to filter by FPS preference
-            def apply_fps_filter(candidates_list, preferred_fps):
-                """Filter candidates by FPS preference: 0=any, 30=prefer 30fps, 60=prefer 60fps"""
-                if not candidates_list or preferred_fps == 0:
-                    return candidates_list
-                # Extract fps from stream strings like "60fps" -> 60
-                result = []
-                for stream_obj in candidates_list:
-                    try:
-                        stream_fps = int(str(stream_obj.fps).rstrip('fps')) if stream_obj.fps else 0
-                        if stream_fps == preferred_fps:
-                            result.append(stream_obj)
-                    except (ValueError, AttributeError):
-                        pass
-                return result if result else candidates_list  # fallback to all if none match
-
             # 1) preferred_resolution (DASH first, then progressive)
             if options and options.preferred_resolution:
                 stream = q.filter(resolution=options.preferred_resolution).order_by('fps').desc().first() if options.preferred_fps == 60 else q.filter(resolution=options.preferred_resolution).order_by('fps').asc().first() if options.preferred_fps == 30 else q.filter(resolution=options.preferred_resolution).first()
                 logger.debug(f"[select] video preferred resolution={options.preferred_resolution} fps={options.preferred_fps or 'any'} (DASH) -> {stream}")
                 if not stream:
                     candidates = list(video.streams.filter(type='video', progressive=True, resolution=options.preferred_resolution).order_by('fps'))
-                    candidates = apply_fps_filter(candidates, options.preferred_fps)
+                    candidates = StreamSelector._apply_fps_filter(candidates, options.preferred_fps)
                     stream = candidates[-1] if candidates else None
                     logger.debug(f"[select] video preferred resolution={options.preferred_resolution} (progressive) -> {stream}")
 
             # 2) preferred_mime (best resolution within mime, considering FPS)
             if not stream and options and options.preferred_mime:
                 candidates = list(q.filter(mime_type=options.preferred_mime).order_by('resolution'))
-                candidates = apply_fps_filter(candidates, options.preferred_fps)
+                candidates = StreamSelector._apply_fps_filter(candidates, options.preferred_fps)
                 stream = candidates[-1] if candidates else None  # highest resolution
                 logger.debug(f"[select] video preferred mime={options.preferred_mime} fps={options.preferred_fps or 'any'} (DASH) -> {stream}")
                 if not stream:
                     candidates = list(video.streams.filter(type='video', progressive=True, mime_type=options.preferred_mime).order_by('resolution'))
-                    candidates = apply_fps_filter(candidates, options.preferred_fps)
+                    candidates = StreamSelector._apply_fps_filter(candidates, options.preferred_fps)
                     stream = candidates[-1] if candidates else None
                     logger.debug(f"[select] video preferred mime={options.preferred_mime} (progressive) -> {stream}")
 
@@ -128,7 +110,7 @@ class StreamSelector:
             if not stream and options and options.preferred_video_quality:
                 qual_key = QUALITY_ALIAS_MAP.get(options.preferred_video_quality.strip().lower())
                 candidates = list(q.order_by('resolution'))
-                candidates = apply_fps_filter(candidates, options.preferred_fps)
+                candidates = StreamSelector._apply_fps_filter(candidates, options.preferred_fps)
                 
                 if qual_key == "high":
                     stream = candidates[-1] if candidates else None  # highest resolution
@@ -143,12 +125,12 @@ class StreamSelector:
             # 4) best available (highest resolution, considering FPS)
             if not stream:
                 candidates = list(q.order_by('resolution'))
-                candidates = apply_fps_filter(candidates, options.preferred_fps)
+                candidates = StreamSelector._apply_fps_filter(candidates, options.preferred_fps)
                 stream = candidates[-1] if candidates else None  # highest resolution
                 logger.debug(f"[select] video fallback best resolution (DASH) fps={options.preferred_fps or 'any'} -> {stream}")
                 if not stream:
                     candidates = list(video.streams.filter(type='video').order_by('resolution'))
-                    candidates = apply_fps_filter(candidates, options.preferred_fps)
+                    candidates = StreamSelector._apply_fps_filter(candidates, options.preferred_fps)
                     stream = candidates[-1] if candidates else None
 
             return stream

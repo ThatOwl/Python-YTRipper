@@ -177,5 +177,5 @@ def retry_call(callable_fn: Callable[[], Any],
             delay *= backoff_factor
             attempt += 1
 
-def sanitize_filename(self, title: str) -> str:
+def sanitize_filename(title: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "", title)

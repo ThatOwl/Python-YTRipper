@@ -4,8 +4,6 @@ convert audio
 merge audio/video
 Wraps StreamConverter
 """
-import os
-from pathlib import Path
 
 from utility.logger import get_logger
 from infrastructure.stream_converter import StreamConverter
@@ -17,8 +15,6 @@ class MediaAssembler(object):
     def __init__(self, stream_converter: StreamConverter = None):
         self.stream_converter = stream_converter if stream_converter is not None else StreamConverter()
         
-        super(MediaAssembler, self).__init__()
-
     def convert_audio(self, ?? ) -> None:
         """Will delegate to StreamConverter.convert_audio, but will also handle any media-assembler specific logic (e.g. file management, logging, error handling, etc.)"""
         self.stream_converter.convert_audio_new()
