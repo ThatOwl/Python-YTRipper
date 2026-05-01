@@ -8,7 +8,7 @@ from infrastructure.os_interactions import OSInteractions
 import utility.preferences as preferences
 from application.download_orchestrator import DownloadOrchestrator as YTD
 
-logger = get_logger(__name__, 'cli_com_debug.log')
+logger = get_logger(__name__, 'cli_command_debug.log')
 
 class CommandCLI(CLIBase):
     def __init__(self):

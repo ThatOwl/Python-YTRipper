@@ -1,17 +1,31 @@
 import os
 from pathlib import Path 
+from attr import dataclass
 import ffmpeg as fpg
 from utility.logger import get_logger
 
 logger = get_logger(__name__, 'StreamConverter_debug.log')
 
 #TODO: neccessary ? & decide what to put inside 
+@dataclass
 class VideoConversionParameters:
     actual_video_codec: str = None
     actual_audio_codec: str = None
+    actual_bitrate: str = None
     target_video_codec: str = None
     target_audio_codec: str = None
+    target_bitrate: str = None
     
+# TODO!!!! This is a "facade" for the actual conversion logic, which is now in MediaAssembler. This class should be focused on the ffmpeg logic, and should not have any media-assembler specific logic (e.g. file management, logging, error handling, etc.) — that should be in MediaAssembler. The methods here should be as "pure" as possible, just taking inputs and returning outputs without side effects.
+# The MediaAssembler will handle all the orchestration around these methods, including any file management, logging, error handling, etc. This separation of concerns will make both classes more maintainable and testable. The StreamConverter should be focused solely on the ffmpeg conversion and merging logic, while the MediaAssembler should handle the higher-level orchestration and any media-assembler specific logic. This way, the StreamConverter can be easily reused in other contexts if needed, without being tightly coupled to the MediaAssembler's responsibilities.
+# The StreamConverter methods should ideally be static or class methods, as they don't need to maintain any state. They should take all necessary parameters as arguments and return results without modifying any external state. The MediaAssembler will be responsible for managing any state, file paths, logging, etc., and will call the StreamConverter's methods to perform the actual conversion and merging tasks. This design will lead to a cleaner separation of concerns and make both classes easier to test and maintain.
+# The StreamConverter should not have any knowledge of the MediaAssembler's responsibilities or logic. It should be a standalone utility class that focuses solely on the ffmpeg operations. The MediaAssembler will be the one that orchestrates the overall media processing workflow, including calling the StreamConverter's methods when needed, and handling any media-assembler specific logic such as file management, logging, error handling, etc. This way, the StreamConverter can be easily reused in other contexts if needed, without being tightly coupled to the MediaAssembler's responsibilities.
+# The StreamConverter should be designed to be as "pure" as possible, with methods that take inputs and return outputs without side effects. This will make it easier to test the StreamConverter's functionality in isolation, without needing to worry about any media-assembler specific logic or state management. The MediaAssembler will handle all of that, and will call the StreamConverter's methods to perform the actual conversion and merging tasks when needed. This separation of concerns will lead to a cleaner and more maintainable codebase overall.
+
+# TODO - decide on datatypes for method parameters and return values (e.g. should we use Path objects, strings, custom data classes, etc. ?)
+# The method signatures should be designed to be as clear and intuitive as possible, while also being flexible enough to accommodate any future changes or additions to the conversion and merging logic. The StreamConverter should be focused solely on the ffmpeg operations, and should not have any media-assembler specific logic or state management. The MediaAssembler will handle all of that, and will call the StreamConverter's methods to perform the actual conversion and merging tasks when needed. This way, the StreamConverter can be easily reused in other contexts if needed, without being tightly coupled to the MediaAssembler's responsibilities.
+
+# TODO - actual_audio_bitrate is not being set -> read commit history (did work at some point) => decide if this is neccessary and if so, how to set it (e.g. pass as parameter, set as attribute, etc.)
 
 class StreamConverter:
     """Handles conversion and merging of audio/video streams."""
@@ -119,12 +133,8 @@ class StreamConverter:
     #TODO: retire 
     @staticmethod
     def convert_audio(
-        audio_path: Path,
-        output_path: Path,
-        thumbnail_path: Path | None = None,
-        audio_bitrate: str = "",
-        audio_mp3: bool = False,
-    ) -> None:
+        audio_path: Path, output_path: Path, thumbnail_path: Path = None, audio_bitrate: str = "", audio_mp3: bool = False
+        ) -> None:
         """Converts audio (always re-encodes — source is Opus, not AAC).
 
         Uses a safe temp-file pattern: writes to a .tmp file first, then

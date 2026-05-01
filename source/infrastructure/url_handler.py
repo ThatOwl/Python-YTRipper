@@ -6,7 +6,7 @@ from utility.logger import get_logger
 #TODO Add error handling for invalid URLs, etc.
 #TODO Reinforce URL validation in other parts of the code using this class
 
-logger = get_logger(__name__, 'uh_debug.log')
+logger = get_logger(__name__, 'url_handler_debug.log')
 
 
 class URLHandler:

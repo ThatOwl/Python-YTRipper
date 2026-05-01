@@ -4,7 +4,7 @@ import pytube as ptf
 from utility.logger import get_logger
 from utility.utils import retry_call
 
-logger = get_logger(__name__, 'th_debug.log')
+logger = get_logger(__name__, 'thumbnail_handler_debug.log')
 
 class ThumbnailHandler:
     """Handles downloading and saving YouTube video thumbnails."""

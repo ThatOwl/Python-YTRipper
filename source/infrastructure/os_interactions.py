@@ -10,7 +10,7 @@ import utility.preferences as preferences
 from infrastructure.url_handler import URLHandler
 from utility.utils import sanitize_filename
 
-logger = get_logger(__name__, 'osi_debug.log')
+logger = get_logger(__name__, 'os_interactions_debug.log')
 
 
 class OSInteractions:
