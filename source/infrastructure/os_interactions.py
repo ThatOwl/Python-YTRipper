@@ -1,6 +1,6 @@
 import os
+import re
 from pathlib import Path
-import shutil
 import csv
 from typing import Dict, List, Tuple
 from datetime import datetime
@@ -21,9 +21,45 @@ class OSInteractions:
         self.logs_path = preferences.PATH_TO_LOGS
 
     def expand_path(self, path_str: str) -> Path:
-        """Expand ~ and environment variables."""
-        return Path(os.path.expandvars(os.path.expanduser(path_str))).resolve()
+        """
+        Expand user-provided paths.
 
+        Handles:
+        - ~/Downloads
+        - $HOME/Downloads
+        - normal absolute Linux paths
+        - common WSL typo: mnt/d/... -> /mnt/d/...
+        - optional Windows drive paths: D:\\Folder -> /mnt/d/Folder
+        """
+        if path_str is None:
+            raise ValueError("Path cannot be None")
+
+        raw_path = str(path_str).strip().strip('"').strip("'")
+
+        if not raw_path:
+            raise ValueError("Path cannot be empty")
+
+        raw_path = os.path.expandvars(os.path.expanduser(raw_path))
+
+        # Convert Windows path like D:\Folder or D:/Folder to WSL path /mnt/d/Folder
+        windows_drive_match = re.match(r"^([A-Za-z]):[\\/](.*)$", raw_path)
+        if windows_drive_match:
+            drive = windows_drive_match.group(1).lower()
+            rest = windows_drive_match.group(2).replace("\\", "/")
+            raw_path = f"/mnt/{drive}/{rest}"
+            logger.warning(f"Converted Windows path to WSL path: {raw_path}")
+
+        # Common WSL typo: mnt/d/... should usually be /mnt/d/...
+        if re.match(r"^mnt/[A-Za-z]/", raw_path):
+            corrected_path = "/" + raw_path
+            logger.warning(
+                f"Path looks like a WSL mount path but is missing leading '/'. "
+                f"Using '{corrected_path}' instead of '{raw_path}'."
+            )
+            raw_path = corrected_path
+
+        return Path(raw_path).resolve()
+    
     def read_preferences(self) -> Dict:
         """Delegate to preferences module."""
         return preferences.read_preferences()
@@ -31,14 +67,6 @@ class OSInteractions:
     def write_preferences(self, prefs: Dict) -> None:
         """Delegate to preferences module."""
         preferences.write_preferences(prefs)
-
-    def clear_directory(self, dir_path: Path) -> None:
-        """...existing code..."""
-        pass
-
-    def clear_logs(self) -> None:
-        """...existing code..."""
-        pass
 
     # BATCH FILE LOADING
     @staticmethod

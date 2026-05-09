@@ -23,12 +23,12 @@ DEFAULT_PREFS: Dict = {
     "preferred_video_quality": "",
     "preferred_resolution": "",
     "preferred_abr": "",
-    "preferred_mime": "",
     "preferred_format": "",
     "preferred_fps": 0,
-    "loglevel": "WARNING",
+    "visible_loglevel": "INFO",
     "donotconvert": False,
-    "no_dir_date": False
+    "no_dir_date": False,
+    "datasave": True,
 }
 
 def current_username() -> str:

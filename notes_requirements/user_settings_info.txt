@@ -8,9 +8,9 @@
     "preferred_abr": "",                                // e.g., "128k", "192k", or "" for default ... only direct match -> fallback quality
     "preferred_resolution": "",                         // e.g., "1080p", "720p", or "" for default ... only direct match -> fallback quality
     "preferred_fps": 0,                                 // "60", "30" or "0"  yt does not have multiple per resolution mostly => will be used for datasaver
-    "preferred_mime": "",                               // to be deleted ... e.g., "audio/mp3", "video/mp4", or "" for default
     "preferred_format": "",                             // currently not implemented
-    "loglevel": "INFO",                                 // "DEBUG", "INFO", "WARNING", "ERROR" ... above "INFO" not recommended -> will run silently 
+    "visible_loglevel": "INFO",                                 // "DEBUG", "INFO", "WARNING", "ERROR" ... above "INFO" not recommended -> will run silently 
     "donotconvert": False,                              // true or false ... skip converting raw stream(s) 
     "no_dir_date": False                                // true or false ... do not use date prefix when generating a playlist directory
+    "datasaver": False                                  // true or false ... warn user on long-vids and preferre lower quality
 }

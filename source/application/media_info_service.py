@@ -9,8 +9,8 @@ logger = get_logger(__name__, "media_info_service_debug.log")
 
 class MediaInfoService:
     def __init__(self, url_handler: URLHandler = None, video_fetcher: VideoFetcher = None):
-        self.urlh = url_handler
-        self.vid_fetcher = video_fetcher
+        self.urlh = url_handler or URLHandler()
+        self.vid_fetcher = video_fetcher or VideoFetcher()
 
     def get_info_lines(self, url: str) -> list[str]:
         if self.urlh.is_youtube_playlist(url):

@@ -175,7 +175,7 @@ class DownloadOrchestrator:
             self.stream_converter.convert_audio( # TODO inp-name = outp-name
                 audio_path, output_path,
                 thumbnail_path=thumbnail_path,
-                audio_bitrate=options.actual_audio_bitrate,
+                audio_bitrate=audio_stream.abr, #TODO refine this + decide user options in DownloadOptions + ConversionParameters
                 audio_mp3=options.audio_mp3,
             )
     

@@ -37,7 +37,11 @@ def get_logger(name: str, logfile: Optional[str] = None, prefs: Optional[Dict] =
       - file formatter that includes timestamps and full tracebacks
     """
     prefs = prefs or _load_preferences()
-    level_name = (prefs.get("loglevel") or "INFO").upper()
+    level_name = (
+        prefs.get("visible_loglevel")
+        or prefs.get("loglevel")  # backward compatibility
+        or "WARNING"
+    ).upper()
     try:
         console_level = getattr(logging, level_name)
     except Exception:
