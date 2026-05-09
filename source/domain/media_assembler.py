@@ -10,6 +10,18 @@ from infrastructure.stream_converter import StreamConverter
 
 logger = get_logger(__name__, "media_assembler_debug.log")
 
+"""
+final extension,
+final output path,
+temp output path,
+whether to delete source fragments,
+whether to delete thumbnail,
+how to normalize bitrate,
+how to translate ffmpeg failure into ConversionError or CombineError,
+what path to return after success.
+"""
+
+
 class MediaAssembler(object):
     """docstring for MediaAssembler."""
     def __init__(self, stream_converter: StreamConverter = None):

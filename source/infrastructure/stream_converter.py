@@ -1,26 +1,59 @@
+from ast import Dict
 import os
 from pathlib import Path 
-from attr import dataclass
+from attr import asdict, dataclass
 import ffmpeg as fpg
 from utility.logger import get_logger
 
 logger = get_logger(__name__, 'StreamConverter_debug.log')
 
 #TODO: neccessary ? & decide what to put inside 
+
 @dataclass
-class VideoConversionParameters:
-    actual_video_codec: str = None
+class StreamConversionParameters:
     actual_audio_codec: str = None
-    actual_bitrate: str = None
-    target_video_codec: str = None
-    target_audio_codec: str = None
-    target_bitrate: str = None
+    actual_audio_bitrate: str = None
+    actual_audio_mime_type: str = None
+    actual_video_codec: str = None
+    actual_video_bitrate: str = None
+    actual_video_mime_type: str = None
+    actual_resolution: str = None
+    actual_fps: int = None
     
-# TODO!!!! This is a "facade" for the actual conversion logic, which is now in MediaAssembler. This class should be focused on the ffmpeg logic, and should not have any media-assembler specific logic (e.g. file management, logging, error handling, etc.) — that should be in MediaAssembler. The methods here should be as "pure" as possible, just taking inputs and returning outputs without side effects.
-# The MediaAssembler will handle all the orchestration around these methods, including any file management, logging, error handling, etc. This separation of concerns will make both classes more maintainable and testable. The StreamConverter should be focused solely on the ffmpeg conversion and merging logic, while the MediaAssembler should handle the higher-level orchestration and any media-assembler specific logic. This way, the StreamConverter can be easily reused in other contexts if needed, without being tightly coupled to the MediaAssembler's responsibilities.
-# The StreamConverter methods should ideally be static or class methods, as they don't need to maintain any state. They should take all necessary parameters as arguments and return results without modifying any external state. The MediaAssembler will be responsible for managing any state, file paths, logging, etc., and will call the StreamConverter's methods to perform the actual conversion and merging tasks. This design will lead to a cleaner separation of concerns and make both classes easier to test and maintain.
-# The StreamConverter should not have any knowledge of the MediaAssembler's responsibilities or logic. It should be a standalone utility class that focuses solely on the ffmpeg operations. The MediaAssembler will be the one that orchestrates the overall media processing workflow, including calling the StreamConverter's methods when needed, and handling any media-assembler specific logic such as file management, logging, error handling, etc. This way, the StreamConverter can be easily reused in other contexts if needed, without being tightly coupled to the MediaAssembler's responsibilities.
-# The StreamConverter should be designed to be as "pure" as possible, with methods that take inputs and return outputs without side effects. This will make it easier to test the StreamConverter's functionality in isolation, without needing to worry about any media-assembler specific logic or state management. The MediaAssembler will handle all of that, and will call the StreamConverter's methods to perform the actual conversion and merging tasks when needed. This separation of concerns will lead to a cleaner and more maintainable codebase overall.
+    #use_this_for_conversion = [video_stream.audio_codec, video_stream.abr, video_stream.bitrate, video_stream.codecs, video_stream.mime_type, video_stream.resolution, video_stream.fps]
+
+
+    def to_dict(self) -> Dict:
+        """Convert parameters to dictionary (for logging, passing to other components, etc.)."""
+        return asdict(self)
+    
+    def update_from_dict(self, data: Dict) -> None:
+        """Update parameters from dictionary (only non-None values)."""
+        for key, value in data.items():
+            if value is not None and hasattr(self, key):
+                setattr(self, key, value)
+
+@dataclass
+class AudioConversionParameters:
+    actual_audio_codec: str = None
+    actual_audio_bitrate: str = None
+    target_audio_codec: str = None
+    target_audio_bitrate: str = None
+
+@dataclass
+class VideoConversionParameters(AudioConversionParameters):
+    actual_video_codec: str = None
+    target_video_codec: str = None
+    
+"""
+final filename,
+whether .mp3 or .m4a is desired from audio_mp3,
+whether to delete downloaded source files,
+whether to delete thumbnails,
+whether to replace final files,
+whether this is part of a YouTube workflow.
+"""
+
 
 # TODO - decide on datatypes for method parameters and return values (e.g. should we use Path objects, strings, custom data classes, etc. ?)
 # The method signatures should be designed to be as clear and intuitive as possible, while also being flexible enough to accommodate any future changes or additions to the conversion and merging logic. The StreamConverter should be focused solely on the ffmpeg operations, and should not have any media-assembler specific logic or state management. The MediaAssembler will handle all of that, and will call the StreamConverter's methods to perform the actual conversion and merging tasks when needed. This way, the StreamConverter can be easily reused in other contexts if needed, without being tightly coupled to the MediaAssembler's responsibilities.
@@ -39,7 +72,7 @@ class StreamConverter:
     
     #TODO: implement (variable datatypes open until implementation dictates them)
     @staticmethod
-    def convert_audio_new(audio, target_codec, thumbnail, bitrate):
+    def convert_audio_new(audio_path: Path, target_codec, thumbnail, bitrate):
         
         # this can be deleted => logic is moved to MediaAssembler
         """"# Codec & extension from the flag

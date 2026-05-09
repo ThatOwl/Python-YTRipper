@@ -1,12 +1,16 @@
 import argparse
 from pathlib import Path
 
+import logging
+
 from cli.cli_base import CLIBase
-from utility.logger import get_logger
-from utility.utils import DownloadOptions, QUALITY_ALIAS_MAP, COMMON_AUDIO_ABR, COMMON_VIDEO_RESOLUTIONS, parse_bool_string
+from utility.logger import get_logger, VISIBLE_HANDLER_KINDS, set_visible_log_level
+from utility.utils import DownloadOptions, QUALITY_ALIAS_MAP, COMMON_AUDIO_ABR, COMMON_VIDEO_RESOLUTIONS, parse_bool_string, LOGLEVEL_ALIAS_MAP
 from infrastructure.os_interactions import OSInteractions
 import utility.preferences as preferences
+
 from application.download_orchestrator import DownloadOrchestrator as YTD
+from application.media_info_service import MediaInfoService
 
 logger = get_logger(__name__, 'cli_command_debug.log')
 
@@ -14,13 +18,16 @@ class CommandCLI(CLIBase):
     def __init__(self):
         super().__init__()
         self.os = OSInteractions()
-        self.ytd = YTD()
+        self.media_info_service = MediaInfoService()
         # Load preferences from file
         self.preferences = self.os.read_preferences()
         self.options = DownloadOptions.from_preferences(self.preferences)
         self.parser = self.build_parser()
         self.enable_argcomplete(self.parser)
     
+        self.ytd = YTD() #TODO : inject dependencies from CLIBase ? (but then need to refactor to avoid circular imports) --- IGNORE ---
+
+
     def build_parser(self) -> argparse.ArgumentParser:
         """Build argument parser with defaults from loaded preferences."""
         parser = argparse.ArgumentParser(
@@ -52,8 +59,11 @@ class CommandCLI(CLIBase):
                            help='Enable warning prompts (true/false)')
         parser.add_argument('-nd', '--no_dir_date', type=str, default=str(self.options.no_dir_date),
                            help='Disable auto date prefix for playlist directory')
-        parser.add_argument('--save-config', action='store_true', help='Save current options to config file')
-        
+        parser.add_argument('-sc', '--save-config', action='store_true', help='Save current options to config file')
+        parser.add_argument('-vl', '--visible-loglevel', type=str, default=self.options.visible_loglevel,
+                           help='Set visible log level for console output (e.g. (D)EBUG, (I)NFO, (W)ARNING)')
+        parser.add_argument('-ds', '--datasaver', type=str, default=str(self.options.datasaver),
+                           help='Prefer lower-quality streams to save data (true/false)')
         return parser
 
     def enable_argcomplete(self, parser: argparse.ArgumentParser):
@@ -88,14 +98,15 @@ class CommandCLI(CLIBase):
             'preferred_resolution': args.preferred_resolution or None,
             'preferred_abr': args.preferred_abr or None,
             'preferred_fps': self._parse_fps_preference(args.high_fps),
-            'default_download_directory': self.os.expand_path(args.download_directory) or None, # was: args.default_download_directory or None
+            'default_download_directory': self.os.expand_path(args.download_directory) or None,
             'warn_me': parse_bool_string(args.warn_me) if args.warn_me else self.options.warn_me,
             'no_dir_date': parse_bool_string(args.no_dir_date) if args.no_dir_date else self.options.no_dir_date,
+            'visible_loglevel': args.visible_loglevel or None,
+            'datasaver': parse_bool_string(args.datasaver) if args.datasaver else self.options.datasaver
         }
         
         self.options.update_from_dict(args_dict)
         
-        # Map quality aliases
         if self.options.preferred_video_quality:
             qual_key = QUALITY_ALIAS_MAP.get(self.options.preferred_video_quality.lower())
             if qual_key:
@@ -130,10 +141,27 @@ class CommandCLI(CLIBase):
                 logger.warning(f"Unknown resolution '{self.options.preferred_resolution}'; ignoring.")
                 self.options.preferred_resolution = ""
 
-    def _download_single_url(self, url: str) -> int: # was: (self, url: str, expanded_dir: Path) -> int:
+        if self.options.visible_loglevel:
+            level_name = self.options.visible_loglevel.upper()
+            mapped_loglevel = LOGLEVEL_ALIAS_MAP.get(level_name, level_name)
+            
+            if mapped_loglevel in LOGLEVEL_ALIAS_MAP.values():
+                self.options.visible_loglevel = mapped_loglevel
+                try:
+                    set_visible_log_level(mapped_loglevel)
+                except ValueError:
+                    logger.warning(f"Invalid log level '{self.options.visible_loglevel}'; using INFO.")
+                    set_visible_log_level("INFO")
+            else:                
+                logger.warning(f"Unknown log level '{self.options.visible_loglevel}'; ignoring.")
+                self.options.visible_loglevel = "INFO"
+            
+            
+                        
+    def _download_single_url(self, url: str) -> int:
         """Download a single URL. Returns 0 on success, 1 on failure."""
         try:
-            results = self.ytd.download(url=url, options=self.options) # was download_dir=expanded_dir
+            results = self.ytd.download(url=url, options=self.options)
             
             # Display results summary
             if results:
@@ -223,7 +251,6 @@ class CommandCLI(CLIBase):
                     logger.warning(f"Invalid params in batch file; using current config: {file_params}")
             
             # Expand download directory AFTER applying batch file parameters
-            #DELETEME: expanded_download_dir = self.os.expand_path(self.options.default_download_directory) see _apply_options()
             logger.info(f"Download directory: {self.options.default_download_directory}")
             
             print(f"------ Batch Processing {len(valid_urls)} URLs ------")
@@ -244,15 +271,17 @@ class CommandCLI(CLIBase):
         # SINGLE MODE: process single URL
         else:
             # Expand download directory for single mode
-            # DELETEME: expanded_download_dir = self.os.expand_path(self.options.default_download_directory) see _apply_options()
             logger.info(f"Download directory: {self.options.default_download_directory}")
             
             if args.info:
                 print("Fetching video/playlist info...")
                 try:
-                    self.ytd.info(url=args.url, output=print)
+                    lines = self.media_info_service.get_info_lines(args.url)
+                    for line in lines:
+                        print(line)
+                    return 0
                 except Exception as e:
-                    logger.error(f"Failed to fetch info: {e}") 
+                    logger.error(f"Failed to fetch info: {e}")
                     return 1
             else:
                 print("------ Starting Download ------")

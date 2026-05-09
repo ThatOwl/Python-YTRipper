@@ -1,4 +1,5 @@
 from dataclasses import dataclass, asdict
+import logging
 from typing import List, Callable, Tuple, Type, Any, Dict
 import time
 import random
@@ -49,6 +50,14 @@ FPS_ANY = 0      # Accept any FPS
 FPS_30 = 30      # Prefer 30 FPS (lower bandwidth, older devices)
 FPS_60 = 60      # Prefer 60 FPS (smooth motion, higher bandwidth)
 
+LOGLEVEL_ALIAS_MAP = {
+    "CRITICAL": "CRITICAL", "CRIT": "CRITICAL", "C": "CRITICAL",
+    "ERROR": "ERROR", "ERR": "ERROR", "E": "ERROR",
+    "WARNING": "WARNING", "WARN": "WARNING", "W": "WARNING",
+    "INFO": "INFO", "INFORMATION": "INFO", "I": "INFO",
+    "DEBUG": "DEBUG", "DBG": "DEBUG", "D": "DEBUG",
+    # Add more aliases as needed
+}
 def parse_bool_string(value: Any) -> bool:
     """Parse a boolean value from string or bool.
     
@@ -103,13 +112,16 @@ class DownloadOptions:
     preferred_video_quality: str = ""
     preferred_resolution: str = ""
     preferred_abr: str = ""
-    preferred_mime: str = ""
+    #preferred_mime: str = ""
     preferred_format: str = ""
     preferred_fps: int = 0  # 0=any, 30=prefer 30fps, 60=prefer 60fps
-    loglevel: str = "WARNING"
+    visible_loglevel: str = "INFO"
+    #ui_loglevel:Str = "WARNING"
     donotconvert: bool = False
     no_dir_date: bool = False
-    actual_audio_bitrate: str = ""  # e.g. "128kbps" — set at runtime from selected stream
+    #actual_audio_bitrate: str = ""  # e.g. "128kbps" — set at runtime from selected stream 
+    datasaver: bool = False  # If True, prefer lower-quality streams to save data
+    
 
     @classmethod
     def from_preferences(cls, prefs: Dict) -> "DownloadOptions":

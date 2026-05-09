@@ -133,6 +133,9 @@ class StreamSelector:
                     candidates = StreamSelector._apply_fps_filter(candidates, options.preferred_fps)
                     stream = candidates[-1] if candidates else None
 
+            if not stream:
+                raise StreamSelectionError("No video stream available")
+
             return stream
     
         except Exception as e:

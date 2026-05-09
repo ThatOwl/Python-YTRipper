@@ -31,6 +31,9 @@ class StreamDownloadService(object):
             Raises:
                 StreamDownloadError: If there is an error during the download process.
         """
+        if stream is None:
+            raise StreamDownloadError("Cannot download: stream is None")
+        identifier = "unknown"
         
         try:
             identifier = "audio" if stream.includes_audio_track and not stream.includes_video_track else "video" if stream.includes_video_track else "Error"
@@ -46,6 +49,7 @@ class StreamDownloadService(object):
             
             logger.debug(f"{identifier} stream downloaded to: {downloaded_path}")
             return downloaded_path
+        
         except Exception as e:
             logger.exception(f"Error downloading {identifier} stream: {e}")
             raise StreamDownloadError(f"Error downloading {identifier} stream: {e}") from e

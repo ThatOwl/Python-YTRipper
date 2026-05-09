@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 from utility.logger import get_logger
-from utility.utils import PlaylistFetchError, StreamDownloadError, ConversionError, CombineError, DownloadOptions, DownloadResult, QUALITY_ALIAS_MAP, sanitize_filename
+from utility.utils import VideoFetchError, PlaylistFetchError, StreamSelectionError, StreamDownloadError, ConversionError, CombineError, DownloadOptions, DownloadResult, QUALITY_ALIAS_MAP, sanitize_filename
 
 from infrastructure.stream_converter import StreamConverter #TODO:change to MediaAssembler 
 from infrastructure.url_handler import URLHandler # TODO: calls move to video_fetcher ?
@@ -43,56 +43,6 @@ class DownloadOrchestrator:
         self.stream_selector = stream_selector or StreamSelector()
         self.stream_download = stream_download or StreamDownloadService()
 
- # split into two methods and export to ??
-    def info(self, url: str = None, video_obj: ptf.YouTube = None, output: callable = logger.info) -> None:
-        """
-        Print to console or log information about video or playlist.
-
-        Args:
-        url (str): The URL of the YouTube video or playlist.
-        video_obj (ptf.YouTube, optional): A YouTube video object. Defaults to None.
-        output (callable, optional): A callable that takes a string, e.g. `print` or `logger.info`.
-            Defaults to `logger.info`.
-        """
-        
-        if self.urlh.is_youtube_playlist(url):
-            try:
-                playlist_obj = self.vid_fetcher.get_playlist_obj(url)
-            except Exception as e:
-                logger.error(f"Failed to fetch playlist object: {e}")
-                return
-        
-            output(f"Playlist Title: {playlist_obj.title}")
-            output(f"Number of Videos: {len(playlist_obj.videos)}")
-            output("Videos:")
-            for i, video in enumerate(playlist_obj.videos):
-                output(f"{i + 1}. {video.title} ({video.length} seconds)")
-        else:
-            try:
-                if video_obj is None:
-                    video_obj = self.vid_fetcher.get_video_obj(url)
-            except Exception as e:
-                logger.error(f"Failed to fetch video object: {e}")
-                return
-
-            output(f"Video title: {video_obj.title}")
-            output(f"Video length: {video_obj.length} seconds")
-            output(f"Video views: {video_obj.views}")
-            output(f"Video author: {video_obj.author}")
-            output(f"Video description: {video_obj.description[:200]}...")
-            output(f"Thumbnail: {video_obj.thumbnail_url}")
-
-            output("Available streams:")
-            output("  Video:")
-            for stream in video_obj.streams.filter(type='video').order_by('resolution').desc():
-                output(f"- {stream.resolution}, {stream.mime_type}, {stream.fps}fps")
-            output(f"Best video: {video_obj.streams.filter(type='video').order_by('resolution').desc().first()}")
-            
-            output("  Audio:")
-            for stream in video_obj.streams.filter(type='audio').order_by('abr').desc():
-                output(f"- {stream.mime_type}, {stream.abr}")
-            output(f"Best audio: {video_obj.streams.filter(type='audio').order_by('abr').desc().first()}")
-            
     # TODO improve error handling (return exceptions or ...?)
     def download_playlist(self, playlist_url: str, options: DownloadOptions) -> List[DownloadResult]:
         """
@@ -100,8 +50,7 @@ class DownloadOrchestrator:
 
         Args:
             playlist_url (str): The URL of the YouTube playlist.
-            download_dir (str): The directory to save the downloaded files.
-            audio_only (bool): If True, download audio only. If False, download video.
+            options (DownloadOptions): The processing options specifying preferences for audio/video quality, format, etc.
         Side Effects:
             - creates directory as playlist download target. 
         Logs:
@@ -153,81 +102,83 @@ class DownloadOrchestrator:
     
         return results
 
-    def download_single_video(self, video_obj: ptf.YouTube, download_dir: Path, options: DownloadOptions) -> DownloadResult:
+    def _download_single_video(self, video_obj: ptf.YouTube, download_dir: Path, options: DownloadOptions) -> None:
         """
         Download a single YouTube video as video or audio.
 
         Args:
             video_url (str): The URL of the YouTube video to download.
             download_dir (str): The directory to save the downloaded file.
-            audio_only (bool): If True, download audio only. If False, download video.
-        """        
-        try:
-            video_stream = self.stream_selector.select_stream_video(video_obj, options)
-            video_path:Path = self.stream_download.download_stream(video_stream, download_dir)
+            options (DownloadOptions): The processing options specifying preferences for audio/video quality, format, etc.
+        Side Effects:
+            - Downloads the specified video to the given directory.
+            - May create temporary files during processing.
+        Logs:
+            - Download status and any errors encountered during the process.
+        Returns:
+            None (currently)
+        """
+        video_stream: ptf.Stream = self.stream_selector.select_stream_video(video_obj, options)
+        video_path:Path = self.stream_download.download_stream(video_stream, download_dir)
+        
+        # TODO refine + decide user options in DownloadOptions + ConversionParameters
+        use_this_for_conversion = [video_stream.audio_codec, video_stream.abr, video_stream.bitrate, video_stream.codecs, video_stream.mime_type, video_stream.resolution, video_stream.fps] 
+        
+        audio_stream: ptf.Stream = self.stream_selector.select_stream_audio(video_obj, options)
+        audio_path:Path = self.stream_download.download_stream(audio_stream, download_dir)
 
-            audio_stream = self.stream_selector.select_stream_audio(video_obj, options)
-            audio_path:Path = self.stream_download.download_stream(audio_stream, download_dir)
-            #TODO: where to put this logic if any => copy input to output (=> delte entirly?)
-            output_path = video_path
-            video_title = video_path.name
+        output_path = video_path
 
-            #TODO: this should be save to delete ? => try except should catch all
-            if not video_path or not audio_path:
-                msg = "missing audio or video stream"
-                logger.error(f"✗ {video_title}: {msg}") #TODO : ----------- DOES THIS EVEN WORK?
-                return DownloadResult(success=False, errors=[msg], video_title=video_title, video_url=video_obj.watch_url) 
-            
-            if not options.donotconvert:
-                self.stream_converter.combine_streams(audio_path, video_path, output_path) # TODO inp-name = outp-name
+        #TODO: refine (handle audio?)
+        if not video_path:
+            raise StreamDownloadError("Missing audio or video stream")
 
-        except (StreamDownloadError, ConversionError, CombineError) as e:
-            logger.error(f"✗ {video_title}: {e}")
-            return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_obj.watch_url)#TODO: does this work? "video_url=video_obj.watch_url"
+        
+        #TODO !! handle media with no audio stream (e.g. 480p music videos have combined vid-aud-stream) => currently this would just fail with "missing audio or video stream" 
+        # => check with if audio_path is None ... and checking video_stream.audio_codec or video_stream.codecs 
+        # => this would require some changes in the StreamSelector and StreamDownloadService to allow for optional audio/video streams, and 
+        # also in the StreamConverter to handle the case where one of the streams is missing. 
+        
+        if not options.donotconvert:
+            self.stream_converter.combine_streams(audio_path=audio_path, video_path=video_path, output_path=output_path) # TODO inp-name = outp-name
+        
 
-        except Exception as e:
-            logger.error(f"✗ {video_title}: Unexpected error - {e}")
-            return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_obj.watch_url)
-
-    def download_single_audio(self, video_obj: ptf.YouTube, options: DownloadOptions, download_dir: Path) -> DownloadResult:
+    def _download_single_audio(self, video_obj: ptf.YouTube, options: DownloadOptions, download_dir: Path) -> None:
         """
         Download a single YouTube video's audio stream.
 
         Args:
-            ...
+            video_url (str): The URL of the YouTube video to download.
+            download_dir (str): The directory to save the downloaded file.
+            options (DownloadOptions): The processing options specifying preferences for audio quality, format, etc.
+        Side Effects:
+            - Downloads the specified audio stream to the given directory.
+            - May create temporary files during processing.
+        Logs:
+            - Download status and any errors encountered during the process.
+        Returns:
+            None (currently)
         """
 
-        try:
-            audio_stream = self.stream_selector.select_stream_audio(video_obj, options)
-            audio_path:Path = self.stream_download.download_stream(audio_stream, download_dir)
-            thumbnail_path = None #FIXME self.thumbnail_handler.download_thumbnail(video_obj, download_dir, base_filename)
-            
-            #TODO: where to put this logic if any => copy input to output (=> delte entirly?)
-            output_path = audio_path
-            video_title = audio_path.name
+        audio_stream: ptf.Stream = self.stream_selector.select_stream_audio(video_obj, options)
+        audio_path:Path = self.stream_download.download_stream(audio_stream, download_dir)
+        thumbnail_path = None #FIXME self.thumbnail_handler.download_thumbnail(video_obj, download_dir, base_filename)
+        
+        #TODO: where to put this logic if any => copy input to output (=> delte entirly?)
+        output_path = audio_path
 
-            #TODO: this should be save to delete ? => try except should catch all
-            if not audio_path:
-                msg = "no audio stream available"
-                logger.error(f"✗ {video_title}: {msg}")
-                return DownloadResult(success=False, errors=[msg], video_title=video_title, video_url=video_obj.watch_url)#TODO: does this work? "video_url=video_obj.watch_url"
-            
-            if not options.donotconvert: 
-                self.stream_converter.convert_audio( # TODO inp-name = outp-name
-                    audio_path, output_path,
-                    thumbnail_path=thumbnail_path,
-                    audio_bitrate=options.actual_audio_bitrate,
-                    audio_mp3=options.audio_mp3,
-                )
-        except (StreamDownloadError, ConversionError, CombineError) as e:
-            logger.error(f"✗ {video_title}: {e}")
-            return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_obj.watch_url)#TODO: does this work? "video_url=video_obj.watch_url"
-        except Exception as e:
-            logger.error(f"✗ {video_title}: Unexpected error - {e}")
-            return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_obj.watch_url)
+        #TODO: refine
+        if not audio_path:
+            raise StreamDownloadError("No audio stream downloaded")
+        
+        if not options.donotconvert: 
+            self.stream_converter.convert_audio( # TODO inp-name = outp-name
+                audio_path, output_path,
+                thumbnail_path=thumbnail_path,
+                audio_bitrate=options.actual_audio_bitrate,
+                audio_mp3=options.audio_mp3,
+            )
     
-    #TODO video-fetching done in download() should not be required =>  see that download_playlist() can still interface properly
-    # this will be a "facade" as functionality was split (=> reverse? was this sensible)
     def download_single(self, options: DownloadOptions, download_dir: Path, video_obj: ptf.YouTube = None, url: str = None) -> DownloadResult:
         """
         Download a single YouTube video as video or audio.
@@ -237,44 +188,37 @@ class DownloadOrchestrator:
             download_dir (str): The directory to save the downloaded file.
             audio_only (bool): If True, download audio only. If False, download video.
         """        
-        video_obj = video_obj or self.vid_fetcher.get_video_obj(url) #TODO: does this work ? => video-fetching should ideally be done outside of this method, but this is a fallback if not (e.g. for playlist download)
+        video_obj = video_obj or self.vid_fetcher.get_video_obj(url)
         
         base_filename: str = sanitize_filename(video_obj.title)
         video_title = video_obj.title
         video_url = video_obj.watch_url
         
-        # Efficiency safeguard: skip download if target file already exists
-        #TODO YT downloads are .opus not .mp4 ! => target is .mp4
-        #TODO audio is primarily .m4a not .mp3
-        if options.audio_only:
-            ext = '.mp3' if options.audio_mp3 else '.m4a'
-        else:
-            ext = '.mp4'
-        
-        # refactor this look at: https://vscode.dev/github/RF-at-FH-Joanneum/Python-YTRipper/blob/Restructure_Orchestration_2887-7ee1-42fe-b3eb-f9c44204ae24
+        # Efficiency safeguard: skip download if target file already exists 
+        # (e.g. from previous failed attempt, or if user is re-downloading a playlist they already downloaded before and some files are still there) => this also allows for resuming partially downloaded playlists without re-downloading existing files
+        ext = ".mp3" if options.audio_only and options.audio_mp3 else ".m4a" if options.audio_only else ".mp4"
         target_file = Path(download_dir) / f"{base_filename}{ext}"
-        if target_file.exists(): # does this check for extension ?
-            logger.info(f'⏭ Skipping (already exists): {video_title} -> {target_file.name}')
-            return DownloadResult(success=True, errors=[], video_title=video_title, video_url=video_url)
         
+        #TODO ? refactor this look at: https://vscode.dev/github/RF-at-FH-Joanneum/Python-YTRipper/blob/Restructure_Orchestration_2887-7ee1-42fe-b3eb-f9c44204ae2
+        if target_file.exists():
+            logger.info(f"⏭ Skipping (already exists): {video_title} -> {target_file.name}")
+            return DownloadResult(success=True, errors=[], video_title=video_title, video_url=video_url)
+
         logger.info(f'Downloading {"soundtrack" if options.audio_only else "video"}: {video_title}')
         
         try:
             if options.audio_only:
-                self.download_single_audio(video_obj=video_obj, download_dir=download_dir, options=options)
+                self._download_single_audio(video_obj=video_obj, download_dir=download_dir, options=options)
             else:
-                self.download_single_video(video_obj=video_obj, download_dir=download_dir, options=options)
+                self._download_single_video(video_obj=video_obj, download_dir=download_dir, options=options)
 
-            logger.info(f'✓ {video_title}')
-            return DownloadResult(success=True, errors=[], video_title=video_title, video_url=video_url)
-        
-        except (StreamDownloadError, ConversionError, CombineError) as e:
-            logger.error(f"✗ {video_title}: {e}")
-            return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_url)
+            logger.info(f"✓ {video_title}")
+            return DownloadResult(success=True, errors=[], video_title=video_title, video_url=video_url or video_obj.watch_url)
+
         except Exception as e:
-            logger.error(f"✗ {video_title}: Unexpected error - {e}")
-            return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_url)
-
+            logger.error(f"✗ {video_title}: {e}")
+            return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_url or video_obj.watch_url)
+    
     #TODO: Will be interface with CLI and GUI, so should be more generic 
     def download(self, url: str, options: DownloadOptions) -> List[DownloadResult]:
         """Process a YouTube video or playlist based on the provided URL and options.
@@ -311,7 +255,6 @@ class DownloadOrchestrator:
                 else:
                     logger.debug("Detected as a single video URL.")
                     url = self.urlh.clean_video_link(url) or url  # Clean the URL if possible, fallback to original
-                    #video = self.vid_fetcher.get_video_obj(video_url=url)  # May raise VideoFetchError, handled in download_single
                     results.append(self.download_single(url=url, options=options, download_dir=download_dir))
 
             except Exception as e:
