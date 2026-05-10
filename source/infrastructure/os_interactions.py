@@ -21,17 +21,7 @@ class OSInteractions:
         self.prefs_path = preferences.PATH_TO_PREFERENCES
         self.logs_path = preferences.PATH_TO_LOGS
 
-    def expand_path(self, path_str: str) -> Path:
-        """
-        Expand user-provided paths.
-
-        Handles:
-        - ~/Downloads
-        - $HOME/Downloads
-        - normal absolute Linux paths
-        - common WSL typo: mnt/d/... -> /mnt/d/...
-        - optional Windows drive paths: D:\\Folder -> /mnt/d/Folder
-        """
+    def expand_path(self, path_str: str | Path) -> Path:
         if path_str is None:
             raise ValueError("Path cannot be None")
 
@@ -42,16 +32,16 @@ class OSInteractions:
 
         raw_path = os.path.expandvars(os.path.expanduser(raw_path))
 
-        # Convert Windows path like D:\Folder or D:/Folder to WSL path /mnt/d/Folder
         windows_drive_match = re.match(r"^([A-Za-z]):[\\/](.*)$", raw_path)
-        if windows_drive_match:
+
+        # Only convert D:\... to /mnt/d/... when running in a Unix/WSL-like environment.
+        if windows_drive_match and os.name != "nt" and Path("/mnt").exists():
             drive = windows_drive_match.group(1).lower()
             rest = windows_drive_match.group(2).replace("\\", "/")
             raw_path = f"/mnt/{drive}/{rest}"
             logger.warning(f"Converted Windows path to WSL path: {raw_path}")
 
-        # Common WSL typo: mnt/d/... should usually be /mnt/d/...
-        if re.match(r"^mnt/[A-Za-z]/", raw_path):
+        if os.name != "nt" and re.match(r"^mnt/[A-Za-z]/", raw_path):
             corrected_path = "/" + raw_path
             logger.warning(
                 f"Path looks like a WSL mount path but is missing leading '/'. "

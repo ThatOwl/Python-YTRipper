@@ -343,9 +343,6 @@ class CommandCLI(CLIBase):
 
         if args.visible_loglevel is not None:
             updates["visible_loglevel"] = args.visible_loglevel
-
-        if args.datasaver is not None:
-            updates["datasaver"] = parse_bool_string(args.datasaver)
         
         if args.autotag is not None:
             updates["autotag"] = parse_bool_string(args.autotag)
@@ -367,7 +364,17 @@ class CommandCLI(CLIBase):
         self._normalize_audio_bitrate()
         self._normalize_resolution()
         self._normalize_visible_loglevel()
+        self._normalize_download_directory()
 
+    def _normalize_download_directory(self) -> None:
+        if not self.options.default_download_directory:
+            self.options.default_download_directory = str(self.os.expand_path("~/Downloads"))
+            return
+
+        self.options.default_download_directory = str(
+            self.os.expand_path(self.options.default_download_directory)
+        )
+        
     def _normalize_quality_options(self) -> None:
         if self.options.preferred_video_quality:
             raw_value = self.options.preferred_video_quality.strip().lower()
@@ -515,7 +522,7 @@ class CommandCLI(CLIBase):
             return 1
 
     def _run_batch_mode(self, args: argparse.Namespace) -> int:
-        file_path = Path(args.file).expanduser()
+        file_path = self.os.expand_path(args.file)
 
         if not file_path.exists():
             logger.error(f"Batch file not found: {file_path}")

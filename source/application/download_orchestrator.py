@@ -54,12 +54,13 @@ class DownloadOrchestrator:
         self.stream_download = stream_download or StreamDownloadService()
 
     # TODO improve error handling (return exceptions or ...?)
-    def download_playlist(self, playlist_url: str, options: DownloadOptions) -> List[DownloadResult]:
+    def download_playlist(self, playlist_url: str, base_download_dir: Path, options: DownloadOptions) -> List[DownloadResult]:
         """
         Download all videos from a YouTube playlist as video or audio files.
 
         Args:
             playlist_url (str): The URL of the YouTube playlist.
+            base_download_dir (Path): The base directory where the playlist will be downloaded.
             options (DownloadOptions): The processing options specifying preferences for audio/video quality, format, etc.
         Side Effects:
             - creates directory as playlist download target. 
@@ -68,9 +69,8 @@ class DownloadOrchestrator:
         Returns:
             List[DownloadResult]: A list of results for each video download in the playlist.
         """
-        download_dir: Path = Path(options.default_download_directory)
         results: List[DownloadResult] = []
-        playlist_obj:ptf.Playlist = None
+        playlist_obj: ptf.Playlist = None
         playlist_dir: Path = None
         
         try:
@@ -78,17 +78,24 @@ class DownloadOrchestrator:
             playlist_obj = self.vid_fetcher.get_playlist_obj(playlist_url)
 
             # EXCEPT: IOError
-            playlist_dir = self.os_handler.setup_playlist_dir(download_dir, playlist_obj.title, options.no_dir_date)
+            playlist_dir = self.os_handler.setup_playlist_dir(
+                base_download_dir,
+                playlist_obj.title,
+                options.no_dir_date,
+            )
             
             # Override pytube's video URL regex to capture all videos in the playlist
-            # TODO: put this anywhere in utils / preferences
+            # TODO: check if this is still needed after pytubefix update, and if it can be made more robust (e.g. to handle any changes in YouTube's HTML structure) 
             playlist_obj._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
             logger.debug(f"Found {len(playlist_obj.video_urls)} videos in the playlist. {playlist_obj.title}")
             
             for i, video in enumerate(playlist_obj.videos):
                 logger.info(f'[{i + 1}/{len(playlist_obj.videos)}] Processing: {video.title}')
-                #TODO: add urlh.clean_video_link if needed
-                result = self.download_single(download_dir=playlist_dir, options=options, video_obj=video)
+                result = self.download_single(
+                    download_dir=playlist_dir,
+                    options=options,
+                    video_obj=video,
+                )
                 results.append(result)
 
         # catch playlist level exceptions, not indivial video exceptions (handled in download_single)
@@ -246,35 +253,43 @@ class DownloadOrchestrator:
             - Download status and any errors encountered during the process.
         """
         results = []
-        download_dir: Path = Path(options.default_download_directory)
 
+        base_download_dir = self.os_handler.expand_path(options.default_download_directory)
+       
+        
         if self.urlh.is_youtube_url(url) and self.urlh.is_accessible(url):
             logger.debug(f"Valid YouTube URL: {url}")
             try:
-                self.os_handler.create_directory(download_dir)
-
+                self.os_handler.create_directory(base_download_dir)
+                
                 # if start_radio mix, force single-video download with cleaned URL
                 if self.urlh.has_start_radio(url):
                     cleaned = self.urlh.clean_video_link(url)
-                    if not cleaned:
-                        raise ValueError("Could not extract video id from start_radio URL")
                     logger.info(f"start_radio detected; treating as single video: {cleaned}")
                     url = cleaned
 
                 if self.urlh.is_youtube_playlist(url):
-                    logger.debug("Detected as a playlist URL.")
-                    results = self.download_playlist(playlist_url=url, options=options)
+                    return self.download_playlist(
+                        playlist_url=url,
+                        options=options,
+                        base_download_dir=base_download_dir,
+                    )
                 else:
                     logger.debug("Detected as a single video URL.")
                     url = self.urlh.clean_video_link(url) or url  # Clean the URL if possible, fallback to original
-                    results.append(self.download_single(url=url, options=options, download_dir=download_dir))
-
+                    results.append(
+                        self.download_single(
+                            url=url,
+                            options=options,
+                            download_dir=base_download_dir,
+                        )
+                    )
+                                
             except Exception as e:
                 logger.error(f"Download failed: {e}")
                 return results
         else:
             logger.error("The provided URL is not a valid YouTube URL or inaccessible.")
-            raise ValueError("The provided URL is not valid or unreachable.")
         
         return results
 
