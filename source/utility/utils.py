@@ -120,6 +120,7 @@ class DownloadOptions:
     donotconvert: bool = False
     no_dir_date: bool = False
     autotag: bool = True  # If True, attempt to auto-tag downloaded files with metadata
+    save_results: bool = False
     
 
     @classmethod

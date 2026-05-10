@@ -16,6 +16,8 @@ This repository is a Python-based YouTube downloader toolkit built around `pytub
 - Do not add new dependencies without confirmation.
 - Do not touch secrets, credentials, .env files, or deployment config unless explicitly asked.
 
+Permissions baseline: see [permissions.yaml](/home/localuser/GitRepos/Python-YTRipper/ai-workflow/permissions.yaml) for default values and example alternatives.
+
 ## Commands
 - Install: `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
 - Run dev server: `./start_w_args.sh --loop`

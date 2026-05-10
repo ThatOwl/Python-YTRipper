@@ -206,17 +206,24 @@ class OSInteractions:
             logger.error(f"Failed to create directory {dir_path}: {e}")
             raise IOError(f"Failed to create directory {dir_path}") from e
 
-    # TODO: add method to append to batch results file instead of overwriting (for long-running batch processes)
-    # Currently unused !
     @staticmethod
-    def save_batch_results(results: List[DownloadResult], output_path: Path) -> None:
+    def save_batch_results(results: List[DownloadResult], download_dir: str | Path, playlist_name: str) -> None:
         """
         Save batch download results to a CSV file.
 
         Args:
-            results: List of dictionaries containing download results (e.g. video_title, video_url, success, errors).
-            output_path: Path to the output CSV file.
+            results: Download results to save.
+            download_dir: Directory where the batch results file will be saved.
+            playlist_name: Name of the playlist for which to save results.
         """
+        target_dir = Path(download_dir).expanduser()
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        safe_playlist_name = sanitize_filename(playlist_name).strip() or "playlist"
+        output_path = target_dir / (
+            f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{safe_playlist_name}_results.csv"
+        )
+
         try:
             with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
                 fieldnames = ['video_title', 'video_url', 'success', 'errors']
@@ -224,7 +231,14 @@ class OSInteractions:
 
                 writer.writeheader()
                 for result in results:
-                    writer.writerow(result)
+                    writer.writerow(
+                        {
+                            'video_title': result.video_title,
+                            'video_url': result.video_url,
+                            'success': result.success,
+                            'errors': "; ".join(result.errors),
+                        }
+                    )
             logger.info(f"Batch results saved to {output_path}")
         except Exception as e:
             logger.error(f"Failed to save batch results to {output_path}: {e}")
