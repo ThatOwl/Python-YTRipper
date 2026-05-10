@@ -1,0 +1,75 @@
+# Permissions template for AI-assisted work in this repository.
+# "default" means the normal day-to-day setting to start from.
+# Change values as needed per task.
+
+permissions:
+  filesystem:
+    value: "workspace-write"
+    description: "Allow reading the repo and editing files inside the workspace."
+    examples:
+      - "read-only"
+      - "workspace-write"
+      - "full-access"
+
+  network:
+    value: "restricted"
+    description: "Do not access the internet unless explicitly approved."
+    examples:
+      - "restricted"
+      - "allowed"
+
+  shell_commands:
+    value: "allowed"
+    description: "Permit normal local shell commands for repo work."
+    examples:
+      - "blocked"
+      - "allowed"
+      - "allowed-with-approval"
+
+  dependency_installs:
+    value: "ask-first"
+    description: "Require confirmation before adding or downloading dependencies."
+    examples:
+      - "blocked"
+      - "ask-first"
+      - "allowed"
+
+  git_operations:
+    value: "safe-only"
+    description: "Allow status, diff, log, and non-destructive branch/commit work."
+    examples:
+      - "read-only"
+      - "safe-only"
+      - "full"
+
+  destructive_commands:
+    value: "blocked"
+    description: "Block commands like rm -rf, git reset --hard, or forceful cleanup unless explicitly approved."
+    examples:
+      - "blocked"
+      - "ask-first"
+      - "allowed"
+
+  secrets_and_env:
+    value: "blocked"
+    description: "Do not read or modify secrets, credentials, tokens, or .env files unless explicitly requested."
+    examples:
+      - "blocked"
+      - "ask-first"
+      - "allowed"
+
+  deployment_changes:
+    value: "ask-first"
+    description: "Require confirmation before changing CI, release, hosting, or deployment config."
+    examples:
+      - "blocked"
+      - "ask-first"
+      - "allowed"
+
+  large_refactors:
+    value: "ask-first"
+    description: "Pause before broad architectural or multi-file refactors."
+    examples:
+      - "blocked"
+      - "ask-first"
+      - "allowed"

@@ -365,7 +365,17 @@ class CommandCLI(CLIBase):
         self._normalize_audio_bitrate()
         self._normalize_resolution()
         self._normalize_visible_loglevel()
+        self._normalize_download_directory()
 
+    def _normalize_download_directory(self) -> None:
+        if not self.options.default_download_directory:
+            self.options.default_download_directory = str(self.os.expand_path("~/Downloads"))
+            return
+
+        self.options.default_download_directory = str(
+            self.os.expand_path(self.options.default_download_directory)
+        )
+        
     def _normalize_quality_options(self) -> None:
         if self.options.preferred_video_quality:
             raw_value = self.options.preferred_video_quality.strip().lower()
@@ -464,6 +474,9 @@ class CommandCLI(CLIBase):
             results: List[DownloadResult] = self.ytd.download(url=url, options=self.options)
 
             if results:
+                if save_results and self.media_info_service.is_playlist(url):
+                    self.os.save_batch_results(results=results, download_dir=self.options.default_download_directory, playlist_name=self.media_info_service.get_playlist_title(url))
+
                 success_count = sum(1 for result in results if result.success)
                 fail_count = len(results) - success_count
 
@@ -480,9 +493,7 @@ class CommandCLI(CLIBase):
                     print(f"{'=' * 50}")
 
                 return 0 if fail_count == 0 else 1
-            
-            if save_results and self.media_info_service.is_playlist(url) and results is not None:
-                self.os.save_batch_results(results=results, download_dir=self.options.default_download_directory, playlist_name=self.media_info_service.get_playlist_title(url))
+
             return 0
 
         except Exception as e:
@@ -513,7 +524,7 @@ class CommandCLI(CLIBase):
             return 1
 
     def _run_batch_mode(self, args: argparse.Namespace) -> int:
-        file_path = Path(args.file).expanduser()
+        file_path = self.os.expand_path(args.file)
 
         if not file_path.exists():
             logger.error(f"Batch file not found: {file_path}")
@@ -558,7 +569,7 @@ class CommandCLI(CLIBase):
         for idx, url in enumerate(valid_urls, 1):
             print(f"\n[{idx}/{len(valid_urls)}] Processing: {url}")
 
-            if self._download_single_url(url, args.save_results) == 0:
+            if self._download_single_url(url, self.options.save_results) == 0:
                 success_count += 1
             else:
                 fail_count += 1
@@ -579,7 +590,7 @@ class CommandCLI(CLIBase):
             return self._run_info_mode(args.url)
 
         print("------ Starting Download ------")
-        return self._download_single_url(args.url, args.save_results)
+        return self._download_single_url(args.url, self.options.save_results)
 
     def run(self, command: str) -> int:
         """Process a command string for downloading YouTube videos or playlists."""

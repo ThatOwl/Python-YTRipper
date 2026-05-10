@@ -21,29 +21,7 @@ class OSInteractions:
         self.prefs_path = preferences.PATH_TO_PREFERENCES
         self.logs_path = preferences.PATH_TO_LOGS
 
-    def expand_path(self, path_str: str) -> Path:
-        """
-        Expand user-provided paths.
-        Handles:
-        - ~/Downloads
-        - $HOME/Downloads
-        - normal absolute Linux paths
-        """
-        return Path(os.path.expandvars(os.path.expanduser(path_str))).resolve()
-
-    
-    #FIXME
-    def expand_path_borken(self, path_str: str) -> Path:
-        """
-        Expand user-provided paths.
-
-        Handles:
-        - ~/Downloads
-        - $HOME/Downloads
-        - normal absolute Linux paths
-        - common WSL typo: mnt/d/... -> /mnt/d/...
-        - optional Windows drive paths: D:\\Folder -> /mnt/d/Folder
-        """
+    def expand_path(self, path_str: str | Path) -> Path:
         if path_str is None:
             raise ValueError("Path cannot be None")
 
@@ -54,16 +32,16 @@ class OSInteractions:
 
         raw_path = os.path.expandvars(os.path.expanduser(raw_path))
 
-        # Convert Windows path like D:\Folder or D:/Folder to WSL path /mnt/d/Folder
         windows_drive_match = re.match(r"^([A-Za-z]):[\\/](.*)$", raw_path)
-        if windows_drive_match:
+
+        # Only convert D:\... to /mnt/d/... when running in a Unix/WSL-like environment.
+        if windows_drive_match and os.name != "nt" and Path("/mnt").exists():
             drive = windows_drive_match.group(1).lower()
             rest = windows_drive_match.group(2).replace("\\", "/")
             raw_path = f"/mnt/{drive}/{rest}"
             logger.warning(f"Converted Windows path to WSL path: {raw_path}")
 
-        # Common WSL typo: mnt/d/... should usually be /mnt/d/...
-        if re.match(r"^mnt/[A-Za-z]/", raw_path):
+        if os.name != "nt" and re.match(r"^mnt/[A-Za-z]/", raw_path):
             corrected_path = "/" + raw_path
             logger.warning(
                 f"Path looks like a WSL mount path but is missing leading '/'. "
@@ -228,19 +206,24 @@ class OSInteractions:
             logger.error(f"Failed to create directory {dir_path}: {e}")
             raise IOError(f"Failed to create directory {dir_path}") from e
 
-    # TODO: add method to append to batch results file instead of overwriting (for long-running batch processes)
-    # Currently unused !
     @staticmethod
-    def save_batch_results(results: List[DownloadResult], download_dir: Path, playlist_name: str) -> None:
+    def save_batch_results(results: List[DownloadResult], download_dir: str | Path, playlist_name: str) -> None:
         """
         Save batch download results to a CSV file.
 
         Args:
-            results: List of dictionaries containing download results (e.g. video_title, video_url, success, errors).
-            download_dir: Directory where the CSV file will be saved.
-            playlist_name: Name of the playlist for the CSV file.
+            results: Download results to save.
+            download_dir: Directory where the batch results file will be saved.
+            playlist_name: Name of the playlist for which to save results.
         """
-        output_path: Path = download_dir / f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{playlist_name}.csv"
+        target_dir = Path(download_dir).expanduser()
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        safe_playlist_name = sanitize_filename(playlist_name).strip() or "playlist"
+        output_path = target_dir / (
+            f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{safe_playlist_name}_results.csv"
+        )
+
         try:
             with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
                 fieldnames = ['video_title', 'video_url', 'success', 'errors']
@@ -248,7 +231,14 @@ class OSInteractions:
 
                 writer.writeheader()
                 for result in results:
-                    writer.writerow(result)
+                    writer.writerow(
+                        {
+                            'video_title': result.video_title,
+                            'video_url': result.video_url,
+                            'success': result.success,
+                            'errors': "; ".join(result.errors),
+                        }
+                    )
             logger.info(f"Batch results saved to {output_path}")
         except Exception as e:
             logger.error(f"Failed to save batch results to {output_path}: {e}")
