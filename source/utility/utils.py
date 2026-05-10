@@ -1,5 +1,5 @@
-from dataclasses import dataclass, asdict
-import logging
+from dataclasses import dataclass, asdict, field
+from pathlib import Path
 from typing import List, Callable, Tuple, Type, Any, Dict
 import time
 import random
@@ -104,7 +104,7 @@ class CombineError(DownloadError):
 @dataclass
 class DownloadOptions:
     """Centralized download preferences (mirrors preferences.py DEFAULT_PREFS)."""
-    default_download_directory: str = "~/Downloads"
+    default_download_directory: Path = field(default_factory=lambda: Path.home() / "Downloads")
     audio_only: bool = False
     audio_mp3: bool = False
     warn_me: bool = False
@@ -125,12 +125,32 @@ class DownloadOptions:
 
     @classmethod
     def from_preferences(cls, prefs: Dict) -> "DownloadOptions":
-        """Load from preferences dict."""
-        return cls(**{k: v for k, v in prefs.items() if k in cls.__dataclass_fields__})
+        """Load from preferences dict. Expands path strings using standard lib."""
+        prefs_copy = {k: v for k, v in prefs.items() if k in cls.__dataclass_fields__}
+        
+        # Convert and expand string paths to Path objects
+        if "default_download_directory" in prefs_copy and isinstance(prefs_copy["default_download_directory"], str):
+            try:
+                path_str = prefs_copy["default_download_directory"]
+                # Expand ~ and environment variables using standard lib
+                expanded = Path(path_str).expanduser().resolve()
+                prefs_copy["default_download_directory"] = expanded
+            except Exception as e:
+                # Fallback to home/Downloads if user's config path is invalid
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Could not expand download directory '{prefs_copy['default_download_directory']}': {e}. Using ~/Downloads.")
+                prefs_copy["default_download_directory"] = Path.home() / "Downloads"
+        
+        return cls(**prefs_copy)
     
     def to_dict(self) -> dict:
-        """Convert to dictionary for JSON serialization."""
-        return asdict(self)
+        """Convert to dictionary for JSON serialization (Path → string)."""
+        d = asdict(self)
+        # Convert Path back to string for JSON storage
+        if isinstance(d.get("default_download_directory"), Path):
+            d["default_download_directory"] = str(d["default_download_directory"])
+        return d
     
     def update_from_dict(self, data: Dict) -> None:
         """Update options from dictionary (only non-None values)."""

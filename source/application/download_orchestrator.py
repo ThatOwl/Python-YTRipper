@@ -253,7 +253,6 @@ class DownloadOrchestrator:
             - Download status and any errors encountered during the process.
         """
         results = []
-
         base_download_dir = self.os_handler.expand_path(options.default_download_directory)
        
         
