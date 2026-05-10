@@ -42,8 +42,8 @@ COMMON_VIDEO_RESOLUTIONS = {
 }
 
 # Boolean string parsing constants
-BOOLEAN_TRUE_VALUES = ('true', '1', 'yes', 'y')
-BOOLEAN_FALSE_VALUES = ('false', '0', 'no', 'n')
+BOOLEAN_TRUE_VALUES = ('true', '1', 'yes', 'y', 't')
+BOOLEAN_FALSE_VALUES = ('false', '0', 'no', 'n', 'f')
 
 # FPS preference constants
 FPS_ANY = 0      # Accept any FPS
@@ -119,8 +119,7 @@ class DownloadOptions:
     #ui_loglevel:Str = "WARNING"
     donotconvert: bool = False
     no_dir_date: bool = False
-    #actual_audio_bitrate: str = ""  # e.g. "128kbps" — set at runtime from selected stream 
-    datasaver: bool = False  # If True, prefer lower-quality streams to save data
+    autotag: bool = True  # If True, attempt to auto-tag downloaded files with metadata
     
 
     @classmethod

@@ -6,7 +6,17 @@ from pathlib import Path
 
 
 from utility.logger import get_logger
-from utility.utils import VideoFetchError, PlaylistFetchError, StreamSelectionError, StreamDownloadError, ConversionError, CombineError, DownloadOptions, DownloadResult, QUALITY_ALIAS_MAP, sanitize_filename
+from utility.utils import (
+    VideoFetchError, 
+    PlaylistFetchError, 
+    StreamSelectionError, 
+    StreamDownloadError, 
+    ConversionError, 
+    CombineError, 
+    DownloadOptions, 
+    DownloadResult, 
+    QUALITY_ALIAS_MAP, 
+    sanitize_filename)
 
 from infrastructure.stream_converter import StreamConverter #TODO:change to MediaAssembler 
 from infrastructure.url_handler import URLHandler # TODO: calls move to video_fetcher ?
@@ -192,7 +202,6 @@ class DownloadOrchestrator:
         
         base_filename: str = sanitize_filename(video_obj.title)
         video_title = video_obj.title
-        video_url = video_obj.watch_url
         
         # Efficiency safeguard: skip download if target file already exists 
         # (e.g. from previous failed attempt, or if user is re-downloading a playlist they already downloaded before and some files are still there) => this also allows for resuming partially downloaded playlists without re-downloading existing files
@@ -202,7 +211,7 @@ class DownloadOrchestrator:
         #TODO ? refactor this look at: https://vscode.dev/github/RF-at-FH-Joanneum/Python-YTRipper/blob/Restructure_Orchestration_2887-7ee1-42fe-b3eb-f9c44204ae2
         if target_file.exists():
             logger.info(f"⏭ Skipping (already exists): {video_title} -> {target_file.name}")
-            return DownloadResult(success=True, errors=[], video_title=video_title, video_url=video_url)
+            return DownloadResult(success=True, errors=[], video_title=video_title, video_url=video_obj.watch_url)
 
         logger.info(f'Downloading {"soundtrack" if options.audio_only else "video"}: {video_title}')
         
@@ -213,11 +222,14 @@ class DownloadOrchestrator:
                 self._download_single_video(video_obj=video_obj, download_dir=download_dir, options=options)
 
             logger.info(f"✓ {video_title}")
-            return DownloadResult(success=True, errors=[], video_title=video_title, video_url=video_url or video_obj.watch_url)
-
+            return DownloadResult(success=True, errors=[], video_title=video_title, video_url=video_obj.watch_url)
+        
+        except (StreamSelectionError, StreamDownloadError, ConversionError, CombineError) as e:
+            logger.error(f"✗ {type(e).__name__} with {video_title}: {e}")
+            return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_obj.watch_url)
         except Exception as e:
-            logger.error(f"✗ {video_title}: {e}")
-            return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_url or video_obj.watch_url)
+            logger.error(f"✗ Unexpected error with {video_title}: {e}")
+            return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_obj.watch_url)
     
     #TODO: Will be interface with CLI and GUI, so should be more generic 
     def download(self, url: str, options: DownloadOptions) -> List[DownloadResult]:

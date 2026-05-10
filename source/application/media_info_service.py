@@ -55,6 +55,10 @@ class MediaInfoService:
 
         return lines
     
+    #TODO ? just a wrapper around video_fetcher methods ?
+    def is_playlist(self, url: str) -> bool:
+        return self.urlh.is_youtube_playlist(url)
+    
     def get_video_title(self, url: str) -> str:
         video: ptf.YouTube = self.vid_fetcher.get_video_obj(url)
         return video.title

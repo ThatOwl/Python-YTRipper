@@ -1,13 +1,9 @@
 import sys
-import os
 
-#TODO ... a lot 
-# implement startup into different modes based on sys.argv
-# e.g. "menu" for interactive, otherwise command mode
-# possibly add other modes later (e.g. GUI)
-# for now, just basic interactive vs command line
+#TODO : refactor to have a more generic CLI/GUI entry point that can call shared command processing logic, 
+# rather than having CLI-specific code in the CommandCLI class. This would make it easier to reuse the same command processing for a future GUI.
+# For now, this serves as the main entry point for the CLI, and can be adapted later when adding a GUI.
 
-#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from cli.cli_command import CommandCLI
 
 def main():

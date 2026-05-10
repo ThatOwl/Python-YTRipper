@@ -1,5 +1,6 @@
 import os
 import re
+import logging
 from pathlib import Path
 import csv
 from typing import Dict, List, Tuple
@@ -8,7 +9,7 @@ from datetime import datetime
 from utility.logger import get_logger
 import utility.preferences as preferences
 from infrastructure.url_handler import URLHandler
-from utility.utils import sanitize_filename
+from utility.utils import sanitize_filename, DownloadResult
 
 logger = get_logger(__name__, 'os_interactions_debug.log')
 
@@ -188,12 +189,6 @@ class OSInteractions:
             logger.debug("Unexpected error occurred while creating playlist directory %s", playlist_dir, exc_info=True)
             raise IOError(f"Failed to create playlist directory {playlist_dir}") from e
 
-    #TODO: cleanup or delete a use 
-        """
-        if not os.path.exists(download_dir):
-            os.makedirs(download_dir)
-            logger.info(f"Created download directory: {download_dir}")
-        """
     @staticmethod
     def create_directory(dir_path: Path) -> int:
         """
@@ -201,41 +196,30 @@ class OSInteractions:
         Returns the number of directory levels that were created (0 if none).
         """
         dir_path = Path(dir_path)
-        # Find how many ancestor directories do not exist (count from the target up to the nearest existing ancestor)
+        
+        # Only count missing dirs when debug logging enabled
         missing_count = 0
-        p = dir_path
-        # Use resolve(strict=False) to normalize path without requiring existence
+        if logger.isEnabledFor(logging.DEBUG):
+            temp = dir_path
+            while not temp.exists():
+                missing_count += 1
+                if temp.parent == temp:
+                    break
+                temp = temp.parent
+        
         try:
-            p = p.resolve(strict=False)
-        except Exception:
-            p = dir_path
-
-        temp = p
-        while not temp.exists():
-            missing_count += 1
-            if temp.parent == temp:
-                # reached filesystem root
-                break
-            temp = temp.parent
-
-        if missing_count == 0:
-            logger.debug(f"Directory already exists, nothing to create: {dir_path}")
-            return 0
-
-        try:
-            # Create all missing directories in one call
             dir_path.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Created path: {dir_path} (created {missing_count} levels)")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Created path: {dir_path} (created {missing_count} levels)")
             return missing_count
         except Exception as e:
             logger.error(f"Failed to create directory {dir_path}: {e}")
-            logger.debug("Unexpected error occurred while creating directory %s", dir_path, exc_info=True)
             raise IOError(f"Failed to create directory {dir_path}") from e
 
     # TODO: add method to append to batch results file instead of overwriting (for long-running batch processes)
     # Currently unused !
     @staticmethod
-    def save_batch_results(results: List[Dict], output_path: Path) -> None:
+    def save_batch_results(results: List[DownloadResult], output_path: Path) -> None:
         """
         Save batch download results to a CSV file.
 
@@ -248,19 +232,6 @@ class OSInteractions:
                 fieldnames = ['video_title', 'video_url', 'success', 'errors']
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
-                writer.writeheader()
-                for result in results:
-                    writer.writerow(result)
-            logger.info(f"Batch results saved to {output_path}")
-        except Exception as e:
-            logger.error(f"Failed to save batch results to {output_path}: {e}")
-            logger.debug("Unexpected error occurred while saving batch results to %s", output_path, exc_info=True)
-            raise IOError(f"Failed to save batch results to {output_path}") from e
-
-        try:
-            with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
-                fieldnames = ['video_title', 'video_url', 'success', 'errors']
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)                    
                 writer.writeheader()
                 for result in results:
                     writer.writerow(result)

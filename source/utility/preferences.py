@@ -28,7 +28,7 @@ DEFAULT_PREFS: Dict = {
     "visible_loglevel": "INFO",
     "donotconvert": False,
     "no_dir_date": False,
-    "datasave": True,
+    "autotag": True,
 }
 
 def current_username() -> str:

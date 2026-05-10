@@ -1,12 +1,8 @@
-#--------------------
-#
-#     cli_command.py
-#
-#--------------------
 
 import argparse
 import shlex
 from pathlib import Path
+from typing import List
 
 from cli.cli_base import CLIBase
 
@@ -25,6 +21,7 @@ from utility.utils import (
     COMMON_VIDEO_RESOLUTIONS,
     LOGLEVEL_ALIAS_MAP,
     parse_bool_string,
+    DownloadResult
 )
 
 import utility.preferences as preferences
@@ -40,8 +37,8 @@ class CommandCLI(CLIBase):
         # Shared infrastructure/services for this CLI session.
         # Keeping these as attributes makes later GUI/CLI dependency injection easier.
         self.os = OSInteractions()
-        self.url_handler = URLHandler()
-        self.video_fetcher = VideoFetcher()
+        self.url_handler = URLHandler() #DELETE ? why is this needed in CLI? => not called
+        self.video_fetcher = VideoFetcher() #DELETE ? why is this needed in CLI? => not called
 
         self.preferences = self.os.read_preferences()
         self.options = DownloadOptions.from_preferences(self.preferences)
@@ -118,6 +115,14 @@ class CommandCLI(CLIBase):
             action="store_true",
             help="Print video/playlist info and exit",
         )
+        
+        parser.add_argument(
+            "-lp",
+            "--load_preset",
+            type=str,
+            default=None,
+            help="Load default preferences: 'XY' num custom or 'a' audio high, 'vh' video high, 'vl' video low, 't' test mode"
+        )
 
         parser.add_argument(
             "-a",
@@ -191,14 +196,6 @@ class CommandCLI(CLIBase):
         )
 
         parser.add_argument(
-            "-w",
-            "--warn_me",
-            type=str,
-            default=None,
-            help=f"Show loaded preferences before running (true/false). Current default: {self.options.warn_me}",
-        )
-
-        parser.add_argument(
             "-nd",
             "--no_dir_date",
             type=str,
@@ -207,6 +204,37 @@ class CommandCLI(CLIBase):
                 "Disable auto date prefix for playlist directory (true/false). "
                 f"Current default: {self.options.no_dir_date}"
             ),
+        )
+
+        parser.add_argument(
+            "-sc",
+            "--save-config",
+            action="store_true",
+            help="Save current effective options to config file",
+        )
+         
+        parser.add_argument(
+            "-w",
+            "--warn_me",
+            type=str,
+            default=None,
+            help=f"Show loaded preferences before running (true/false). Current default: {self.options.warn_me}",
+        )
+        
+        parser.add_argument(
+            "-at",
+            "--autotag",
+            type=str,
+            default=None,
+            help=f"Attempt to auto-tag downloaded files with metadata (true/false). Current default: {self.options.autotag}",
+        )
+        
+        parser.add_argument(
+            "-sr",
+            "--save-results",
+            type=str,
+            default=None,
+            help=f"Save download results to a file (true/false). Default: None",
         )
 
         parser.add_argument(
@@ -220,22 +248,7 @@ class CommandCLI(CLIBase):
                 f"Current default: {self.options.visible_loglevel}"
             ),
         )
-
-        parser.add_argument(
-            "-ds",
-            "--datasaver",
-            type=str,
-            default=None,
-            help=f"Prefer lower-quality streams to save data (true/false). Current default: {self.options.datasaver}",
-        )
-
-        parser.add_argument(
-            "-sc",
-            "--save-config",
-            action="store_true",
-            help="Save current effective options to config file",
-        )
-
+        
         return parser
 
     def enable_argcomplete(self, parser: argparse.ArgumentParser) -> None:
@@ -333,7 +346,13 @@ class CommandCLI(CLIBase):
 
         if args.datasaver is not None:
             updates["datasaver"] = parse_bool_string(args.datasaver)
-
+        
+        if args.autotag is not None:
+            updates["autotag"] = parse_bool_string(args.autotag)
+            
+        if args.save_results is not None:
+            updates["save_results"] = parse_bool_string(args.save_results)
+            
         self.options.update_from_dict(updates)
         self._normalize_options()
 
@@ -441,10 +460,10 @@ class CommandCLI(CLIBase):
         for key, value in self.options.to_dict().items():
             print(f"  {key}: {value}")
 
-    def _download_single_url(self, url: str) -> int:
+    def _download_single_url(self, url: str, save_results: bool) -> int:
         """Download a single URL. Returns 0 on success, 1 on failure."""
         try:
-            results = self.ytd.download(url=url, options=self.options)
+            results: List[DownloadResult] = self.ytd.download(url=url, options=self.options)
 
             if results:
                 success_count = sum(1 for result in results if result.success)
@@ -463,7 +482,9 @@ class CommandCLI(CLIBase):
                     print(f"{'=' * 50}")
 
                 return 0 if fail_count == 0 else 1
-
+            
+            if save_results and self.media_info_service.is_playlist(url) and results is not None:
+                self.os.save_batch_results(results, Path("download_results.json"))
             return 0
 
         except Exception as e:
@@ -539,7 +560,7 @@ class CommandCLI(CLIBase):
         for idx, url in enumerate(valid_urls, 1):
             print(f"\n[{idx}/{len(valid_urls)}] Processing: {url}")
 
-            if self._download_single_url(url) == 0:
+            if self._download_single_url(url, args.save_results) == 0:
                 success_count += 1
             else:
                 fail_count += 1
@@ -560,7 +581,7 @@ class CommandCLI(CLIBase):
             return self._run_info_mode(args.url)
 
         print("------ Starting Download ------")
-        return self._download_single_url(args.url)
+        return self._download_single_url(args.url, args.save_results)
 
     def run(self, command: str) -> int:
         """Process a command string for downloading YouTube videos or playlists."""
