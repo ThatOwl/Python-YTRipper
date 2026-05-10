@@ -1,5 +1,6 @@
 
 import argparse
+import datetime
 import shlex
 from pathlib import Path
 from typing import List
@@ -343,9 +344,6 @@ class CommandCLI(CLIBase):
 
         if args.visible_loglevel is not None:
             updates["visible_loglevel"] = args.visible_loglevel
-
-        if args.datasaver is not None:
-            updates["datasaver"] = parse_bool_string(args.datasaver)
         
         if args.autotag is not None:
             updates["autotag"] = parse_bool_string(args.autotag)
@@ -484,7 +482,7 @@ class CommandCLI(CLIBase):
                 return 0 if fail_count == 0 else 1
             
             if save_results and self.media_info_service.is_playlist(url) and results is not None:
-                self.os.save_batch_results(results, Path("download_results.json"))
+                self.os.save_batch_results(results=results, download_dir=self.options.default_download_directory, playlist_name=self.media_info_service.get_playlist_title(url))
             return 0
 
         except Exception as e:

@@ -68,7 +68,7 @@ class DownloadOrchestrator:
         Returns:
             List[DownloadResult]: A list of results for each video download in the playlist.
         """
-        download_dir: Path = Path(options.default_download_directory)
+        download_dir: Path = options.default_download_directory
         results: List[DownloadResult] = []
         playlist_obj:ptf.Playlist = None
         playlist_dir: Path = None
@@ -246,7 +246,7 @@ class DownloadOrchestrator:
             - Download status and any errors encountered during the process.
         """
         results = []
-        download_dir: Path = Path(options.default_download_directory)
+        download_dir: Path = options.default_download_directory
 
         if self.urlh.is_youtube_url(url) and self.urlh.is_accessible(url):
             logger.debug(f"Valid YouTube URL: {url}")

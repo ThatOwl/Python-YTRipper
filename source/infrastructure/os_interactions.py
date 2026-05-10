@@ -24,6 +24,18 @@ class OSInteractions:
     def expand_path(self, path_str: str) -> Path:
         """
         Expand user-provided paths.
+        Handles:
+        - ~/Downloads
+        - $HOME/Downloads
+        - normal absolute Linux paths
+        """
+        return Path(os.path.expandvars(os.path.expanduser(path_str))).resolve()
+
+    
+    #FIXME
+    def expand_path_borken(self, path_str: str) -> Path:
+        """
+        Expand user-provided paths.
 
         Handles:
         - ~/Downloads
@@ -219,14 +231,16 @@ class OSInteractions:
     # TODO: add method to append to batch results file instead of overwriting (for long-running batch processes)
     # Currently unused !
     @staticmethod
-    def save_batch_results(results: List[DownloadResult], output_path: Path) -> None:
+    def save_batch_results(results: List[DownloadResult], download_dir: Path, playlist_name: str) -> None:
         """
         Save batch download results to a CSV file.
 
         Args:
             results: List of dictionaries containing download results (e.g. video_title, video_url, success, errors).
-            output_path: Path to the output CSV file.
+            download_dir: Directory where the CSV file will be saved.
+            playlist_name: Name of the playlist for the CSV file.
         """
+        output_path: Path = download_dir / f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{playlist_name}.csv"
         try:
             with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
                 fieldnames = ['video_title', 'video_url', 'success', 'errors']
