@@ -18,7 +18,7 @@ class OSInteractions:
     """Filesystem and file I/O operations (preferences, batch files, paths)."""
 
     def __init__(self):
-        self.prefs_path = preferences.PATH_TO_PREFERENCES
+        self.prefs_path = preferences.PATH_TO_DEFAULT_PREFERENCES
         self.logs_path = preferences.PATH_TO_LOGS
 
     def expand_path(self, path_str: str | Path) -> Path:
@@ -51,13 +51,13 @@ class OSInteractions:
 
         return Path(raw_path).resolve()
     
-    def read_preferences(self) -> Dict:
+    def read_preferences(self, prefs_path: Path | None = None) -> Dict:
         """Delegate to preferences module."""
-        return preferences.read_preferences()
+        return preferences.read_preferences(path=prefs_path)
 
-    def write_preferences(self, prefs: Dict) -> None:
+    def write_preferences(self, prefs: Dict, prefs_path: Path | None = None) -> bool:
         """Delegate to preferences module."""
-        preferences.write_preferences(prefs)
+        return preferences.write_preferences(prefs, path=prefs_path)
 
     # BATCH FILE LOADING
     @staticmethod

@@ -2,7 +2,6 @@ import os
 import json
 from pathlib import Path
 from typing import Dict
-from dataclasses import dataclass, asdict
 import getpass
 
 # ---------- CONSTANTS FOR SETUP & RESTORE -------------------
@@ -13,9 +12,13 @@ CONFIG_DIR: Path = PROJECT_ROOT / "config"
 LOGS_DIR: Path = PROJECT_ROOT / "logs"
 
 PATH_TO_LOGS: Path = LOGS_DIR
+PRESETS_DIR: Path = CONFIG_DIR / "presets"
+IMMUTABLE_PRESETS_DIR: Path = PRESETS_DIR / "immutable"
+CUSTOM_PRESETS_DIR: Path = PRESETS_DIR / "custom"
 
 DEFAULT_PREFS: Dict = {
-    "default_download_directory": "~/Downloads",
+    "current_preset": "default",
+    "default_download_directory": "~/Downloads/RipperDownloads",
     "audio_only": False,
     "audio_mp3": False,
     "warn_me": False,
@@ -28,7 +31,8 @@ DEFAULT_PREFS: Dict = {
     "visible_loglevel": "INFO",
     "donotconvert": False,
     "no_dir_date": False,
-    "autotag": True,
+    "autotag": False,
+    "save_results": False
 }
 
 def current_username() -> str:
@@ -39,34 +43,84 @@ def current_username() -> str:
         home = os.environ.get("HOME", "")
         return Path(home).name if home else ""
 
-PATH_TO_PREFERENCES: Path = CONFIG_DIR / f"user_settings_{current_username()}.json"
+PATH_TO_DEFAULT_PREFERENCES: Path = CONFIG_DIR / f"default_settings_{current_username()}.json"
+PATHS_TO_CUSTOM_PRESETS: tuple[Path, ...] = tuple(
+    CUSTOM_PRESETS_DIR / f"{preset_id}__custom_preset.json"
+    for preset_id in range(10)
+)
+PATHS_TO_IMMUTABLE_PRESETS: Dict[str, Path] = {
+    "vh": IMMUTABLE_PRESETS_DIR / "vh__video_high.json",
+    "vl": IMMUTABLE_PRESETS_DIR / "vl__video_low.json",
+    "ah": IMMUTABLE_PRESETS_DIR / "ah__audio_high.json",
+    "t": IMMUTABLE_PRESETS_DIR / "t__test_mode.json",
+}
 
-def read_preferences() -> Dict:
-    """
-    Read preferences from PATH_TO_PREFERENCES. If missing, create it with DEFAULT_PREFS.
-    Returns a dict (never None).
-    """
-    if not os.path.exists(PATH_TO_PREFERENCES):
-        try:
-            os.makedirs(os.path.dirname(PATH_TO_PREFERENCES), exist_ok=True)
-            with open(PATH_TO_PREFERENCES, 'w', encoding="utf-8") as f:
-                json.dump(DEFAULT_PREFS, f, indent=4)
-            return dict(DEFAULT_PREFS)
-        except Exception:
-            return dict(DEFAULT_PREFS)
-    else:
-        try:
-            with open(PATH_TO_PREFERENCES, 'r', encoding="utf-8") as fh:
-                data = json.load(fh)
-                return data if isinstance(data, dict) else dict(DEFAULT_PREFS)
-        except Exception:
-            return dict(DEFAULT_PREFS)
 
-def write_preferences(prefs: Dict) -> None:
-    """Write provided prefs dict to PATH_TO_PREFERENCES (best-effort)."""
+def _read_json_dict(path: Path) -> Dict:
+    """Read a JSON file and merge dict content onto DEFAULT_PREFS."""
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    if not isinstance(data, dict):
+        return dict(DEFAULT_PREFS)
+
+    merged = dict(DEFAULT_PREFS)
+    merged.update(data)
+    return merged
+
+
+def _create_default_preferences_file() -> Dict:
+    """Create the default preferences file if possible, then return defaults."""
     try:
-        os.makedirs(os.path.dirname(PATH_TO_PREFERENCES), exist_ok=True)
-        with open(PATH_TO_PREFERENCES, "w", encoding="utf-8") as fh:
-            json.dump(prefs if isinstance(prefs, dict) else DEFAULT_PREFS, fh, indent=4)
+        PATH_TO_DEFAULT_PREFERENCES.parent.mkdir(parents=True, exist_ok=True)
+        with open(PATH_TO_DEFAULT_PREFERENCES, "w", encoding="utf-8") as f:
+            json.dump(DEFAULT_PREFS, f, indent=4)
     except Exception:
         pass
+
+    return dict(DEFAULT_PREFS)
+
+
+def read_preferences(path: Path | None = None) -> Dict:
+    """
+    Read preferences from the default config or an explicit path.
+
+    Startup/default behavior:
+    - read PATH_TO_DEFAULT_PREFERENCES
+    - create it with DEFAULT_PREFS if missing
+
+    Explicit-path behavior:
+    - do not create missing files
+    - fall back to DEFAULT_PREFS on missing/invalid content
+
+    Returns a dict (never None).
+    """
+    if path is None:
+        if not PATH_TO_DEFAULT_PREFERENCES.exists():
+            return _create_default_preferences_file()
+
+        try:
+            return _read_json_dict(PATH_TO_DEFAULT_PREFERENCES)
+        except Exception:
+            return dict(DEFAULT_PREFS)
+
+    try:
+        return _read_json_dict(path)
+    except Exception:
+        return dict(DEFAULT_PREFS)
+
+
+def write_preferences(prefs: Dict, path: Path | None = None) -> bool:
+    """Write provided prefs dict to the default config or an explicit path."""
+    #TODO do not ever override "current_preset"-field ... 
+    #TODO will be annoying to implement: never write (default) prefs to file if some values were incorrectly passed 
+    # => "-a" instead of "-a true" (or "-q something", "-r 999") would cause the default prefs to be written with "audio_only": false, which is not what we want ...
+    # handle with _normalize_save_config_path ?
+    try:
+        target_path = PATH_TO_DEFAULT_PREFERENCES if path is None else path
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(target_path, "w", encoding="utf-8") as fh:
+            json.dump(prefs if isinstance(prefs, dict) else DEFAULT_PREFS, fh, indent=4)
+        return True
+    except Exception:
+        return False

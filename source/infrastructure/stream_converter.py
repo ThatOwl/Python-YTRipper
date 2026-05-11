@@ -1,277 +1,196 @@
-from ast import Dict
-import os
-from pathlib import Path 
-from attr import asdict, dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
 import ffmpeg as fpg
+
 from utility.logger import get_logger
+from utility.utils import OutputProfile
 
-logger = get_logger(__name__, 'StreamConverter_debug.log')
+logger = get_logger(__name__, "StreamConverter_debug.log")
 
-#TODO: neccessary ? & decide what to put inside 
 
 @dataclass
-class StreamConversionParameters:
-    actual_audio_codec: str = None
-    actual_audio_bitrate: str = None
-    actual_audio_mime_type: str = None
-    actual_video_codec: str = None
-    actual_video_bitrate: str = None
-    actual_video_mime_type: str = None
-    actual_resolution: str = None
-    actual_fps: int = None
-    
-    #use_this_for_conversion = [video_stream.audio_codec, video_stream.abr, video_stream.bitrate, video_stream.codecs, video_stream.mime_type, video_stream.resolution, video_stream.fps]
+class FfmpegSettings:
+    """Execution settings for ffmpeg operations."""
 
+    overwrite: bool = True
+    quiet: bool = True
+    capture_stdout: bool = True
+    capture_stderr: bool = True
+    # Prefer kwargs for ffmpeg-python, because raw repeated args are awkward there.
+    # Example: {"movflags": "+faststart"}
+    extra_output_kwargs: dict[str, Any] = field(default_factory=dict)
+    # Kept as a future escape hatch. This first pass does not rely on it.
+    extra_output_args: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict:
-        """Convert parameters to dictionary (for logging, passing to other components, etc.)."""
-        return asdict(self)
-    
-    def update_from_dict(self, data: Dict) -> None:
-        """Update parameters from dictionary (only non-None values)."""
-        for key, value in data.items():
-            if value is not None and hasattr(self, key):
-                setattr(self, key, value)
-
-@dataclass
-class AudioConversionParameters:
-    actual_audio_codec: str = None
-    actual_audio_bitrate: str = None
-    target_audio_codec: str = None
-    target_audio_bitrate: str = None
-
-@dataclass
-class VideoConversionParameters(AudioConversionParameters):
-    actual_video_codec: str = None
-    target_video_codec: str = None
-    
-"""
-final filename,
-whether .mp3 or .m4a is desired from audio_mp3,
-whether to delete downloaded source files,
-whether to delete thumbnails,
-whether to replace final files,
-whether this is part of a YouTube workflow.
-"""
-
-
-# TODO - decide on datatypes for method parameters and return values (e.g. should we use Path objects, strings, custom data classes, etc. ?)
-# The method signatures should be designed to be as clear and intuitive as possible, while also being flexible enough to accommodate any future changes or additions to the conversion and merging logic. The StreamConverter should be focused solely on the ffmpeg operations, and should not have any media-assembler specific logic or state management. The MediaAssembler will handle all of that, and will call the StreamConverter's methods to perform the actual conversion and merging tasks when needed. This way, the StreamConverter can be easily reused in other contexts if needed, without being tightly coupled to the MediaAssembler's responsibilities.
-
-# TODO - actual_audio_bitrate is not being set -> read commit history (did work at some point) => decide if this is neccessary and if so, how to set it (e.g. pass as parameter, set as attribute, etc.)
 
 class StreamConverter:
-    """Handles conversion and merging of audio/video streams."""
+    """
+    Low-level adapter around ffmpeg-python.
 
-    #TODO: implement (variable datatypes open until implementation dictates them)
-    @staticmethod
-    def combine_streams_new(audio, video, conversion_params: VideoConversionParameters): # or combine_parameters object 
-        # implement temp logic 
-        # implement passing 
-        pass
-    
-    #TODO: implement (variable datatypes open until implementation dictates them)
-    @staticmethod
-    def convert_audio_new(audio_path: Path, target_codec, thumbnail, bitrate):
-        
-        # this can be deleted => logic is moved to MediaAssembler
-        """"# Codec & extension from the flag
-        if audio_mp3:
-            used_a_codec = "libmp3lame"
-            target_ext = ".mp3"
-        else:
-            used_a_codec = "aac"
-            target_ext = ".m4a"""""
+    Owns:
+    - constructing ffmpeg input/output graphs
+    - running ffmpeg
+    - returning the explicit output path
 
-        # uneccessary as it will be created locally or with os_interaction
-        """# Ensure output_path carries the correct extension
-        if output_path.suffix.lower() != target_ext:
-            logger.warning(
-                f"Output extension mismatch ({output_path.suffix}), adjusting to {target_ext}."
+    Does not own:
+    - final filename policy
+    - deleting source files
+    - deleting thumbnails
+    - replacing final files
+    - YouTube/pytubefix-specific logic
+    """
+
+    @staticmethod
+    def convert_audio_new(
+        input_path: Path,
+        output_path: Path,
+        profile: OutputProfile,
+        settings: FfmpegSettings | None = None,
+        thumbnail_path: Path | None = None,
+    ) -> Path:
+        """Convert/copy one audio input to the explicit output path."""
+        settings = settings or FfmpegSettings()
+        input_path = Path(input_path)
+        output_path = Path(output_path)
+
+        if not input_path.exists():
+            raise FileNotFoundError(f"Audio input does not exist: {input_path}")
+
+        output_kwargs: dict[str, Any] = dict(settings.extra_output_kwargs)
+
+        if profile.audio_codec:
+            output_kwargs["acodec"] = profile.audio_codec
+
+        if profile.audio_bitrate and profile.audio_codec != "copy":
+            output_kwargs["audio_bitrate"] = profile.audio_bitrate
+
+        audio_input = fpg.input(str(input_path))
+
+        if thumbnail_path and Path(thumbnail_path).exists():
+            # Minimal cover-art support. Stream selection is explicit enough to avoid
+            # MediaAssembler policy leaking into this class, but detailed tagging can
+            # be improved later in a Metadata/Tagging service.
+            image_input = fpg.input(str(thumbnail_path))
+            stream = fpg.output(
+                audio_input,
+                image_input,
+                str(output_path),
+                **output_kwargs,
             )
-            output_path = output_path.with_suffix(target_ext)"""
-
-        logger.debug(f"Converting audio to ({used_a_codec}) with ffmpeg...")
-
-        # could also be moved to MediaAssembler
-        """# pytubefix returns e.g. "160kbps" but ffmpeg expects "160k"
-        if audio_bitrate:
-            ffmpeg_bitrate = audio_bitrate.replace("kbps", "k").replace("mbps", "M")
-            bitrate_kwargs = {"audio_bitrate": ffmpeg_bitrate}
-            logger.debug(f"Using source-matched audio bitrate: {ffmpeg_bitrate} (raw: {audio_bitrate})")
         else:
-            bitrate_kwargs = {"qscale:a": 3}
-            logger.debug("No source bitrate provided, using VBR qscale:a=3")"""
+            stream = fpg.output(audio_input, str(output_path), **output_kwargs)
 
+        StreamConverter._run(stream, settings)
+        return output_path
 
+    @staticmethod
+    def combine_streams_new(
+        video_path: Path,
+        audio_path: Path | None,
+        output_path: Path,
+        profile: OutputProfile,
+        settings: FfmpegSettings | None = None,
+    ) -> Path:
+        """Mux/transcode video and optional audio into the explicit output path."""
+        settings = settings or FfmpegSettings()
+        video_path = Path(video_path)
+        output_path = Path(output_path)
 
-    #TODO: retire 
+        if not video_path.exists():
+            raise FileNotFoundError(f"Video input does not exist: {video_path}")
+        if audio_path is not None and not Path(audio_path).exists():
+            raise FileNotFoundError(f"Audio input does not exist: {audio_path}")
+
+        output_kwargs: dict[str, Any] = dict(settings.extra_output_kwargs)
+
+        if profile.video_codec:
+            output_kwargs["vcodec"] = profile.video_codec
+        if profile.audio_codec:
+            output_kwargs["acodec"] = profile.audio_codec
+        if profile.video_bitrate and profile.video_codec != "copy":
+            output_kwargs["video_bitrate"] = profile.video_bitrate
+        if profile.audio_bitrate and profile.audio_codec != "copy":
+            output_kwargs["audio_bitrate"] = profile.audio_bitrate
+
+        # Good default for MP4 playback/streaming friendliness. This is still an
+        # ffmpeg output option, not an application policy decision.
+        if profile.container == "mp4":
+            output_kwargs.setdefault("movflags", "+faststart")
+
+        video_input = fpg.input(str(video_path))
+
+        if audio_path is None:
+            stream = fpg.output(video_input, str(output_path), **output_kwargs)
+        else:
+            audio_input = fpg.input(str(audio_path))
+            stream = fpg.output(video_input, audio_input, str(output_path), **output_kwargs)
+
+        StreamConverter._run(stream, settings)
+        return output_path
+
+    @staticmethod
+    def _run(stream, settings: FfmpegSettings) -> None:
+        if settings.extra_output_args:
+            # ffmpeg-python's kwargs are the safer first-class path. Keeping this as
+            # a best-effort escape hatch for future specialized flags.
+            stream = stream.global_args(*settings.extra_output_args)
+
+        stream.run(
+            capture_stdout=settings.capture_stdout,
+            capture_stderr=settings.capture_stderr,
+            overwrite_output=settings.overwrite,
+            quiet=settings.quiet,
+        )
+
+    # Compatibility wrappers. These keep existing call sites alive during migration,
+    # but MediaAssembler should be preferred for new code.
     @staticmethod
     def combine_streams(audio_path: Path, video_path: Path, output_path: Path) -> None:
-        """
-        Combines separate audio and video files into a single output file using ffmpeg.
+        profile = OutputProfile(
+            extension=".mp4",
+            container="mp4",
+            video_codec="copy",
+            audio_codec="aac",
+        )
+        StreamConverter.combine_streams_new(video_path, audio_path, output_path, profile, FfmpegSettings())
 
-        This method takes the paths to an audio file and a video file, merges them into one media file at the specified output path,
-        and removes the original input files upon successful completion.
-        Args:
-            audio_path (str): Path to the audio file to be merged.
-            video_path (str): Path to the video file to be merged.
-            output_path (str): Path where the merged output file will be saved.
-        Raises:
-            Exception: Logs any exception raised during the ffmpeg merging process.
-        """
-        logger.debug("Combining video and audio with ffmpeg...")
-        
-        # Use a temporary output file to avoid overwriting input files
-        temp_output_path = Path(output_path).parent / f".{Path(output_path).stem}_tmp.mp4"
-        
-        try:
-            (
-                fpg
-                .output(
-                    fpg.input(str(video_path)), 
-                    fpg.input(str(audio_path)), 
-                    str(temp_output_path), 
-                    vcodec='copy', 
-                    acodec='aac', 
-                    strict='experimental'
-                    )
-                .run(
-                    capture_stdout=True, 
-                    capture_stderr=True,
-                    overwrite_output=True, 
-                    quiet=True
-                    )
-            )
-            
-            # Remove input files
-            os.remove(video_path)
-            os.remove(audio_path)
-            
-            # Move temp file to final location
-            os.rename(temp_output_path, output_path)
-            logger.info(f"Merged file saved to: {output_path}")
-            
-        except Exception as e:
-            logger.exception(f"Error during ffmpeg merging: {e.stderr.decode() if hasattr(e, 'stderr') else e}")
-            logger.info("Keeping original files.")
-            # Clean up temp file if it exists
-            if temp_output_path.exists():
-                try:
-                    os.remove(temp_output_path)
-                except Exception as cleanup_err:
-                    logger.warning(f"Failed to clean up temp file {temp_output_path}: {cleanup_err}")
-            raise e  # Re-raise the exception for upstream handling
-
-    #TODO: retire 
     @staticmethod
     def convert_audio(
-        audio_path: Path, output_path: Path, thumbnail_path: Path = None, audio_bitrate: str = "", audio_mp3: bool = False
-        ) -> None:
-        """Converts audio (always re-encodes — source is Opus, not AAC).
-
-        Uses a safe temp-file pattern: writes to a .tmp file first, then
-        replaces the target only on success.
-
-        Args:
-            audio_path (Path): The path to the source audio file.
-            output_path (Path): The desired output path (extension may be corrected).
-            thumbnail_path (Path | None, optional): Thumbnail image to embed as cover art.
-            audio_bitrate (str, optional): Target bitrate e.g. "128kbps". Falls back
-                to VBR qscale if empty.
-            audio_mp3 (bool): If True encode to MP3 (libmp3lame), otherwise to M4A (AAC).
-        """
-
-        # Codec & extension from the flag
+        audio_path: Path,
+        output_path: Path,
+        thumbnail_path: Path | None = None,
+        audio_bitrate: str = "",
+        audio_mp3: bool = False,
+    ) -> None:
         if audio_mp3:
-            used_a_codec = "libmp3lame"
-            target_ext = ".mp3"
-        else:
-            used_a_codec = "aac"
-            target_ext = ".m4a"
-
-        # Ensure output_path carries the correct extension
-        if output_path.suffix.lower() != target_ext:
-            logger.warning(
-                f"Output extension mismatch ({output_path.suffix}), adjusting to {target_ext}."
+            profile = OutputProfile(
+                extension=".mp3",
+                container="mp3",
+                audio_codec="libmp3lame",
+                audio_bitrate=_normalize_bitrate_for_ffmpeg(audio_bitrate),
             )
-            output_path = output_path.with_suffix(target_ext)
-
-        logger.debug(f"Converting audio to {target_ext} ({used_a_codec}) with ffmpeg...")
-
-        # Bitrate kwargs
-        # pytubefix returns e.g. "160kbps" but ffmpeg expects "160k"
-        if audio_bitrate:
-            ffmpeg_bitrate = audio_bitrate.replace("kbps", "k").replace("mbps", "M")
-            bitrate_kwargs = {"audio_bitrate": ffmpeg_bitrate}
-            logger.debug(f"Using source-matched audio bitrate: {ffmpeg_bitrate} (raw: {audio_bitrate})")
+            output_path = Path(output_path).with_suffix(".mp3")
         else:
-            bitrate_kwargs = {"qscale:a": 3}
-            logger.debug("No source bitrate provided, using VBR qscale:a=3")
-
-        # Temporary output file (safe conversion pattern)
-        temp_output = output_path.with_name(output_path.stem + ".tmp" + output_path.suffix)
-
-        audio_input = fpg.input(str(audio_path))
-        image_input = fpg.input(str(thumbnail_path)) if thumbnail_path else None
-
-        try:
-            if thumbnail_path and thumbnail_path.exists():
-                (
-                    fpg
-                    .output(
-                        audio_input,
-                        image_input,
-                        str(temp_output),
-                        acodec=used_a_codec,
-                        **bitrate_kwargs,
-                        extra_args=[
-                            "-map", "0:a",
-                            "-map", "1:v",
-                            "-metadata:s:v", "title=Album cover",
-                            "-metadata:s:v", "comment=Cover (front)",
-                        ],
-                    )
-                    .run(
-                        capture_stdout=True,
-                        capture_stderr=True,
-                        overwrite_output=True,
-                        quiet=True,
-                    )
-                )
-                thumbnail_path.unlink()
-            else:
-                (
-                    fpg
-                    .output(
-                        audio_input,
-                        str(temp_output),
-                        acodec=used_a_codec,
-                        **bitrate_kwargs,
-                    )
-                    .run(
-                        capture_stdout=True,
-                        capture_stderr=True,
-                        overwrite_output=True,
-                        quiet=True,
-                    )
-                )
-
-            # ✅ Conversion succeeded — replace safely
-            audio_path.unlink()  # remove original (opus)
-            os.replace(temp_output, output_path)
-
-            logger.info(f"Audio file saved to: {output_path}")
-
-        except Exception as e:
-            stderr = getattr(e, "stderr", None)
-            logger.exception(
-                f"Error during ffmpeg audio conversion: {stderr.decode() if stderr else e}"
+            profile = OutputProfile(
+                extension=".m4a",
+                container="m4a",
+                audio_codec="aac",
+                audio_bitrate=_normalize_bitrate_for_ffmpeg(audio_bitrate),
             )
+            output_path = Path(output_path).with_suffix(".m4a")
 
-            # Clean up temp file if conversion failed
-            if temp_output.exists():
-                temp_output.unlink()
+        StreamConverter.convert_audio_new(audio_path, output_path, profile, FfmpegSettings(), thumbnail_path)
 
-            logger.info("Keeping original audio file.")
-            raise e
+
+def _normalize_bitrate_for_ffmpeg(value: str | int | None) -> str | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, int):
+        return f"{round(value / 1000)}k" if value > 10000 else f"{value}k"
+
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    return text.replace("kbps", "k").replace("mbps", "M")

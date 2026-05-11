@@ -6,8 +6,8 @@
 - X refactor "download_dir" into "options" => DO NOT ... as file-dwnld may create multiple playlists => which have own dwnld-dirs !
 - ! Add behaviour for autotag
 - ! Add behaviour for datasaver (use video_obj.filesize or .length) 
-- ! Add load_preset behaviour -> laod then overwrite with passed args -> only allow saving of custom!
 (in playlists dwdnld skip x > 15min->add url to output.txt & in single more complex)
+- DONE Add load_preset behaviour -> laod then overwrite with passed args -> only allow saving of custom!
 - !!! ONLY DEPEND ON INTERFACES ! => impl. interfaces
 - !! fix path handling and renaming o file ... including .mp4/mp3 bullshit
 - ! add unittesting

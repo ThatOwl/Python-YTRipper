@@ -46,9 +46,9 @@ class CommandCLI(CLIBase):
         self.options = DownloadOptions.from_preferences(self.preferences)
         self.loaded_preset_path: Path | None = None
         
-        # Normalize persisted config once on startup and apply runtime-only effects
-        # such as visible log level to already-created visible handlers.
-        self._normalize_options(self.options, apply_runtime=True)
+        # Normalize persisted config once on startup.
+        # This applies visible_loglevel from preferences to already-created visible handlers.
+        self._normalize_options(self.options)
 
         self.ytd = YTD(
             os_handler=self.os,
@@ -222,11 +222,7 @@ class CommandCLI(CLIBase):
             "--save-config",
             type=str,
             default=None,
-            help=(
-                "Save current session options to config. "
-                "Use true to save to the default config, or 0-9 to save to a custom preset. "
-                "Batch-file-local params are never saved."
-            ),
+            help="Save current effective options to config file '0'-'9' or loaded preset (true/false). Default: None (don't save)",
         )
 
         parser.add_argument(
@@ -275,21 +271,9 @@ class CommandCLI(CLIBase):
         except ImportError:
             pass
 
-    @staticmethod
-    def _split_command(command: str) -> list[str]:
-        r"""
-        Split a loop-mode command string while preserving Windows backslashes.
-
-        shlex.split(..., posix=True) treats backslashes as escapes, so a path like
-        D:\Music\Target becomes D:MusicTarget. posix=False preserves the path but
-        keeps surrounding quotes; strip only paired outer quotes from each token.
-        """
-        tokens = shlex.split(command, posix=False)
-        return [token.strip().strip('"').strip("'") for token in tokens]
-
     def _parse_args(self, command: str) -> argparse.Namespace | None:
         try:
-            return self.parser.parse_args(self._split_command(command))
+            return self.parser.parse_args(shlex.split(command))
         except SystemExit as exc:
             if exc.code == 0:
                 return None
@@ -344,17 +328,7 @@ class CommandCLI(CLIBase):
             return None
 
         if normalized in BOOLEAN_TRUE_VALUES:
-            if self.loaded_preset_path in preferences.PATHS_TO_CUSTOM_PRESETS:
-                return self.loaded_preset_path
-
-            if self.loaded_preset_path in preferences.PATHS_TO_IMMUTABLE_PRESETS.values():
-                logger.warning(
-                    "Loaded preset is immutable; -sc true will save the current "
-                    "session options to the default config instead. Use -sc 0..9 "
-                    "to save to a custom preset."
-                )
-
-            return preferences.PATH_TO_DEFAULT_PREFERENCES
+            return self.loaded_preset_path or preferences.PATH_TO_DEFAULT_PREFERENCES
 
         if normalized.isdigit() and len(normalized) == 1:
             return preferences.PATHS_TO_CUSTOM_PRESETS[int(normalized)]
@@ -407,19 +381,16 @@ class CommandCLI(CLIBase):
             updates["save_results"] = parse_bool_string(args.save_results)
 
         target_options.update_from_dict(updates)
-        self._normalize_options(target_options, apply_runtime=options is None)
+        self._normalize_options(target_options)
         return target_options
 
-    def _normalize_options(self, options: DownloadOptions, apply_runtime: bool = False) -> None:
+    def _normalize_options(self, options: DownloadOptions) -> None:
         self._normalize_boolean_options(options)
         self._normalize_quality_options(options)
         self._normalize_audio_bitrate(options)
         self._normalize_resolution(options)
         self._normalize_visible_loglevel(options)
         self._normalize_download_directory(options)
-
-        if apply_runtime:
-            self._apply_runtime_options(options)
 
     def _normalize_boolean_options(self, options: DownloadOptions) -> None:
         boolean_fields = (
@@ -535,12 +506,10 @@ class CommandCLI(CLIBase):
 
         options.visible_loglevel = mapped_level
 
-    def _apply_runtime_options(self, options: DownloadOptions) -> None:
-        """Apply runtime side effects for an already-normalized options object."""
         try:
-            set_visible_log_level(options.visible_loglevel)
+            set_visible_log_level(mapped_level)
         except ValueError as exc:
-            logger.error(f"Failed to set visible log level '{options.visible_loglevel}': {exc}")
+            logger.error(f"Failed to set visible log level '{mapped_level}': {exc}")
 
     def _save_config_if_requested(self, args: argparse.Namespace) -> None:
         if args.save_config is None:
@@ -575,7 +544,7 @@ class CommandCLI(CLIBase):
         self.loaded_preset_path = preset_path
         self.preferences = self.os.read_preferences(prefs_path=preset_path)
         self.options = DownloadOptions.from_preferences(self.preferences)
-        self._normalize_options(self.options, apply_runtime=True)
+        self._normalize_options(self.options)
         self._refresh_parser()
         return True
 
@@ -631,7 +600,7 @@ class CommandCLI(CLIBase):
             return None
 
         try:
-            return self.parser.parse_args(self._split_command(file_params))
+            return self.parser.parse_args(shlex.split(file_params))
         except SystemExit:
             logger.warning(f"Invalid params in batch file; ignoring params: {file_params}")
             return None
@@ -665,24 +634,19 @@ class CommandCLI(CLIBase):
             logger.error(f"Failed to load batch file: {exc}")
             return 1
 
-        # Batch-file params are local to this one batch run. They are applied to
-        # effective_options only and are never copied back into self.options.
         session_options_before_command = self._clone_options()
-        effective_options = self._clone_options(session_options_before_command)
+        effective_options = self._clone_options()
 
         file_args = self._parse_file_params(file_params)
         if file_args is not None:
             logger.info(f"Batch file parameters: {file_params}")
             self._apply_options(file_args, options=effective_options)
 
-        # CLI args belong to the interactive session and should persist in loop
-        # mode. Apply them to self.options after file params so file params do not
-        # leak into the session state.
         self.options = session_options_before_command
         self._apply_options(args)
         self._refresh_parser()
 
-        # CLI args also override batch-file params for this run.
+        effective_options = self._clone_options(effective_options)
         self._apply_options(args, options=effective_options)
         self._save_config_if_requested(args)
         self._display_preferences_if_enabled(effective_options)
@@ -706,19 +670,13 @@ class CommandCLI(CLIBase):
         success_count = 0
         fail_count = 0
 
-        # Runtime-only effects from file params, such as visible log level, should
-        # affect this batch only. Restore the session runtime settings afterward.
-        self._apply_runtime_options(effective_options)
-        try:
-            for idx, url in enumerate(valid_urls, 1):
-                print(f"\n[{idx}/{len(valid_urls)}] Processing: {url}")
+        for idx, url in enumerate(valid_urls, 1):
+            print(f"\n[{idx}/{len(valid_urls)}] Processing: {url}")
 
-                if self._download_single_url(url, effective_options) == 0:
-                    success_count += 1
-                else:
-                    fail_count += 1
-        finally:
-            self._apply_runtime_options(self.options)
+            if self._download_single_url(url, effective_options) == 0:
+                success_count += 1
+            else:
+                fail_count += 1
 
         print("\n------ Batch Complete ------")
         print(f"Summary: {success_count} succeeded, {fail_count} failed.")
