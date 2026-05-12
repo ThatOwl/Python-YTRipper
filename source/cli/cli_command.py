@@ -1,5 +1,6 @@
 
 import argparse
+import datetime
 import shlex
 from pathlib import Path
 from typing import List
@@ -129,10 +130,11 @@ class CommandCLI(CLIBase):
 
         parser.add_argument(
             "-lp",
+            "-ld", # author misstyped so often that I added this alias for convenience "ld = load" 
             "--load_preset",
             type=str,
             default=None,
-            help="Load preset: custom '0'-'9' or immutable 'ah'/'vh'/'vl'/'t'",
+            help="Load preset: custom '0'-'9' or immutable 'ah'/'vh'/'vl'/'t'/'ds'",
         )
 
         parser.add_argument(
@@ -230,11 +232,11 @@ class CommandCLI(CLIBase):
         )
 
         parser.add_argument(
-            "-w",
-            "--warn_me",
+            "-sp",
+            "--show_preset",
             type=str,
             default=None,
-            help=f"Show loaded preferences before running (true/false). Current default: {self.options.warn_me}",
+            help=f"Show loaded preferences before running (true/false). Current default: {self.options.show_preset}",
         )
 
         parser.add_argument(
@@ -328,7 +330,7 @@ class CommandCLI(CLIBase):
         if normalized.isdigit() and len(normalized) == 1:
             return preferences.PATHS_TO_CUSTOM_PRESETS[int(normalized)]
 
-        preset_path = preferences.PATHS_TO_IMMUTABLE_PRESETS.get(normalized)
+        preset_path = preferences.PATHS_TO_IMMUTABLE_PRESETS.get(normalized) # no "DAU- / 1d10t-protection" wrong user input is ignored => files are clearly named
         if preset_path is not None:
             return preset_path
         
@@ -391,8 +393,8 @@ class CommandCLI(CLIBase):
         if args.download_directory is not None:
             updates["default_download_directory"] = self.os.expand_path(args.download_directory)
 
-        if args.warn_me is not None:
-            updates["warn_me"] = parse_bool_string(args.warn_me)
+        if args.show_preset is not None:
+            updates["show_preset"] = parse_bool_string(args.show_preset)
 
         if args.no_dir_date is not None:
             updates["no_dir_date"] = parse_bool_string(args.no_dir_date)
@@ -425,7 +427,7 @@ class CommandCLI(CLIBase):
         boolean_fields = (
             "audio_only",
             "audio_mp3",
-            "warn_me",
+            "show_preset",
             "donotconvert",
             "no_dir_date",
             "autotag",
@@ -563,6 +565,9 @@ class CommandCLI(CLIBase):
             print(f"Failed to save config to {save_path}")
 
     def _load_preset_if_requested(self, args: argparse.Namespace) -> bool:
+        """Load preset if requested and merge into current options.
+        Returns True if a preset was loaded successfully or no preset was requested, False if loading failed.
+        """
         if not args.load_preset:
             return True
 
@@ -580,28 +585,29 @@ class CommandCLI(CLIBase):
         return True
 
     def _display_preferences_if_enabled(self, options: DownloadOptions) -> None:
-        if not options.warn_me:
+        if not options.show_preset:
             return
 
         print("Loaded Preferences:")
         for key, value in options.to_dict().items():
             print(f"  {key}: {value}")
 
-    def _download_single_url(
-        self,
-        url: str,
-        options: DownloadOptions,
-    ) -> int:
+    def _download_single_url(self, url: str, options: DownloadOptions, start_time: datetime.datetime | None = None) -> int:
         try:
             results: List[DownloadResult] = self.ytd.download(url=url, options=options)
 
-            if results:
-                if options.save_results and self.media_info_service.is_playlist(url):
-                    self.os.save_batch_results(
-                        results=results,
-                        download_dir=options.default_download_directory,
-                        playlist_name=self.media_info_service.get_playlist_title(url),
-                    )
+            #NOTE: start_time since this signals batch mode -> single-mode results ignored 
+            if results and options.save_results and start_time is not None:
+                playlist_name: str | None = None
+                if self.media_info_service.is_playlist(url):
+                    playlist_name = self.media_info_service.get_playlist_title(url)
+
+                self.os.save_download_results(
+                    results=results,
+                    download_dir=options.default_download_directory,
+                    playlist_name=playlist_name,
+                    timestamp = start_time 
+                )
 
                 success_count = sum(1 for result in results if result.success)
                 fail_count = len(results) - success_count
@@ -619,7 +625,6 @@ class CommandCLI(CLIBase):
                     print(f"{'=' * 50}")
 
                 return 0 if fail_count == 0 else 1
-
             return 0
 
         except Exception as exc:
@@ -674,6 +679,7 @@ class CommandCLI(CLIBase):
         if file_args is not None:
             logger.info(f"Batch file parameters: {file_params}")
             self._apply_options(file_args, options=effective_options)
+            #NOTE: should a file be able to load a preset for its batch runs? => no it s already complicated enough with the current options merging order, and presets are meant to be user-invoked for interactive session
 
         # CLI args belong to the interactive session and should persist in loop
         # mode. Apply them to self.options after file params so file params do not
@@ -709,11 +715,12 @@ class CommandCLI(CLIBase):
         # Runtime-only effects from file params, such as visible log level, should
         # affect this batch only. Restore the session runtime settings afterward.
         self._apply_runtime_options(effective_options)
+        start_time = datetime.datetime.now()
         try:
             for idx, url in enumerate(valid_urls, 1):
                 print(f"\n[{idx}/{len(valid_urls)}] Processing: {url}")
 
-                if self._download_single_url(url, effective_options) == 0:
+                if self._download_single_url(url, effective_options, start_time=start_time) == 0:
                     success_count += 1
                 else:
                     fail_count += 1

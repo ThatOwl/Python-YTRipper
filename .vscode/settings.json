@@ -1,5 +1,10 @@
 {
+    "outline.icons": true,
+    "outline.collapseItems": "alwaysCollapse",
+    "breadcrumbs.symbolSeparator": " › ",
+
     "chatgpt.runCodexInWindowsSubsystemForLinux": true,
+    
     "python.defaultInterpreterPath": "/home/localuser/GitRepos/Python-YTRipper-1/.venv/bin/python",
     "python.testing.cwd": "/home/localuser/GitRepos/Python-YTRipper-1",
     "python.testing.unittestArgs": [

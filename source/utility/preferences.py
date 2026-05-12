@@ -14,14 +14,14 @@ LOGS_DIR: Path = PROJECT_ROOT / "logs"
 PATH_TO_LOGS: Path = LOGS_DIR
 PRESETS_DIR: Path = CONFIG_DIR / "presets"
 IMMUTABLE_PRESETS_DIR: Path = PRESETS_DIR / "immutable"
-CUSTOM_PRESETS_DIR: Path = PRESETS_DIR / "custom"
+CUSTOM_PRESETS_DIR: Path = PRESETS_DIR / "custom" # IMPORTANT: 9__custom_preset.json is full of garbage and should be ignored (used for testing edge cases in read/write prefs)
 
 DEFAULT_PREFS: Dict = {
     "current_preset": "default",
     "default_download_directory": "~/Downloads/RipperDownloads",
     "audio_only": False,
     "audio_mp3": False,
-    "warn_me": False,
+    "show_preset": False,
     "preferred_audio_quality": "",
     "preferred_video_quality": "",
     "preferred_resolution": "",
@@ -53,6 +53,7 @@ PATHS_TO_IMMUTABLE_PRESETS: Dict[str, Path] = {
     "vl": IMMUTABLE_PRESETS_DIR / "vl__video_low.json",
     "ah": IMMUTABLE_PRESETS_DIR / "ah__audio_high.json",
     "t": IMMUTABLE_PRESETS_DIR / "t__test_mode.json",
+    "ds": IMMUTABLE_PRESETS_DIR / "ds__datasaver.json",
 }
 
 

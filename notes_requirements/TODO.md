@@ -1,8 +1,13 @@
+## document
+- user should know that re-downloading after a try (without renaming or moving download-dir / target-dir) AUTOCOMPLETES the playlists
+
 ## research
 - how to properly log
 - how to minimize exception handling 
 
 ## big
+- parallelize ffmpeg -> might need restructure => first download then spawn 6(?)-ffmpeg-children
+- tell ffmpeg to use GPU for videos ?
 - X refactor "download_dir" into "options" => DO NOT ... as file-dwnld may create multiple playlists => which have own dwnld-dirs !
 - ! Add behaviour for autotag
 - ! Add behaviour for datasaver (use video_obj.filesize or .length) 

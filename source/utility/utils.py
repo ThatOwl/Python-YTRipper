@@ -105,7 +105,7 @@ class DownloadOptions:
     default_download_directory: str = "~/Downloads/RipperDownloads"
     audio_only: bool = False
     audio_mp3: bool = False
-    warn_me: bool = False
+    show_preset: bool = False
     preferred_audio_quality: str = ""
     preferred_video_quality: str = ""
     preferred_resolution: str = ""

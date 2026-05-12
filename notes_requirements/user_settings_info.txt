@@ -2,7 +2,7 @@
     "default_download_directory": "",                   // e.g., "/home/<user>/downloads"
     "audio_only": False,                                // true or false
     "audio_mp3": False,                                 // true or false ... also sets audio-only
-    "warn_me": true,                                    // true or false ... output preferences each run
+    "show_preset": true,                                // true or false ... output preferences each run
     "preferred_audio_quality": "",
     "preferred_video_quality": "",                      // "HIGH", "LOW", "MEDIUM", or "" for default ... logic defined in _select_stream() 
     "preferred_abr": "",                                // e.g., "128k", "192k", or "" for default ... only direct match -> fallback quality

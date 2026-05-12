@@ -175,16 +175,19 @@ class DownloadOrchestrator:
         video_title = video_obj.title
         target_ext = self.media_assembler.expected_extension(options)
         target_file = Path(download_dir) / f"{base_filename}{target_ext}"
-        
-        #TODO strip extension for comparison ... could be any!
-        if target_file.exists():
-            logger.info("⏭ Skipping (already exists): %s -> %s", video_title, target_file.name)
+
+        #TODO could later be specified to look at ext (e.g. downloaded audio-only and video _> mussic video)
+        # Side effect of this being here: _download_single_video can downlaod both streams separat without being blocked by find_existing_file_by_stem()
+        existing_file = self.os_handler.find_existing_file_by_stem(download_dir, base_filename)
+
+        if existing_file is not None:
+            logger.info("⏭ Skipping (already exists): %s -> %s", video_title, existing_file.name)
             return DownloadResult(
                 success=True,
                 errors=[],
                 video_title=video_title,
                 video_url=video_obj.watch_url,
-                output_path=target_file,
+                output_path=existing_file,
             )
 
         logger.info("Downloading %s: %s", "soundtrack" if options.audio_only else "video", video_title)

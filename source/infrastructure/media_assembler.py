@@ -12,7 +12,8 @@ from infrastructure.stream_converter import FfmpegSettings, StreamConverter
 
 logger = get_logger(__name__, "media_assembler_debug.log")
 
-
+#TODO add more profiles for audio and video
+#TODO expected extension is not easily extenable
 class MediaAssembler:
     """
     Application-level media assembly service.
@@ -149,6 +150,7 @@ class MediaAssembler:
         audio: StreamInfo | None,
         preferred_format: str,
     ) -> OutputProfile:
+        #FIXME audio.bitrate on oups is not constant => we want to maintian as high bitrate as possible without bloating files
         bitrate = _normalize_bitrate_for_ffmpeg(options.preferred_abr or (audio.bitrate if audio else None))
 
         if options.audio_mp3 or preferred_format == "mp3":
