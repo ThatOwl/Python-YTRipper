@@ -596,7 +596,8 @@ class CommandCLI(CLIBase):
         try:
             results: List[DownloadResult] = self.ytd.download(url=url, options=options)
 
-            #NOTE: start_time since this signals batch mode -> single-mode results ignored 
+            #NOTE: start_time since this signals batch mode -> single-mode results ignored INCLUDING playlists !
+            #FIXME playlists even in single mode should be able to save results
             if results and options.save_results and start_time is not None:
                 playlist_name: str | None = None
                 if self.media_info_service.is_playlist(url):

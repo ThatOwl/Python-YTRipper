@@ -59,7 +59,15 @@ JUNK_PATTERNS = [
     r"\bHQ\b",
 ]
 
-ALLOWED_CHARS = r"[^a-zA-Z0-9äöüÄÖÜß&'\-\. ]"
+ALLOWED_CHARS = r"[^a-zA-Z0-9äöüÄÖÜß&',\-\. ]"
+
+# Conservative parse-time prefixes that commonly appear as channel/genre labels
+# rather than actual artist/title text. These are only stripped when they appear
+# at the very start with an explicit separator shape.
+LEADING_CONTEXT_LABELS = {
+    "electro swing",
+    "swing hop",
+}
 
 # Filename cleanup patterns for stripping leading track numbers.
 # Applied to filename stem only (extension is preserved).
@@ -93,6 +101,31 @@ def clean_string(text):
     text = re.sub(ALLOWED_CHARS, "", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def _strip_leading_context_label(text):
+    """Strip a known leading context label from parse/search input.
+
+    This is intentionally conservative:
+    - label must be at the beginning
+    - it must be bracketed or followed by a strong separator shape
+    - otherwise the original text is returned unchanged
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return raw
+
+    for label in sorted(LEADING_CONTEXT_LABELS, key=len, reverse=True):
+        patterns = (
+            rf"^\[\s*{re.escape(label)}\s*\]\s+",
+            rf"^{re.escape(label)}\s{{2,}}",
+        )
+        for pattern in patterns:
+            stripped = re.sub(pattern, "", raw, count=1, flags=re.IGNORECASE)
+            if stripped != raw:
+                return stripped.strip()
+
+    return raw
 
 
 def clean_folder_album(text):
@@ -317,7 +350,7 @@ def _looks_like_albumish_prefix(text, folder_album=""):
 
 
 def parse_filename(filename, folder_artist=None, folder_album=None):
-    name = os.path.splitext(filename)[0]
+    name = _strip_leading_context_label(os.path.splitext(filename)[0])
     cleaned = clean_string(name)
 
     # 1. Track + Artist - Title: "03 Hans Zimmer - Dragon Racing"
@@ -860,16 +893,28 @@ def _artist_query_candidates(artist):
 
     Order is conservative:
       1) full artist string
-      2) first side of "A & B"
-      3) second side of "A & B"
+      2) small normalised alternates for common collaboration separators
+      3) first/second side of "A & B", "A x B", "A feat. B", etc.
     """
     base = (artist or "").strip()
     if not base:
         return []
 
     candidates = [base]
-    # Duo fallback: "Artist A & Artist B"
-    parts = [p.strip() for p in re.split(r"\s*&\s*", base) if p.strip()]
+
+    # Keep the literal artist string first, but offer a mild alternate for
+    # MusicBrainz lookups when collaborators were comma-separated in filenames.
+    if "," in base:
+        comma_alt = re.sub(r"\s*,\s*", " & ", base).strip()
+        if comma_alt and comma_alt != base:
+            candidates.append(comma_alt)
+
+    # Duo fallback: "Artist A & Artist B", "Artist A x Artist B", etc.
+    parts = [
+        p.strip()
+        for p in re.split(r"\s+(?:&|x|feat\.?|ft\.?|with)\s+", base, flags=re.IGNORECASE)
+        if p.strip()
+    ]
     if len(parts) >= 2:
         candidates.extend([parts[0], parts[1]])
 
@@ -1044,9 +1089,33 @@ def _title_retry_variants(title):
             seen.add(v)
 
     _add(title)
+
+    stripped_context = _strip_leading_context_label(title)
+    if stripped_context != title:
+        _add(stripped_context)
+
     # Fallback for malformed parse where title still contains an artist prefix.
     if title and " - " in title:
         _add(title.split(" - ", 1)[1])
+
+    # Search-only fallbacks for common upload/version suffixes. These variants
+    # improve lookup recall without changing the final written metadata.
+    search_trim_patterns = (
+        r"\s+odd\s+chap\s+bootleg\s*$",
+        r"\s+minimix\s*$",
+        r"\s+(?:\d{4}\s+)?re-?edit\s*$",
+        r"\s+\d{4}\s+edition\s*$",
+        r"\s+electro\s+swing\s*$",
+        r"\s+game\s+theme\s+song\s*$",
+        r"\s+feat\.?\s+.+$",
+    )
+    for variant in list(variants):
+        trimmed = variant
+        for pattern in search_trim_patterns:
+            trimmed = re.sub(pattern, "", trimmed, flags=re.IGNORECASE).strip()
+        if trimmed and trimmed != variant:
+            _add(trimmed)
+
     return variants
 
 

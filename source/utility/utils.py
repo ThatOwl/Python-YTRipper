@@ -218,6 +218,48 @@ class OutputProfile:
     video_codec: str | None = None
     audio_bitrate: str | None = None
     video_bitrate: str | None = None
+    embedded_artwork: "EmbeddedArtworkProfile | None" = None
+
+
+@dataclass
+class EmbeddedArtworkProfile:
+    """Container-aware artwork instructions for audio-only outputs."""
+
+    codec: str | None = None
+    output_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.codec)
+
+
+def build_audio_embedded_artwork_profile(container: str | None) -> EmbeddedArtworkProfile | None:
+    """Return artwork embedding settings for supported audio containers."""
+    normalized = (container or "").strip().lower()
+    if not normalized:
+        return None
+
+    common_kwargs = {"metadata:s:v:0": "title=Album cover"}
+
+    if normalized == "mp3":
+        return EmbeddedArtworkProfile(
+            codec="mjpeg",
+            output_kwargs={
+                "id3v2_version": "3",
+                **common_kwargs,
+            },
+        )
+
+    if normalized in {"m4a", "mp4"}:
+        return EmbeddedArtworkProfile(
+            codec="mjpeg",
+            output_kwargs={
+                "disposition:v:0": "attached_pic",
+                **common_kwargs,
+            },
+        )
+
+    return None
 
 
 def _coerce_codecs(value: Any) -> list[str]:

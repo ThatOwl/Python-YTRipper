@@ -52,7 +52,7 @@ PATHS_TO_IMMUTABLE_PRESETS: Dict[str, Path] = {
     "vh": IMMUTABLE_PRESETS_DIR / "vh__video_high.json",
     "vl": IMMUTABLE_PRESETS_DIR / "vl__video_low.json",
     "ah": IMMUTABLE_PRESETS_DIR / "ah__audio_high.json",
-    "t": IMMUTABLE_PRESETS_DIR / "t__test_mode.json",
+    "test": IMMUTABLE_PRESETS_DIR / "t__test_mode.json",
     "ds": IMMUTABLE_PRESETS_DIR / "ds__datasaver.json",
 }
 

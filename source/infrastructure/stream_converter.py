@@ -1,11 +1,12 @@
 from dataclasses import dataclass, field
 from pathlib import Path
+import subprocess
 from typing import Any
 
 import ffmpeg as fpg
 
 from utility.logger import get_logger
-from utility.utils import OutputProfile
+from utility.utils import OutputProfile, build_audio_embedded_artwork_profile
 
 logger = get_logger(__name__, "StreamConverter_debug.log")
 
@@ -66,20 +67,28 @@ class StreamConverter:
         if profile.audio_bitrate and profile.audio_codec != "copy":
             output_kwargs["audio_bitrate"] = profile.audio_bitrate
 
+        artwork = profile.embedded_artwork
+        if artwork and artwork.enabled:
+            output_kwargs.update(artwork.output_kwargs)
+
         audio_input = fpg.input(str(input_path))
 
-        if thumbnail_path and Path(thumbnail_path).exists():
-            # Minimal cover-art support. Stream selection is explicit enough to avoid
-            # MediaAssembler policy leaking into this class, but detailed tagging can
-            # be improved later in a Metadata/Tagging service.
+        if thumbnail_path and Path(thumbnail_path).exists() and artwork and artwork.enabled:
+            output_kwargs.setdefault("vcodec", artwork.codec)
             image_input = fpg.input(str(thumbnail_path))
             stream = fpg.output(
-                audio_input,
-                image_input,
+                audio_input.audio,
+                image_input.video,
                 str(output_path),
                 **output_kwargs,
             )
         else:
+            if thumbnail_path and Path(thumbnail_path).exists() and not (artwork and artwork.enabled):
+                logger.debug(
+                    "Thumbnail input provided for %s, but output profile %s does not define embeddable artwork.",
+                    output_path,
+                    profile.container,
+                )
             stream = fpg.output(audio_input, str(output_path), **output_kwargs)
 
         StreamConverter._run(stream, settings)
@@ -133,16 +142,33 @@ class StreamConverter:
     @staticmethod
     def _run(stream, settings: FfmpegSettings) -> None:
         if settings.extra_output_args:
-            # ffmpeg-python's kwargs are the safer first-class path. Keeping this as
-            # a best-effort escape hatch for future specialized flags.
-            stream = stream.global_args(*settings.extra_output_args)
+            raise ValueError(
+                "extra_output_args are not supported by the subprocess ffmpeg runner yet; "
+                "prefer explicit output kwargs or graph stream selection."
+            )
 
-        stream.run(
-            capture_stdout=settings.capture_stdout,
-            capture_stderr=settings.capture_stderr,
-            overwrite_output=settings.overwrite,
-            quiet=settings.quiet,
+        cmd = fpg.compile(stream, overwrite_output=settings.overwrite)
+
+        stdout_pipe = subprocess.PIPE if settings.capture_stdout else None
+        stderr_pipe = subprocess.PIPE if settings.capture_stderr else None
+
+        if settings.quiet:
+            cmd[1:1] = ["-loglevel", "error"]
+
+        completed = subprocess.run(
+            cmd,
+            stdout=stdout_pipe,
+            stderr=stderr_pipe,
+            check=False,
         )
+
+        if completed.returncode != 0:
+            raise subprocess.CalledProcessError(
+                completed.returncode,
+                cmd,
+                output=completed.stdout,
+                stderr=completed.stderr,
+            )
 
     # Compatibility wrappers. These keep existing call sites alive during migration,
     # but MediaAssembler should be preferred for new code.
@@ -170,6 +196,7 @@ class StreamConverter:
                 container="mp3",
                 audio_codec="libmp3lame",
                 audio_bitrate=_normalize_bitrate_for_ffmpeg(audio_bitrate),
+                embedded_artwork=build_audio_embedded_artwork_profile("mp3"),
             )
             output_path = Path(output_path).with_suffix(".mp3")
         else:
@@ -178,6 +205,7 @@ class StreamConverter:
                 container="m4a",
                 audio_codec="aac",
                 audio_bitrate=_normalize_bitrate_for_ffmpeg(audio_bitrate),
+                embedded_artwork=build_audio_embedded_artwork_profile("m4a"),
             )
             output_path = Path(output_path).with_suffix(".m4a")
 

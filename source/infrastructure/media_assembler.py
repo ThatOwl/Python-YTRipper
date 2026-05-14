@@ -7,6 +7,7 @@ from utility.utils import (
     DownloadOptions,
     OutputProfile,
     StreamInfo,
+    build_audio_embedded_artwork_profile,
 )
 from infrastructure.stream_converter import FfmpegSettings, StreamConverter
 
@@ -44,7 +45,7 @@ class MediaAssembler:
     ) -> Path:
         output_path = self._apply_profile_extension(Path(output_path), profile)
         temp_output = self._temp_output_path(output_path)
-        settings = FfmpegSettings()
+        settings = self._build_audio_ffmpeg_settings(profile, thumbnail_path)
 
         logger.debug("Converting audio %s -> %s with profile=%s", audio.path, output_path, profile)
 
@@ -159,6 +160,7 @@ class MediaAssembler:
                 container="mp3",
                 audio_codec="libmp3lame",
                 audio_bitrate=bitrate,
+                embedded_artwork=build_audio_embedded_artwork_profile("mp3"),
             )
 
         # Standard non-MP3 audio output: M4A/AAC. Copy only if source is already AAC-like.
@@ -169,6 +171,7 @@ class MediaAssembler:
             container="m4a",
             audio_codec=audio_codec,
             audio_bitrate=None if audio_codec == "copy" else bitrate,
+            embedded_artwork=build_audio_embedded_artwork_profile("m4a"),
         )
 
     def _resolve_video_profile(
@@ -207,6 +210,17 @@ class MediaAssembler:
     @staticmethod
     def _temp_output_path(output_path: Path) -> Path:
         return output_path.with_name(f".{output_path.stem}.tmp{output_path.suffix}")
+
+    @staticmethod
+    def _build_audio_ffmpeg_settings(profile: OutputProfile, thumbnail_path: Path | None) -> FfmpegSettings:
+        settings = FfmpegSettings()
+        if not thumbnail_path:
+            return settings
+
+        artwork = profile.embedded_artwork
+        if artwork and artwork.enabled:
+            settings.extra_output_kwargs.update(artwork.output_kwargs)
+        return settings
 
     @staticmethod
     def _apply_profile_extension(output_path: Path, profile: OutputProfile) -> Path:
@@ -269,7 +283,8 @@ def _normalize_codec(codec: str | None) -> str:
         return "hevc"
     return normalized.split(".", 1)[0]
 
-
+#TODO try to handle botrate loss better. without slowing processing down too much (ffmpeg probe is too expensive to run on every file)
+# instead do ? or simply add some headroom to bitrate selection to avoid excessive downscaling => check tron legacy files for example: has 160kbps but sounds bad (even in .m4a)
 def _normalize_bitrate_for_ffmpeg(value: str | int | None) -> str | None:
     if value is None or value == "":
         return None

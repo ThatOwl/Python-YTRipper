@@ -143,7 +143,7 @@ class DownloadOrchestrator:
             raise StreamDownloadError("No audio stream downloaded")
 
         audio_info = StreamInfo.from_pytubefix_stream(audio_stream, audio_path)
-        thumbnail_path = None  # TODO: re-enable after thumbnail/metadata behavior is decided.
+        thumbnail_path = self.thumbnail_handler.download_thumbnail(video_obj, download_dir, ) #None  # TODO: re-enable after thumbnail/metadata behavior is decided.
 
         if options.donotconvert:
             logger.info("Raw mode enabled; keeping downloaded audio fragment unchanged.")

@@ -2,7 +2,7 @@ import os
 import requests
 import pytube as ptf
 from utility.logger import get_logger
-from utility.utils import retry_call
+from utility.utils import retry_call, sanitize_filename
 
 logger = get_logger(__name__, 'thumbnail_handler_debug.log')
 
@@ -10,20 +10,20 @@ class ThumbnailHandler:
     """Handles downloading and saving YouTube video thumbnails."""
     
     @staticmethod
-    def download_thumbnail(video: ptf.YouTube, download_dir: str, base_filename: str) -> str:
+    def download_thumbnail(video: ptf.YouTube, download_dir: str) -> str:
         """
         Downloads the thumbnail image of a YouTube video.
 
         Args:
             video (ptf.YouTube): The YouTube video object from which to download the thumbnail.
             download_dir (str): The directory where the thumbnail will be saved.
-            base_filename (str): The base filename to use for the thumbnail file.
         Returns:
             str: The file path of the downloaded thumbnail image.
         Logs:
             - Thumbnail download status.
         """
         thumbnail_url = video.thumbnail_url
+        base_filename = sanitize_filename(video.title)
         logger.debug(f"Downloading thumbnail from: {thumbnail_url}")
         try:
             # retry the HTTP GET in case of transient network errors
