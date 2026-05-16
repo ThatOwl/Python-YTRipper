@@ -1,77 +1,60 @@
 # Python-YTRipper
 
-A small, opinionated YouTube downloader toolkit built around pytubefix and ffmpeg.  
-Designed for private use, easy extension, and experimentation — provides a programmatic API, a simple CLI, and a foundation for a future GUI or threaded downloader.
+A small, opinionated YouTube downloader toolkit built around `pytubefix` and `ffmpeg`.
+It is intended for private use, experimentation, and gradual extension, with a strong focus on a Linux-first CLI workflow.
 
 ## Disclaimer
 
 - heavily supported by copilot as learning objectives are architecture, unit-testing, API-integration and error handling. (Not primarily coding or efficiency)
 - not all copied/inspired code sections are referenced yet
-### Current state: 
+
+### Current state
+
 - Downloads for videos and playlists work
-- Many smaller things and cases (yt related bugs) do not work properly including [argcomplete](https://pypi.org/project/argcomplete/)
+- Some edge cases and YouTube-side breakage still exist
+- Linux is the primary target right now; WSL can work if paths and tools are set up carefully
+
 ---
 
 ## Features
 
 - Download YouTube videos and playlists
 - Audio-only or video download options
-- Interactive menu mode
-- Command-line mode for automation
-- Thumbnail extraction
-- Stream conversion and merging
+- Interactive loop mode
+- One-shot command-line mode for automation
+- Presets and per-user saved defaults
+- Thumbnail download for audio conversion workflows
+- Stream conversion and merging via `ffmpeg`
+
 ---
 
 ## Installation
 
 Prerequisites:
+
 - Python 3.9+
-- ffmpeg installed and available on PATH
-- Usage of virtualenv
+- `ffmpeg` installed and available on `PATH`
+- usage of `venv`
 
-Install project dependencies:
+Install system packages:
+
 ```bash
-sudo apt install python3-full python3-venv
+sudo apt install python3-full python3-venv ffmpeg
 ```
-
-### Quick Setup (Linux)
-
-1. **Download and run the installer:**
-   ```bash
-   wget https://raw.githubusercontent.com/RF-at-FH-Joanneum/Python-YTRipper/main/install.sh
-   chmod +x install.sh
-   ./install.sh
-   ```
-
-2. **The installer will:**
-   - Detect existing installations (even if directory was renamed)
-   - Offer to update or use existing installation
-   - Clone the repository
-   - Create a virtual environment
-   - Install all dependencies automatically
-
-3. **Follow the prompts:**
-   - Option 1: Update (fresh clone, backs up old version to `*_backup`)
-   - Option 2: Use existing installation (preserves settings)
-   - Option 3: Cancel
-
 
 ### Manual Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/RF-at-FH-Joanneum/Python-YTRipper.git
 cd Python-YTRipper
 
-# Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-IF you are having trouble with externally managed environment do:
+If you run into externally-managed-environment issues:
+
 ```bash
 rm -rf .venv
 python3 -m venv --without-pip .venv
@@ -80,39 +63,52 @@ curl -sS https://bootstrap.pypa.io/get-pip.py | python
 python3 -m pip install -r requirements.txt
 ```
 
---- 
+---
 
 ## Usage
 
-### Auto-tagging pipeline (separate script)
+### Auto-tagging pipeline
 
-For batch metadata parsing/enrichment/tagging workflows, see:
+The main downloader exposes an `--autotag` flag in config/CLI, but actual tagging is not implemented in the main application yet.
+
+For the separate metadata parsing/enrichment/tagging workflow, see:
 
 - `scripts/python-autotagger.py`
-- `README_auto_tagging.md` (full CLI reference, examples, CSV outputs, safety notes)
+- `scripts/README_auto_tagging.md`
 
-### Interactive Loop Mode (Recommended)
+### Interactive Loop Mode
+
 ```bash
 ./start_w_args.sh --loop
 ```
-Repeatedly shows command menu after each operation.
 
-### Interactive Menu Mode
-```bash
-./start_w_args.sh --menu
-```
-Enter interactive mode with full feature menu.
+Starts the prompt-based loop. Each entered line is parsed like a normal one-shot CLI command.
 
 ### Command Mode
-```bash
-# Single command (exits after completion)
-python3 source/yt_ripper.py <URL> [options]
 
-# Show help
+```bash
+python3 source/yt_ripper.py <URL> [options]
 ./start_w_args.sh --help
 ```
 
+### Examples
+
+```bash
+# Download a single video with current defaults
+python3 source/yt_ripper.py "https://www.youtube.com/watch?v=7S_cMrxjZFo"
+
+# Audio-only download
+python3 source/yt_ripper.py "https://www.youtube.com/watch?v=7S_cMrxjZFo" -a true
+
+# Batch mode from file
+python3 source/yt_ripper.py -f ./tests/test_download.txt
+
+# Show info without downloading
+python3 source/yt_ripper.py "https://www.youtube.com/watch?v=7S_cMrxjZFo" --info
+```
+
 ### Manual Virtual Environment Activation
+
 ```bash
 source .venv/bin/activate
 python3 source/yt_ripper.py --help
@@ -122,87 +118,144 @@ python3 source/yt_ripper.py --help
 
 ## Configuration
 
-User preferences are read from `user_settings.json` (located next to the project root by default). The CLI reads `loglevel` and other defaults from that file. If missing, sensible defaults are created.
+The main config file is:
+
+- `config/default_settings_<username>.json`
+
+If it does not exist, it is created automatically from internal defaults.
 
 Important preferences:
+
 - `default_download_directory`
 - `audio_only`
-- `loglevel` (e.g. DEBUG, INFO, WARNING)
+- `audio_mp3`
+- `visible_loglevel`
 - `preferred_[video|audio]_quality`
+- `preferred_resolution`
+- `preferred_abr`
+- `no_dir_date`
+- `save_results`
+- `autotag` (currently config-only; main app behavior not implemented)
+
+### Presets
+
+Immutable presets live in `config/presets/immutable/` and can be loaded with:
+
+- `-lp ah` for audio-high
+- `-lp vh` for video-high
+- `-lp vl` for video-low
+- `-lp test` for test-mode
+- `-lp ds` for datasaver
+
+Custom presets use ids `0` to `9`:
+
+- `-lp 0` loads `config/presets/custom/0__custom_preset.json`
+- `-sc 0` saves the current session options to custom preset `0`
+
+Other useful config-related flags:
+
+- `-sp true` shows the effective options before running
+- `-sc true` saves the current session options to the default per-user config
+
+### Main CLI flags
+
+- `-f, --file` batch input file (`.txt` or `.csv`)
+- `-i, --info` show video or playlist info without downloading
+- `-a, --audio_only` download audio only
+- `-a3, --audio_mp3` convert audio output to mp3
+- `-q, --preferred_quality` quality alias (`high`, `medium`, `low`)
+- `-r, --preferred_resolution` target resolution
+- `-au, --preferred_abr` preferred audio bitrate
+- `-hf, --high_fps` prefer `60`, `30`, or `0/any`
+- `-o, --download_directory` target directory
+- `-nd, --no_dir_date` disable automatic date prefix on playlist folders
+- `-lp, --load_preset` load preset
+- `-sc, --save-config` save current config/defaults
+- `-sp, --show_preset` print effective options before running
+- `-sr, --save-results` save CSV download results in batch mode
+- `-vl, --visible-loglevel` set console log verbosity
+- `-at, --autotag` reserved for future main-app tagging integration
+
+### Current behavior notes
+
+- Loop mode replaces the older interactive menu flow.
+- `--menu` is no longer supported.
+- `save_results` writes result CSVs for batch/file-driven runs and for direct playlist URLs.
+- Single standalone video URLs still do not write result CSVs. (as result easily be managed by user)
+- Batch result saving is still a young feature and may keep evolving.
+- `argcomplete` support is optional and not a primary workflow.
 
 ---
+
 ## Project Structure
 
-```
+```text
 Python-YTRipper/
+├── config/
+│   ├── default_settings_<username>.json
+│   └── presets/
 ├── source/
-│   ├── yt_ripper.py          # Entry point
-│   ├── core/                 # Core functionality
-│   │   ├── pytube_interface.py
-│   │   ├── stream_converter.py
-│   │   └── ...
-│   └── cli/                  # CLI interfaces
-│       ├── cli_interactive.py
-│       └── cli_command.py
-├── tests/                    # Test files
-├── install.sh                # Automated installer
-├── start_w_args.sh           # Run script with arguments
-└── requirements.txt          # Python dependencies
+│   ├── yt_ripper.py
+│   ├── application/
+│   ├── cli/
+│   ├── domain/
+│   ├── infrastructure/
+│   └── utility/
+├── scripts/
+│   ├── python-autotagger.py
+│   ├── README_auto_tagging.md
+│   └── ...
+├── tests/
+├── start_w_args.sh
+└── requirements.txt
 ```
-
----
-
-## Design notes & rationale
-
-- SOLID-inspired: responsibilities are split (downloader vs converters vs thumbnail). This improves testability and concurrency readiness.
-- Download options are represented as an immutable dataclass (`DownloadOptions`, frozen) — safe to share between threads.
-- Low-level helpers log full diagnostics and raise domain-specific exceptions; the CLI/top level logs concise user-facing messages.
-
-
----
-
-## Concurrency considerations
-
-- The library shall be designed to be safe for multi-threaded use when following the recommended patterns:
-  - Keep `DownloadOptions` immutable.
-  - Use stateless downloader instance or create one downloader per task.
-  - Missing: _Avoid sharing mutable state (e.g., per-download temp filenames are generated)._
-- Coordinate writes to the same directory (unique filenames or per-task temp dirs) to avoid collisions.
 
 ---
 
 ## Development
 
 ### Running Tests
-- not yet implemented
+
+There is no authoritative full test suite yet. A few focused regression tests exist for selected helpers and recent fixes.
+
+Example:
+
+```bash
+.venv/bin/python -m unittest discover -s tests -p 'test*.py' -v
+```
 
 ### Debugging in VS Code
-See launch.json for debug configurations.
+
+See `.vscode/launch.json` for local debug configurations.
 
 ## Troubleshooting
 
-**Issue: ModuleNotFoundError**
-- Make sure you're running from the repository root
-- Ensure virtual environment is activated: `source .venv/bin/activate`
+**Issue: `ModuleNotFoundError`**
 
-**Issue: FFmpeg not found**
-- Install FFmpeg: `sudo apt install ffmpeg` (Ubuntu/Debian)
+- Make sure you're running from the repository root
+- Ensure the virtual environment is activated: `source .venv/bin/activate`
+
+**Issue: `ffmpeg` not found**
+
+- Install `ffmpeg`: `sudo apt install ffmpeg`
 
 **Issue: Installation fails**
-- Check Python version: `python3 --version` (requires 3.8+)
-- Ensure pip is installed: `python3 -m pip --version`
+
+- Check Python version: `python3 --version` (requires 3.9+)
+- Ensure `pip` is installed: `python3 -m pip --version`
 
 ---
 
 ## Contributing
 
-Contributions welcome. Suggested areas:
-- Add unit tests and CI
-- Improve error handling and recoverability
-- Add a GUI or a simple HTTP API
-- Add a progress bar and better rate-limiting / backoff policies
+Contributions are welcome. Suggested areas:
 
-Please follow existing code style and add tests for new logic.
+- Add more focused tests
+- Improve error handling and recoverability
+- Improve user-facing documentation
+- Add a GUI or a simple HTTP API
+
+Please follow the existing code style and add tests for new logic when practical.
 
 ---
 

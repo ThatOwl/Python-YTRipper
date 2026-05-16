@@ -115,7 +115,7 @@ class DownloadOptions:
     visible_loglevel: str = "INFO"
     donotconvert: bool = False
     no_dir_date: bool = False
-    autotag: bool = True
+    autotag: bool = False
     save_results: bool = False
 
     @classmethod

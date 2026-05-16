@@ -87,6 +87,68 @@ class TestBatchSingleResultSaving(unittest.TestCase):
         self.assertIsNone(kwargs["playlist_name"])
         self.assertEqual(kwargs["timestamp"], start_time)
 
+    def test_direct_playlist_url_saves_results_without_batch_timestamp(self):
+        cli = CommandCLI()
+        cli.ytd.download = Mock(
+            return_value=[
+                DownloadResult(
+                    success=True,
+                    errors=[],
+                    video_title="Playlist Video",
+                    video_url="https://www.youtube.com/watch?v=zg2yp9NHYEQ",
+                )
+            ]
+        )
+        cli.media_info_service.is_playlist = Mock(return_value=True)
+        cli.media_info_service.get_playlist_title = Mock(return_value="Playlist Title")
+        cli.os.save_download_results = Mock()
+
+        options = DownloadOptions(
+            default_download_directory="/tmp/ripper-test",
+            save_results=True,
+        )
+
+        exit_code = cli._download_single_url(
+            "https://www.youtube.com/watch?v=zg2yp9NHYEQ&list=PLNC-2EHussAB-YMr1L_0AblQc6611RQ0y",
+            options,
+        )
+
+        self.assertEqual(exit_code, 0)
+        cli.media_info_service.is_playlist.assert_called_once()
+        cli.media_info_service.get_playlist_title.assert_called_once()
+        cli.os.save_download_results.assert_called_once()
+        _, kwargs = cli.os.save_download_results.call_args
+        self.assertEqual(kwargs["playlist_name"], "Playlist Title")
+        self.assertIsNone(kwargs["timestamp"])
+
+    def test_failed_results_return_nonzero_without_save_results(self):
+        cli = CommandCLI()
+        cli.ytd.download = Mock(
+            return_value=[
+                DownloadResult(
+                    success=False,
+                    errors=["failed"],
+                    video_title="Broken Video",
+                    video_url="https://www.youtube.com/watch?v=broken",
+                )
+            ]
+        )
+        cli.media_info_service.is_playlist = Mock(return_value=False)
+        cli.os.save_download_results = Mock()
+
+        options = DownloadOptions(
+            default_download_directory="/tmp/ripper-test",
+            save_results=False,
+        )
+
+        exit_code = cli._download_single_url(
+            "https://www.youtube.com/watch?v=broken",
+            options,
+        )
+
+        self.assertEqual(exit_code, 1)
+        cli.os.save_download_results.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

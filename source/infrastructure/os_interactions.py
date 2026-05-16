@@ -262,10 +262,13 @@ class OSInteractions:
             
             elif timestamp is not None: # single video download with timestamp to avoid overwriting results from multiple single video downloads in the same session, since there is no playlist name to use as an identifier for the results file like in actual playlist downloads
                 output_path = target_dir / f"{timestamp.strftime('%Y-%m-%d_%H-%M-%S')}_batch_single_results.csv"
-                
+
+                write_header = not output_path.exists() or output_path.stat().st_size == 0
                 with open(output_path, 'a', newline='', encoding='utf-8') as csvfile:
                     fieldnames = ['video_title', 'video_url', 'success', 'errors']
                     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                    if write_header:
+                        writer.writeheader()
                     result = results[0] # already checked in caller that results is not empty before calling this method, so this should be safe
                     writer.writerow(
                         {

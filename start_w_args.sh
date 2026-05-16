@@ -2,10 +2,8 @@
 # Script to start the Python-YTRipper application with optional command-line arguments.
 # Usage: start_w_args.sh [options]
 # Options:
-#   --loop             Start the application in a loop, restarting after each run
-#   --menu             Start the application with the interactive menu
+#   --loop             Start the application in interactive loop mode
 #   --help             Show this help message 
-#   --info             Show environment & dependency info
 # This script assumes it is located in the repository root and that a virtual environment is set up in .venv.
 
 # Get the directory where this script is located

@@ -1,6 +1,7 @@
 import urllib.parse as ulp
 import requests
 from utility.logger import get_logger
+from utility.utils import retry_call
 
 #TODO Improve logging
 #TODO Add error handling for invalid URLs, etc.
@@ -14,12 +15,26 @@ class URLHandler:
     A class to handle URL validation and extraction for YouTube links.
     """
     
-    YOUTUBE_DOMAINS = [
-        "youtube.com",
-        "www.youtube.com",
-        "youtu.be",
-        "www.youtu.be"
-    ]
+    YOUTUBE_DOMAINS = ("youtube.com", "youtu.be")
+    REQUEST_HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        )
+    }
+    ACCESSIBLE_STATUS_CODES = {401, 403, 405, 429}
+
+    @staticmethod
+    def _hostname(url: str) -> str:
+        return (ulp.urlparse(url).hostname or "").rstrip(".").lower()
+
+    @staticmethod
+    def _is_youtube_hostname(hostname: str) -> bool:
+        return any(
+            hostname == allowed_domain or hostname.endswith(f".{allowed_domain}")
+            for allowed_domain in URLHandler.YOUTUBE_DOMAINS
+        )
     
     @staticmethod
     def _extract_video_id(url: str) -> str | None:
@@ -55,9 +70,7 @@ class URLHandler:
             bool: True if the URL is a YouTube URL, False otherwise.
         """
         try:
-            parsed_url = ulp.urlparse(url)
-            domain = parsed_url.netloc.lower()
-            return any(youtube_domain in domain for youtube_domain in URLHandler.YOUTUBE_DOMAINS)
+            return URLHandler._is_youtube_hostname(URLHandler._hostname(url))
         except Exception as e:
             logger.exception(f"Error parsing URL: {e}")
             return False
@@ -72,12 +85,60 @@ class URLHandler:
         Returns:
             bool: True if the URL is accessible, False otherwise.
         """
+        if not URLHandler.is_youtube_url(url):
+            return False
+
         try:
-            response = requests.head(url, allow_redirects=True)
-            return response.status_code == 200
+            response = retry_call(
+                lambda: requests.head(
+                    url,
+                    allow_redirects=True,
+                    timeout=10,
+                    headers=URLHandler.REQUEST_HEADERS,
+                ),
+                exceptions=(requests.RequestException,),
+                retries=2,
+                backoff=1.0,
+                backoff_factor=2.0,
+                jitter=0.25,
+                logger=logger,
+            )
+            if (
+                response.status_code < 400
+                or response.status_code in URLHandler.ACCESSIBLE_STATUS_CODES
+            ):
+                return True
+            logger.warning("HEAD accessibility check returned status %s for %s", response.status_code, url)
+        except requests.RequestException as e:
+            logger.warning("HEAD accessibility check failed for %s: %s", url, e)
+        except Exception as e:
+            logger.exception(f"Unexpected error checking URL accessibility with HEAD: {e}")
+
+        try:
+            response = retry_call(
+                lambda: requests.get(
+                    url,
+                    allow_redirects=True,
+                    timeout=10,
+                    stream=True,
+                    headers=URLHandler.REQUEST_HEADERS,
+                ),
+                exceptions=(requests.RequestException,),
+                retries=1,
+                backoff=1.0,
+                backoff_factor=2.0,
+                jitter=0.25,
+                logger=logger,
+            )
+            try:
+                return (
+                    response.status_code < 400
+                    or response.status_code in URLHandler.ACCESSIBLE_STATUS_CODES
+                )
+            finally:
+                response.close()
         except Exception as e:
             logger.exception(f"Error checking URL accessibility: {e}")
-            #raise e
             return False
     
     @staticmethod

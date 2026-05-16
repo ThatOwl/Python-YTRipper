@@ -134,7 +134,7 @@ class CommandCLI(CLIBase):
             "--load_preset",
             type=str,
             default=None,
-            help="Load preset: custom '0'-'9' or immutable 'ah'/'vh'/'vl'/'t'/'ds'",
+            help="Load preset: custom '0'-'9' or immutable 'ah'/'vh'/'vl'/'test'/'ds'",
         )
 
         parser.add_argument(
@@ -595,38 +595,39 @@ class CommandCLI(CLIBase):
     def _download_single_url(self, url: str, options: DownloadOptions, start_time: datetime.datetime | None = None) -> int:
         try:
             results: List[DownloadResult] = self.ytd.download(url=url, options=options)
+            if not results:
+                logger.warning(f"No download results produced for {url}")
+                return 1
 
-            #NOTE: start_time since this signals batch mode -> single-mode results ignored INCLUDING playlists !
-            #FIXME playlists even in single mode should be able to save results
-            if results and options.save_results and start_time is not None:
-                playlist_name: str | None = None
-                if self.media_info_service.is_playlist(url):
+            success_count = sum(1 for result in results if result.success)
+            fail_count = len(results) - success_count
+            playlist_name: str | None = None
+            is_playlist = self.media_info_service.is_playlist(url)
+
+            # Single standalone URLs intentionally do not create result files.
+            # Direct playlist URLs and batch/file-driven runs do.
+            if options.save_results and (start_time is not None or is_playlist):
+                if is_playlist:
                     playlist_name = self.media_info_service.get_playlist_title(url)
-
                 self.os.save_download_results(
                     results=results,
                     download_dir=options.default_download_directory,
                     playlist_name=playlist_name,
-                    timestamp = start_time 
+                    timestamp=start_time,
                 )
 
-                success_count = sum(1 for result in results if result.success)
-                fail_count = len(results) - success_count
+            if len(results) > 1:
+                print(f"\n{'=' * 50}")
+                print(f"Download Summary: {success_count} succeeded, {fail_count} failed")
 
-                if len(results) > 1:
-                    print(f"\n{'=' * 50}")
-                    print(f"Download Summary: {success_count} succeeded, {fail_count} failed")
+                if fail_count > 0:
+                    print("\nFailed downloads:")
+                    for result in results:
+                        if not result.success:
+                            print(f"  {result}")
 
-                    if fail_count > 0:
-                        print("\nFailed downloads:")
-                        for result in results:
-                            if not result.success:
-                                print(f"  {result}")
-
-                    print(f"{'=' * 50}")
-
-                return 0 if fail_count == 0 else 1
-            return 0
+                print(f"{'=' * 50}")
+            return 0 if fail_count == 0 else 1
 
         except Exception as exc:
             logger.error(f"Download failed for {url}: {exc}")
