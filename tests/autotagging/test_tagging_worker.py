@@ -5,11 +5,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_ROOT = PROJECT_ROOT / "source"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
+from autotagging.candidate_resolver import TagCandidate
 from autotagging.package_builder import TaggingPackageBuilder, TaggingQueueStore
 from autotagging.tag_writer import TagWriteResult
 from autotagging.worker import TaggingWorker
@@ -119,6 +120,59 @@ class TestTaggingWorker(unittest.TestCase):
                 "skipped: candidate not safe for auto-write",
             )
             tag_writer.write_candidate.assert_not_called()
+
+    def test_worker_promotes_weak_candidate_via_enrichment_then_writes(self):
+        builder = TaggingPackageBuilder()
+        options = DownloadOptions(autotag=True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            final_output = Path(tmpdir) / "Blaze.m4a"
+            final_output.write_text("audio", encoding="utf-8")
+
+            weak_video = _DummyVideo()
+            weak_video.title = "Odd Chap, Alanna Lyes - Blaze (Electro Swing)"
+            weak_video.author = "Some Other Channel"
+
+            package = builder.build_package(
+                final_output_path=final_output,
+                download_directory=Path(tmpdir),
+                video_obj=weak_video,
+                options=options,
+                requested_actions=["autotag"],
+                playlist_title="Electro Swing",
+            )
+
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            pending_path = store.write_pending_package(package)
+
+            tag_writer = Mock()
+            tag_writer.write_candidate.return_value = TagWriteResult(True, "ok", ["artist", "title"])
+            enricher = Mock()
+            enricher.enrich.return_value = TagCandidate(
+                artist="Odd Chap",
+                title="Blaze",
+                album="Electro Swing",
+                source="musicbrainz_confirmed",
+                confidence=0.89,
+                write_allowed=True,
+                notes=["confirmed in test"],
+            )
+
+            worker = TaggingWorker(
+                queue_store=store,
+                musicbrainz_enricher=enricher,
+                tag_writer=tag_writer,
+                poll_interval=0.01,
+                idle_timeout=0.05,
+            )
+            done_path = worker.process_package_file(pending_path)
+
+            payload = json.loads(done_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["state"], "written")
+            self.assertEqual(payload["resolved_tags"]["source"], "musicbrainz_confirmed")
+            self.assertEqual(payload["enrichment_result"]["status"], "matched")
+            self.assertIn("enrich_candidate", payload["completed_actions"])
+            tag_writer.write_candidate.assert_called_once()
 
 
 if __name__ == "__main__":

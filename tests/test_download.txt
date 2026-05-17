@@ -1,4 +1,4 @@
-param: -nd false -hf false -a true -q high -r 720p -w true -o ~/Starsector_OST
+param: -nd false -hf false -a true -q high -r 720p -sp true -o ~/Starsector_OST
 invalid_address
 
 https://www.youtube.com/watch?v=eDV_qQ3fapw

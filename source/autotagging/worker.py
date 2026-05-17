@@ -5,6 +5,7 @@ from typing import Any
 from utility.logger import get_logger
 
 from .candidate_resolver import CandidateResolver
+from .musicbrainz_enricher import MusicBrainzEnricher
 from .package_builder import TaggingQueueStore
 from .tag_writer import TagWriter
 from .title_normalizer import TitleNormalizer
@@ -20,6 +21,7 @@ class TaggingWorker:
         queue_store: TaggingQueueStore | None = None,
         title_normalizer: TitleNormalizer | None = None,
         candidate_resolver: CandidateResolver | None = None,
+        musicbrainz_enricher: MusicBrainzEnricher | None = None,
         tag_writer: TagWriter | None = None,
         poll_interval: float = 1.0,
         idle_timeout: float = 30.0,
@@ -27,6 +29,7 @@ class TaggingWorker:
         self.queue_store = queue_store or TaggingQueueStore()
         self.title_normalizer = title_normalizer or TitleNormalizer()
         self.candidate_resolver = candidate_resolver or CandidateResolver()
+        self.musicbrainz_enricher = musicbrainz_enricher or MusicBrainzEnricher()
         self.tag_writer = tag_writer or TagWriter()
         self.poll_interval = poll_interval
         self.idle_timeout = idle_timeout
@@ -72,6 +75,12 @@ class TaggingWorker:
             if "resolve_candidates" not in completed_actions:
                 completed_actions.append("resolve_candidates")
             payload["completed_actions"] = completed_actions
+            payload, was_enriched = self._maybe_enrich_candidate(payload)
+            if was_enriched:
+                completed_actions = list(payload.get("completed_actions", []))
+                if "enrich_candidate" not in completed_actions:
+                    completed_actions.append("enrich_candidate")
+                payload["completed_actions"] = completed_actions
             payload, final_state = self._maybe_write_tags(payload)
             target_state_dir = "failed" if final_state == "failed" else "done"
             final_path = self.queue_store.move_package(processing_path, target_state_dir)
@@ -105,6 +114,26 @@ class TaggingWorker:
         payload["resolved_tags"] = candidate.to_dict()
         return payload
 
+    def _maybe_enrich_candidate(self, payload: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        candidate_dict = dict(payload.get("resolved_tags", {}) or {})
+        if candidate_dict.get("write_allowed"):
+            return payload, False
+
+        current_candidate = self.candidate_resolver.resolve(payload)
+        enriched_candidate = self.musicbrainz_enricher.enrich(payload, current_candidate)
+        if enriched_candidate is None:
+            payload["enrichment_result"] = {"status": "no_match"}
+            return payload, False
+
+        payload["resolved_tags"] = enriched_candidate.to_dict()
+        payload["enrichment_result"] = {
+            "status": "matched",
+            "source": enriched_candidate.source,
+            "confidence": enriched_candidate.confidence,
+            "write_allowed": enriched_candidate.write_allowed,
+        }
+        return payload, True
+
     def _maybe_write_tags(self, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
         requested_actions = set(payload.get("requested_actions", []) or [])
         candidate = dict(payload.get("resolved_tags", {}) or {})
@@ -118,6 +147,8 @@ class TaggingWorker:
                 "status": "skipped: candidate not safe for auto-write",
                 "wrote_fields": [],
             }
+            if payload.get("enrichment_result", {}).get("status") == "matched":
+                return payload, "enriched"
             return payload, "skipped"
 
         candidate_obj = self.candidate_resolver.resolve(payload)
