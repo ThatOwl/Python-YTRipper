@@ -6,6 +6,9 @@
 - how to minimize exception handling 
 
 ## big
+- TRAILING URL "-" BREAKES DOWNLOADER !
+- pivot to secondary wrapper arounf yt-dlp
+- adapt the install bash script to a setup tool asking user for locations (checking if exists and or setting up) -> aliases -> notify what they can change
 - parallelize ffmpeg -> might need restructure => first download then spawn 6(?)-ffmpeg-children
 - tell ffmpeg to use GPU for videos ?
 - X refactor "download_dir" into "options" => DO NOT ... as file-dwnld may create multiple playlists => which have own dwnld-dirs !

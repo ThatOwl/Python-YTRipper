@@ -16,6 +16,7 @@ from utility.utils import (
     StreamInfo,
     sanitize_filename,
 )
+from autotagging.package_builder import TaggingPackageBuilder, TaggingQueueStore
 from infrastructure.media_assembler import MediaAssembler
 from infrastructure.stream_converter import StreamConverter
 from infrastructure.url_handler import URLHandler
@@ -41,6 +42,8 @@ class DownloadOrchestrator:
         vid_fetcher: VideoFetcher | None = None,
         stream_selector: StreamSelector | None = None,
         stream_download: StreamDownloadService | None = None,
+        tagging_package_builder: TaggingPackageBuilder | None = None,
+        tagging_queue_store: TaggingQueueStore | None = None,
     ):
         self.os_handler = os_handler or OSInteractions()
         self.thumbnail_handler = thumbnail_handler or ThumbnailHandler()
@@ -49,6 +52,8 @@ class DownloadOrchestrator:
         self.vid_fetcher = vid_fetcher or VideoFetcher()
         self.stream_selector = stream_selector or StreamSelector()
         self.stream_download = stream_download or StreamDownloadService()
+        self.tagging_package_builder = tagging_package_builder or TaggingPackageBuilder()
+        self.tagging_queue_store = tagging_queue_store or TaggingQueueStore()
 
     def download_playlist(
         self,
@@ -72,7 +77,14 @@ class DownloadOrchestrator:
 
             for i, video in enumerate(playlist_obj.videos):
                 logger.info("[%s/%s] Processing: %s", i + 1, len(playlist_obj.videos), video.title)
-                results.append(self.download_single(download_dir=playlist_dir, options=options, video_obj=video))
+                results.append(
+                    self.download_single(
+                        download_dir=playlist_dir,
+                        options=options,
+                        video_obj=video,
+                        playlist_title=playlist_obj.title,
+                    )
+                )
 
         except (IOError, PlaylistFetchError) as e:
             logger.error("Failed to process playlist: %s", e)
@@ -168,6 +180,7 @@ class DownloadOrchestrator:
         download_dir: Path,
         video_obj: ptf.YouTube | None = None, #TODO check: maybe obscurred
         url: str | None = None,
+        playlist_title: str | None = None,
     ) -> DownloadResult:
         video_obj: ptf.YouTube = video_obj or self.vid_fetcher.get_video_obj(url)
 
@@ -180,7 +193,16 @@ class DownloadOrchestrator:
         # Side effect of this being here: _download_single_video can downlaod both streams separat without being blocked by find_existing_file_by_stem()
         existing_file = self.os_handler.find_existing_file_by_stem(download_dir, base_filename)
 
+        
+        # ask codex for reasoning on this
         if existing_file is not None:
+            self._prepare_tagging_package(
+                final_path=existing_file,
+                download_dir=download_dir,
+                video_obj=video_obj,
+                options=options,
+                playlist_title=playlist_title,
+            )
             logger.info("⏭ Skipping (already exists): %s -> %s", video_title, existing_file.name)
             return DownloadResult(
                 success=True,
@@ -198,6 +220,13 @@ class DownloadOrchestrator:
             else:
                 final_path = self._download_single_video(video_obj, download_dir, target_file, options)
 
+            self._prepare_tagging_package(
+                final_path=final_path,
+                download_dir=download_dir,
+                video_obj=video_obj,
+                options=options,
+                playlist_title=playlist_title,
+            )
             logger.info("✓ %s", video_title)
             return DownloadResult(
                 success=True,
@@ -213,6 +242,40 @@ class DownloadOrchestrator:
         except Exception as e:
             logger.error("✗ Unexpected error with %s: %s", video_title, e)
             return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_obj.watch_url)
+
+    def _prepare_tagging_package(
+        self,
+        *,
+        final_path: Path,
+        download_dir: Path,
+        video_obj: ptf.YouTube,
+        options: DownloadOptions,
+        playlist_title: str | None = None,
+    ) -> Path | None:
+        requested_actions: list[str] = []
+        if options.autotag:
+            requested_actions.append("autotag")
+        if options.prepare_tagging:
+            requested_actions.append("prepare_tagging")
+
+        if not requested_actions:
+            return None
+
+        try:
+            package = self.tagging_package_builder.build_package(
+                final_output_path=final_path,
+                download_directory=download_dir,
+                video_obj=video_obj,
+                options=options,
+                requested_actions=requested_actions,
+                playlist_title=playlist_title,
+            )
+            package_path = self.tagging_queue_store.write_pending_package(package)
+            logger.info("Prepared tagging package: %s", package_path)
+            return package_path
+        except Exception as exc:
+            logger.warning("Failed to prepare tagging package for %s: %s", final_path, exc)
+            return None
 
     def download(self, url: str, options: DownloadOptions) -> List[DownloadResult]:
         results: List[DownloadResult] = []

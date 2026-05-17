@@ -248,6 +248,16 @@ class CommandCLI(CLIBase):
         )
 
         parser.add_argument(
+            "--prepare-tagging",
+            type=str,
+            default=None,
+            help=(
+                "Prepare tagging package JSON files for later processing (true/false). "
+                f"Current default: {self.options.prepare_tagging}"
+            ),
+        )
+
+        parser.add_argument(
             "-sr",
             "--save-results",
             type=str,
@@ -405,6 +415,9 @@ class CommandCLI(CLIBase):
         if args.autotag is not None:
             updates["autotag"] = parse_bool_string(args.autotag)
 
+        if args.prepare_tagging is not None:
+            updates["prepare_tagging"] = parse_bool_string(args.prepare_tagging)
+
         if args.save_results is not None:
             updates["save_results"] = parse_bool_string(args.save_results)
 
@@ -431,6 +444,7 @@ class CommandCLI(CLIBase):
             "donotconvert",
             "no_dir_date",
             "autotag",
+            "prepare_tagging",
             "save_results",
         )
 
