@@ -19,6 +19,14 @@ class TagCandidate:
             payload["notes"] = []
         return payload
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "TagCandidate":
+        data = dict(payload or {})
+        notes = data.get("notes")
+        if notes is None:
+            data["notes"] = []
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+
 
 class CandidateResolver:
     """Resolve conservative tag candidates from prepared package evidence."""

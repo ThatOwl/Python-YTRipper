@@ -4,7 +4,7 @@ from typing import Any
 
 from utility.logger import get_logger
 
-from .candidate_resolver import CandidateResolver
+from .candidate_resolver import CandidateResolver, TagCandidate
 from .musicbrainz_enricher import MusicBrainzEnricher
 from .package_builder import TaggingQueueStore
 from .tag_writer import TagWriter
@@ -16,6 +16,11 @@ logger = get_logger(__name__, "tagging_worker_debug.log")
 class TaggingWorker:
     """Filesystem-backed background worker for prepared tagging packages."""
 
+    DEFAULT_DONE_MAX_COUNT = 500
+    DEFAULT_DONE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
+    DEFAULT_FAILED_MAX_COUNT = 500
+    DEFAULT_FAILED_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
+
     def __init__(
         self,
         queue_store: TaggingQueueStore | None = None,
@@ -25,6 +30,10 @@ class TaggingWorker:
         tag_writer: TagWriter | None = None,
         poll_interval: float = 1.0,
         idle_timeout: float = 30.0,
+        done_max_count: int | None = DEFAULT_DONE_MAX_COUNT,
+        done_max_age_seconds: float | None = DEFAULT_DONE_MAX_AGE_SECONDS,
+        failed_max_count: int | None = DEFAULT_FAILED_MAX_COUNT,
+        failed_max_age_seconds: float | None = DEFAULT_FAILED_MAX_AGE_SECONDS,
     ):
         self.queue_store = queue_store or TaggingQueueStore()
         self.title_normalizer = title_normalizer or TitleNormalizer()
@@ -33,6 +42,10 @@ class TaggingWorker:
         self.tag_writer = tag_writer or TagWriter()
         self.poll_interval = poll_interval
         self.idle_timeout = idle_timeout
+        self.done_max_count = done_max_count
+        self.done_max_age_seconds = done_max_age_seconds
+        self.failed_max_count = failed_max_count
+        self.failed_max_age_seconds = failed_max_age_seconds
 
     def run_until_idle(self) -> int:
         processed_count = 0
@@ -40,15 +53,18 @@ class TaggingWorker:
         recovered = self.queue_store.recover_stale_processing()
         if recovered:
             logger.info("Recovered %s stale tagging package(s) back to pending", len(recovered))
+        self._apply_retention_policy()
 
         while True:
             processed = self.process_next_pending_package()
             if processed:
                 processed_count += 1
+                self._apply_retention_policy()
                 deadline = time.monotonic() + self.idle_timeout
                 continue
 
             if time.monotonic() >= deadline:
+                self._apply_retention_policy()
                 logger.info("Tagging worker idle timeout reached; processed=%s", processed_count)
                 return processed_count
 
@@ -154,7 +170,7 @@ class TaggingWorker:
                 return payload, "enriched"
             return payload, "skipped"
 
-        candidate_obj = self.candidate_resolver.resolve(payload)
+        candidate_obj = TagCandidate.from_dict(candidate)
         result = self.tag_writer.write_candidate(payload.get("final_output_path", ""), candidate_obj)
         payload["write_result"] = result.to_dict()
         if result.success:
@@ -165,3 +181,20 @@ class TaggingWorker:
             return payload, "written"
 
         return payload, "failed"
+
+    def _apply_retention_policy(self) -> dict[str, list[Path]]:
+        deleted = self.queue_store.apply_retention_policy(
+            done_max_count=self.done_max_count,
+            done_max_age_seconds=self.done_max_age_seconds,
+            failed_max_count=self.failed_max_count,
+            failed_max_age_seconds=self.failed_max_age_seconds,
+        )
+        done_deleted = len(deleted.get("done", []))
+        failed_deleted = len(deleted.get("failed", []))
+        if done_deleted or failed_deleted:
+            logger.info(
+                "Pruned tagging queue history: done=%s failed=%s",
+                done_deleted,
+                failed_deleted,
+            )
+        return deleted

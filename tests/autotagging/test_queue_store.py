@@ -45,6 +45,37 @@ class TestTaggingQueueStore(unittest.TestCase):
             self.assertEqual(recovered_payload["lifecycle"]["recovery_count"], 1)
             self.assertIn("recovered_from_processing_at", recovered_payload["lifecycle"])
 
+    def test_prune_state_files_applies_age_and_count_limits(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            dirs = store.ensure_queue_dirs()
+            now = datetime.now(timezone.utc).replace(microsecond=0)
+
+            ages = [900, 600, 300]
+            paths = []
+            for idx, age in enumerate(ages, 1):
+                ts = (now - timedelta(seconds=age)).isoformat()
+                path = dirs["done"] / f"done-{idx}.json"
+                payload = {
+                    "job_id": f"job-{idx}",
+                    "state": "done",
+                    "created_at": ts,
+                    "lifecycle": {
+                        "done_at": ts,
+                        "last_transition_at": ts,
+                        "state_history": [{"state": "done", "at": ts}],
+                    },
+                }
+                store.write_package(path, payload)
+                paths.append(path)
+
+            deleted = store.prune_state_files("done", max_count=2, max_age_seconds=500)
+
+            self.assertEqual(len(deleted), 2)
+            remaining = store.list_state_files("done")
+            self.assertEqual(len(remaining), 1)
+            self.assertTrue(remaining[0].name.endswith("done-3.json"))
+
 
 if __name__ == "__main__":
     unittest.main()

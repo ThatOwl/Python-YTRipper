@@ -173,6 +173,9 @@ class TestTaggingWorker(unittest.TestCase):
             self.assertEqual(payload["enrichment_result"]["status"], "matched")
             self.assertIn("enrich_candidate", payload["completed_actions"])
             tag_writer.write_candidate.assert_called_once()
+            written_candidate = tag_writer.write_candidate.call_args.args[1]
+            self.assertEqual(written_candidate.artist, "Odd Chap")
+            self.assertEqual(written_candidate.title, "Blaze")
 
 
 if __name__ == "__main__":

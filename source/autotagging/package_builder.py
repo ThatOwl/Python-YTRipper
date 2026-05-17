@@ -223,6 +223,71 @@ class TaggingQueueStore:
             recovered.append(recovered_path)
         return recovered
 
+    def prune_state_files(
+        self,
+        state_name: str,
+        *,
+        max_count: int | None = None,
+        max_age_seconds: float | None = None,
+    ) -> list[Path]:
+        records = []
+        now = datetime.now(timezone.utc)
+
+        for package_path in self.list_state_files(state_name):
+            payload = self.read_package(package_path)
+            lifecycle = dict(payload.get("lifecycle", {}) or {})
+            ts = (
+                lifecycle.get(f"{state_name}_at")
+                or lifecycle.get("last_transition_at")
+                or payload.get("created_at")
+            )
+            age_seconds = self._age_seconds(now, ts)
+            sort_age = age_seconds if age_seconds is not None else -1.0
+            records.append((package_path, age_seconds, sort_age))
+
+        records.sort(key=lambda item: item[2], reverse=True)
+        to_delete: dict[str, Path] = {}
+
+        if max_age_seconds is not None:
+            for package_path, age_seconds, _ in records:
+                if age_seconds is not None and age_seconds > max_age_seconds:
+                    to_delete[str(package_path)] = package_path
+
+        if max_count is not None and max_count >= 0 and len(records) > max_count:
+            overflow = len(records) - max_count
+            for package_path, _, _ in records[:overflow]:
+                to_delete[str(package_path)] = package_path
+
+        deleted: list[Path] = []
+        for package_path in to_delete.values():
+            try:
+                package_path.unlink(missing_ok=True)
+                deleted.append(package_path)
+            except Exception:
+                continue
+        return sorted(deleted)
+
+    def apply_retention_policy(
+        self,
+        *,
+        done_max_count: int | None = None,
+        done_max_age_seconds: float | None = None,
+        failed_max_count: int | None = None,
+        failed_max_age_seconds: float | None = None,
+    ) -> dict[str, list[Path]]:
+        return {
+            "done": self.prune_state_files(
+                "done",
+                max_count=done_max_count,
+                max_age_seconds=done_max_age_seconds,
+            ),
+            "failed": self.prune_state_files(
+                "failed",
+                max_count=failed_max_count,
+                max_age_seconds=failed_max_age_seconds,
+            ),
+        }
+
     @staticmethod
     def read_package(package_path: Path | str) -> dict[str, Any]:
         with open(package_path, "r", encoding="utf-8") as handle:
