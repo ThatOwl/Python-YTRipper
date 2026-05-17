@@ -27,6 +27,7 @@ Implemented pieces:
 - tagging packages are emitted after downloads
 - packages are persisted in `runtime/tagging/`
 - a background worker can process queued packages asynchronously
+- downloader and tagger can cooperate on one mutable results CSV for later manual review
 - queue/session/event inspection is available from a standalone CLI
 - failed, skipped, and enriched jobs can be manually requeued
 - selected jobs can be requeued and immediately reprocessed
@@ -50,6 +51,7 @@ runtime/
     processing/
     done/
     failed/
+    reviews/
     events.jsonl
 ```
 
@@ -71,6 +73,7 @@ Shared queue / worker core:
 - [source/autotagging/runtime/package_builder.py](source/autotagging/runtime/package_builder.py)
 - [source/autotagging/runtime/worker.py](source/autotagging/runtime/worker.py)
 - [source/autotagging/runtime/event_logger.py](source/autotagging/runtime/event_logger.py)
+- [source/autotagging/runtime/results_report.py](source/autotagging/runtime/results_report.py)
 
 Standalone operator surface:
 
@@ -193,6 +196,26 @@ Each package-scoped event carries stable operator identifiers like:
 - `state`
 - `final_output_path`
 - `source_url`
+
+## Shared Results CSV
+
+When result saving is enabled, the downloader owns the CSV file and writes one row per attempted entry, including download failures.
+
+When autotagging is enabled:
+
+- `save_results` is forced on
+- successful downloads that produced a tagging package are linked to a `job_id`
+- the background worker later updates that same row instead of appending a duplicate
+
+The current CSV is intentionally compact and review-oriented. It includes:
+
+- original source fields such as URL, uploader, and title
+- local file path when a download succeeded
+- download status and download errors
+- terminal tag state such as `written`, `skipped`, `enriched`, `failed`, or `queue_failed`
+- resolved artist/title/album when present
+- resolver / enrichment provenance such as candidate source, confidence, and MusicBrainz source
+- a compact machine-oriented failure reason for manual follow-up
 
 ## Planned Standalone Classes
 

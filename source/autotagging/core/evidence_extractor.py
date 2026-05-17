@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from dataclasses import dataclass, field
 
 
@@ -22,6 +23,9 @@ class SourceEvidence:
     description_artist: str = ""
     description_title: str = ""
     description_album: str = ""
+    description_kind: str = ""
+    description_artist_supported: bool = False
+    description_title_supported: bool = False
     guessed_artist_is_contextual: bool = False
     keyword_support_artist: bool = False
     keyword_support_title: bool = False
@@ -31,6 +35,8 @@ class SourceEvidence:
 
 class SourceEvidenceExtractor:
     """Extract structured evidence from author, keywords, and description text."""
+
+    TOKEN_IGNORE_WORDS = {"a", "an", "the"}
 
     def extract(
         self,
@@ -64,6 +70,16 @@ class SourceEvidenceExtractor:
             evidence.description_artist = description_match.get("artist", "")
             evidence.description_title = description_match.get("title", "")
             evidence.description_album = description_match.get("album", "")
+            evidence.description_kind = description_match.get("note", "")
+            evidence.description_artist_supported = self._keywords_support_artist_value(
+                keywords,
+                evidence.description_artist,
+                evidence.canonical_author,
+            )
+            evidence.description_title_supported = self._keywords_support_value(
+                keywords,
+                evidence.description_title,
+            )
             evidence.notes.append(description_match.get("note", "description_evidence"))
 
         artist_for_keywords = guessed_artist or evidence.description_artist or evidence.canonical_author
@@ -90,7 +106,7 @@ class SourceEvidenceExtractor:
         value = (author or "").strip()
         value = re.sub(r"\s*-\s*topic\s*$", "", value, flags=re.IGNORECASE)
         value = re.sub(r"\s+official\s*$", "", value, flags=re.IGNORECASE)
-        value = re.sub(r"\s+vevo\s*$", "", value, flags=re.IGNORECASE)
+        value = re.sub(r"\s*vevo\s*$", "", value, flags=re.IGNORECASE)
         value = re.sub(r"\s+", " ", value).strip(" -:")
         return value
 
@@ -110,6 +126,10 @@ class SourceEvidenceExtractor:
             re.compile(
                 r"(?P<artist>.+?)'s\s+official\s+(?:audio|music\s+video|video)\s+for\s+[\"“](?P<title>.+?)[\"”]"
                 r"(?:,?\s+from\s+the\s+album\s+[\"'“](?P<album>.+?)[\"'”])?",
+                re.IGNORECASE | re.DOTALL,
+            ),
+            re.compile(
+                r"music\s+video\s+by\s+(?P<artist>.+?)\s+performing\s+(?P<title>.+?)(?:[.©\n]|$)",
                 re.IGNORECASE | re.DOTALL,
             ),
         )
@@ -140,23 +160,30 @@ class SourceEvidenceExtractor:
 
     def _extract_song_by_artist_description(self, description: str) -> dict[str, str] | None:
         text = description or ""
-        patterns = (
-            re.compile(
-                r"song:\s*[\"“]?(?P<title>.+?)[\"”]?\s+by\s+(?P<artist>.+?)(?:[.\n]|$)",
-                re.IGNORECASE,
-            ),
-            re.compile(
-                r"^\s*(?P<title>.+?)\s+by\s+(?P<artist>.+?)\s*$",
-                re.IGNORECASE | re.MULTILINE,
-            ),
+        song_match = re.search(
+            r"song:\s*[\"“]?(?P<title>.+?)[\"”]?\s+by\s+(?P<artist>.+?)(?:[.\n]|$)",
+            text,
+            flags=re.IGNORECASE,
         )
-        for pattern in patterns:
-            match = pattern.search(text)
+        if song_match:
+            title = self._strip_context_tail(self._clean_text(song_match.group("title")))
+            artist = self._strip_context_tail(self._clean_text(song_match.group("artist")))
+            if self._is_safe_song_by_artist_pair(title, artist):
+                return {
+                    "artist": artist,
+                    "title": title,
+                    "album": "",
+                    "note": "description_song_by_artist",
+                }
+
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        for line in lines[:5]:
+            match = re.match(r"^(?P<title>.+?)\s+by\s+(?P<artist>.+?)\s*$", line, flags=re.IGNORECASE)
             if not match:
                 continue
             title = self._strip_context_tail(self._clean_text(match.group("title")))
             artist = self._strip_context_tail(self._clean_text(match.group("artist")))
-            if not title or not artist or self._looks_like_context_label(artist):
+            if not self._is_safe_song_by_artist_pair(title, artist):
                 continue
             return {
                 "artist": artist,
@@ -165,6 +192,44 @@ class SourceEvidenceExtractor:
                 "note": "description_song_by_artist",
             }
         return None
+
+    def _is_safe_song_by_artist_pair(self, title: str, artist: str) -> bool:
+        title_value = (title or "").strip()
+        artist_value = (artist or "").strip()
+        if not title_value or not artist_value or self._looks_like_context_label(artist_value):
+            return False
+
+        title_lower = title_value.lower()
+        artist_lower = artist_value.lower()
+        blocked_fragments = (
+            "uploaded",
+            "directed",
+            "official music video",
+            "music video",
+            "official video",
+            "official audio",
+            "auto-generated",
+            "as featured in",
+            "produced by",
+            "performing",
+            "their respective owners",
+            "all rights reserved",
+            "artwork",
+            "visuals",
+            "stream",
+            "download",
+            "episode ",
+            "season ",
+        )
+        if any(fragment in title_lower for fragment in blocked_fragments):
+            return False
+        if any(fragment in artist_lower for fragment in blocked_fragments):
+            return False
+        if title_lower in {"uploaded", "directed", "performed", "music video"}:
+            return False
+        if len(title_value) > 120 or len(artist_value) > 120:
+            return False
+        return True
 
     def _extract_topic_description_release(self, description: str) -> dict[str, str] | None:
         lines = [line.strip() for line in (description or "").splitlines() if line.strip()]
@@ -240,7 +305,15 @@ class SourceEvidenceExtractor:
                 )
             )
 
-        by_pattern = re.search(r"^(?P<title>.+?)\s+by\s+(?P<artist>.+?)(?:\s+-\s+.+)?$", raw_title, flags=re.IGNORECASE)
+        by_pattern = None
+        if "prod. by" not in raw_title.lower() and "produced by" not in raw_title.lower():
+            split_marker = re.search(r"\s+by\s+", raw_title, flags=re.IGNORECASE)
+            if split_marker and " - " not in raw_title[: split_marker.start()]:
+                by_pattern = re.search(
+                    r"^(?P<title>.+?)\s+by\s+(?P<artist>.+?)(?:\s+-\s+.+)?$",
+                    raw_title,
+                    flags=re.IGNORECASE,
+                )
         if by_pattern:
             add_hint(
                 by_pattern.group("artist"),
@@ -256,9 +329,10 @@ class SourceEvidenceExtractor:
             flags=re.IGNORECASE,
         )
         if context_paren and self._looks_like_context_label(context_paren.group("context")):
-            if not self._looks_like_context_label(context_paren.group("artist")):
+            parenthetical_artist = context_paren.group("artist")
+            if not self._looks_like_context_label(parenthetical_artist) and not self._looks_like_media_suffix(parenthetical_artist):
                 add_hint(
-                    context_paren.group("artist"),
+                    parenthetical_artist,
                     context_paren.group("title"),
                     "context_parenthetical_artist",
                     0.86,
@@ -321,7 +395,7 @@ class SourceEvidenceExtractor:
                 return True
             if f" {target} " in f" {keyword_norm} ":
                 return True
-        return False
+        return self._keywords_cover_tokens(keywords, target)
 
     def _keywords_support_artist_value(self, keywords: list[str], value: str, canonical_author: str) -> bool:
         if self._keywords_support_value(keywords, value):
@@ -361,14 +435,18 @@ class SourceEvidenceExtractor:
         return f" {target} " in f" {keyword_norm} "
 
     def _keywords_cover_tokens(self, keywords: list[str], value: str) -> bool:
-        tokens = [token for token in self._normalise_compare_text(value).split() if token]
+        tokens = [
+            token
+            for token in self._normalise_compare_text(value).split()
+            if token and token not in self.TOKEN_IGNORE_WORDS
+        ]
         if not tokens:
             return False
         keyword_tokens = {
             token
             for keyword in keywords
             for token in self._normalise_compare_text(str(keyword)).split()
-            if token
+            if token and token not in self.TOKEN_IGNORE_WORDS
         }
         return all(token in keyword_tokens for token in tokens)
 
@@ -382,7 +460,7 @@ class SourceEvidenceExtractor:
 
     @staticmethod
     def _normalise_compare_text(text: str) -> str:
-        cleaned = (text or "").lower().strip()
+        cleaned = SourceEvidenceExtractor._strip_accents(text or "").lower().strip()
         cleaned = cleaned.replace("&", " and ")
         cleaned = re.sub(r"[^a-z0-9äöüß\s]", " ", cleaned)
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
@@ -398,6 +476,14 @@ class SourceEvidenceExtractor:
             "playlist",
             "original trailer",
             "trailer",
+            "official video",
+            "official music video",
+            "official audio",
+            "lyric video",
+            "official lyric video",
+            "visualizer",
+            "performance video",
+            "official song clip",
             "season ",
             "episode ",
             "with lyrics",
@@ -415,6 +501,23 @@ class SourceEvidenceExtractor:
         if normalized.startswith("radio ") and len(normalized.split()) >= 2:
             return True
         return False
+
+    @classmethod
+    def _looks_like_media_suffix(cls, value: str) -> bool:
+        normalized = cls._normalise_compare_text(value)
+        media_words = {
+            "official",
+            "video",
+            "music",
+            "audio",
+            "lyric",
+            "lyrics",
+            "visualizer",
+            "performance",
+            "clip",
+            "mv",
+        }
+        return bool(normalized) and all(part in media_words for part in normalized.split())
 
     @classmethod
     def _looks_like_artist_name(cls, value: str) -> bool:
@@ -437,6 +540,12 @@ class SourceEvidenceExtractor:
         patterns = (
             r"\bfallout\b.*$",
             r"\b(?:official\s+)?(?:soundtrack|trailer|ost|lyrics?|release)\b.*$",
+            r"\b(?:official\s+)?(?:music\s+)?video\b.*$",
+            r"\bvisualizer\b.*$",
+            r"\bperformance\s+video\b.*$",
+            r"\bofficial\s+song\s+clip\b.*$",
+            r"\bout\s+now\b.*$",
+            r"\bprod\.\s+by\b.*$",
             r"\bseason\s+\d+\b.*$",
             r"\bepisode\s+\d+\b.*$",
             r"\bappalachia\b.*$",
@@ -445,3 +554,8 @@ class SourceEvidenceExtractor:
         for pattern in patterns:
             cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE).strip(" -|:")
         return cleaned.strip()
+
+    @staticmethod
+    def _strip_accents(text: str) -> str:
+        normalized = unicodedata.normalize("NFKD", text or "")
+        return "".join(ch for ch in normalized if not unicodedata.combining(ch))

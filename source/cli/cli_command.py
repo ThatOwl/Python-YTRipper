@@ -31,6 +31,7 @@ from utility.utils import (
 
 import utility.preferences as preferences
 
+from autotagging.runtime.results_report import TaggingResultsReport
 
 logger = get_logger(__name__, "cli_command_debug.log")
 
@@ -64,6 +65,7 @@ class CommandCLI(CLIBase):
             url_handler=self.url_handler,
             video_fetcher=self.video_fetcher,
         )
+        self.results_report = TaggingResultsReport()
 
         self.parser = self.build_parser()
         self.enable_argcomplete(self.parser)
@@ -430,6 +432,8 @@ class CommandCLI(CLIBase):
 
     def _normalize_options(self, options: DownloadOptions, apply_runtime: bool = False) -> None:
         self._normalize_boolean_options(options)
+        if options.autotag:
+            options.save_results = True
         self._normalize_quality_options(options)
         self._normalize_audio_bitrate(options)
         self._normalize_resolution(options)
@@ -612,26 +616,41 @@ class CommandCLI(CLIBase):
     def _download_single_url(self, url: str, options: DownloadOptions, start_time: datetime.datetime | None = None) -> int:
         try:
             self._ensure_tagging_worker(options)
-            results: List[DownloadResult] = self.ytd.download(url=url, options=options)
+            is_playlist = self.media_info_service.is_playlist(url)
+            report_path: Path | None = None
+            playlist_name: str | None = None
+            if options.save_results and (start_time is not None or is_playlist):
+                if start_time is None and is_playlist:
+                    playlist_name = self.media_info_service.get_playlist_title(url)
+                report_path = self.results_report.build_report_path(
+                    options.default_download_directory,
+                    playlist_name=playlist_name,
+                    timestamp_label=(start_time or datetime.datetime.now()).strftime("%Y-%m-%d_%H-%M-%S"),
+                    batch_mode=start_time is not None,
+                )
+
+            results: List[DownloadResult] = self.ytd.download(
+                url=url,
+                options=options,
+                results_report_path=report_path,
+            )
             if not results:
                 logger.warning(f"No download results produced for {url}")
                 return 1
 
             success_count = sum(1 for result in results if result.success)
             fail_count = len(results) - success_count
-            playlist_name: str | None = None
-            is_playlist = self.media_info_service.is_playlist(url)
 
             # Single standalone URLs intentionally do not create result files.
             # Direct playlist URLs and batch/file-driven runs do.
             if options.save_results and (start_time is not None or is_playlist):
-                if is_playlist:
-                    playlist_name = self.media_info_service.get_playlist_title(url)
                 self.os.save_download_results(
                     results=results,
                     download_dir=options.default_download_directory,
                     playlist_name=playlist_name,
                     timestamp=start_time,
+                    report_path=report_path,
+                    batch_mode=start_time is not None,
                 )
 
             if len(results) > 1:

@@ -63,6 +63,7 @@ class DownloadOrchestrator:
         playlist_url: str,
         base_download_dir: Path,
         options: DownloadOptions,
+        results_report_path: Path | None = None,
     ) -> List[DownloadResult]:
         results: List[DownloadResult] = []
 
@@ -86,6 +87,7 @@ class DownloadOrchestrator:
                         options=options,
                         video_obj=video,
                         playlist_title=playlist_obj.title,
+                        results_report_path=results_report_path,
                     )
                 )
 
@@ -184,6 +186,7 @@ class DownloadOrchestrator:
         video_obj: ptf.YouTube | None = None, #TODO check: maybe obscurred
         url: str | None = None,
         playlist_title: str | None = None,
+        results_report_path: Path | None = None,
     ) -> DownloadResult:
         video_obj: ptf.YouTube = video_obj or self.vid_fetcher.get_video_obj(url)
 
@@ -197,12 +200,13 @@ class DownloadOrchestrator:
         existing_file = self.os_handler.find_existing_file_by_stem(download_dir, base_filename)
 
         if existing_file is not None:
-            self._prepare_tagging_package(
+            tagging_info = self._prepare_tagging_package(
                 final_path=existing_file,
                 download_dir=download_dir,
                 video_obj=video_obj,
                 options=options,
                 playlist_title=playlist_title,
+                results_report_path=results_report_path,
             )
             logger.info("⏭ Skipping (already exists): %s -> %s", video_title, existing_file.name)
             return DownloadResult(
@@ -211,6 +215,13 @@ class DownloadOrchestrator:
                 video_title=video_title,
                 video_url=video_obj.watch_url,
                 output_path=existing_file,
+                source_author=str(getattr(video_obj, "author", "") or ""),
+                playlist_title=playlist_title or "",
+                tagging_job_id=str((tagging_info or {}).get("job_id", "") or ""),
+                tagging_session_id=str((tagging_info or {}).get("session_id", "") or ""),
+                tagging_sequence_no=int((tagging_info or {}).get("sequence_no", 0) or 0),
+                tagging_state="queue_failed" if options.autotag and tagging_info is None else "",
+                tagging_reason="tagging_package_not_created" if options.autotag and tagging_info is None else "",
             )
 
         logger.info("Downloading %s: %s", "soundtrack" if options.audio_only else "video", video_title)
@@ -221,12 +232,13 @@ class DownloadOrchestrator:
             else:
                 final_path = self._download_single_video(video_obj, download_dir, target_file, options)
 
-            self._prepare_tagging_package(
+            tagging_info = self._prepare_tagging_package(
                 final_path=final_path,
                 download_dir=download_dir,
                 video_obj=video_obj,
                 options=options,
                 playlist_title=playlist_title,
+                results_report_path=results_report_path,
             )
             logger.info("✓ %s", video_title)
             return DownloadResult(
@@ -235,14 +247,35 @@ class DownloadOrchestrator:
                 video_title=video_title,
                 video_url=video_obj.watch_url,
                 output_path=final_path,
+                source_author=str(getattr(video_obj, "author", "") or ""),
+                playlist_title=playlist_title or "",
+                tagging_job_id=str((tagging_info or {}).get("job_id", "") or ""),
+                tagging_session_id=str((tagging_info or {}).get("session_id", "") or ""),
+                tagging_sequence_no=int((tagging_info or {}).get("sequence_no", 0) or 0),
+                tagging_state="queue_failed" if options.autotag and tagging_info is None else "",
+                tagging_reason="tagging_package_not_created" if options.autotag and tagging_info is None else "",
             )
 
         except (StreamSelectionError, StreamDownloadError, ConversionError, CombineError) as e:
             logger.error("✗ %s with %s: %s", type(e).__name__, video_title, e)
-            return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_obj.watch_url)
+            return DownloadResult(
+                success=False,
+                errors=[str(e)],
+                video_title=video_title,
+                video_url=video_obj.watch_url,
+                source_author=str(getattr(video_obj, "author", "") or ""),
+                playlist_title=playlist_title or "",
+            )
         except Exception as e:
             logger.error("✗ Unexpected error with %s: %s", video_title, e)
-            return DownloadResult(success=False, errors=[str(e)], video_title=video_title, video_url=video_obj.watch_url)
+            return DownloadResult(
+                success=False,
+                errors=[str(e)],
+                video_title=video_title,
+                video_url=video_obj.watch_url,
+                source_author=str(getattr(video_obj, "author", "") or ""),
+                playlist_title=playlist_title or "",
+            )
 
     def _prepare_tagging_package(
         self,
@@ -252,7 +285,8 @@ class DownloadOrchestrator:
         video_obj: ptf.YouTube,
         options: DownloadOptions,
         playlist_title: str | None = None,
-    ) -> Path | None:
+        results_report_path: Path | None = None,
+    ) -> dict[str, str | int] | None:
         requested_actions: list[str] = []
         if options.autotag:
             requested_actions.append("autotag")
@@ -274,15 +308,26 @@ class DownloadOrchestrator:
                 session_id=self.tagging_session_id,
                 sequence_no=self.tagging_sequence_no,
                 playlist_title=playlist_title,
+                result_report_path=results_report_path,
             )
             package_path = self.tagging_queue_store.write_pending_package(package)
             logger.info("Prepared tagging package: %s", package_path)
-            return package_path
+            return {
+                "job_id": str(getattr(package, "job_id", "") or ""),
+                "session_id": str(getattr(package, "session_id", self.tagging_session_id) or ""),
+                "sequence_no": int(getattr(package, "sequence_no", self.tagging_sequence_no) or 0),
+                "package_path": str(package_path),
+            }
         except Exception as exc:
             logger.warning("Failed to prepare tagging package for %s: %s", final_path, exc)
             return None
 
-    def download(self, url: str, options: DownloadOptions) -> List[DownloadResult]:
+    def download(
+        self,
+        url: str,
+        options: DownloadOptions,
+        results_report_path: Path | None = None,
+    ) -> List[DownloadResult]:
         results: List[DownloadResult] = []
         base_download_dir = self.os_handler.expand_path(options.default_download_directory)
 
@@ -300,10 +345,17 @@ class DownloadOrchestrator:
                     url = cleaned
 
             if self.urlh.is_youtube_playlist(url):
-                return self.download_playlist(url, base_download_dir, options)
+                return self.download_playlist(url, base_download_dir, options, results_report_path=results_report_path)
 
             cleaned_url = self.urlh.clean_video_link(url) or url
-            results.append(self.download_single(url=cleaned_url, options=options, download_dir=base_download_dir))
+            results.append(
+                self.download_single(
+                    url=cleaned_url,
+                    options=options,
+                    download_dir=base_download_dir,
+                    results_report_path=results_report_path,
+                )
+            )
             return results
 
         except Exception as e:

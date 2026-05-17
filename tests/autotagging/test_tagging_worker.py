@@ -1,3 +1,4 @@
+import csv
 import json
 import sys
 import tempfile
@@ -13,8 +14,9 @@ if str(SOURCE_ROOT) not in sys.path:
 from autotagging.core.candidate_resolver import TagCandidate
 from autotagging.core.tag_writer import TagWriteResult
 from autotagging.runtime.package_builder import TaggingPackageBuilder, TaggingQueueStore
+from autotagging.runtime.results_report import TaggingResultsReport
 from autotagging.runtime.worker import TaggingWorker
-from utility.utils import DownloadOptions
+from utility.utils import DownloadOptions, DownloadResult
 
 
 class _DummyVideo:
@@ -33,6 +35,71 @@ class _DummyVideo:
 
 
 class TestTaggingWorker(unittest.TestCase):
+    def test_worker_updates_existing_results_report_row_in_place(self):
+        builder = TaggingPackageBuilder()
+        options = DownloadOptions(autotag=True, save_results=True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            final_output = Path(tmpdir) / "Tangled Up.m4a"
+            final_output.write_text("audio", encoding="utf-8")
+
+            report_path = TaggingResultsReport().build_report_path(
+                tmpdir,
+                playlist_name="Electro Swing",
+                timestamp_label="2026-05-18_12-00-00",
+                batch_mode=False,
+            )
+            TaggingResultsReport().upsert_download_results(
+                [
+                    DownloadResult(
+                        success=True,
+                        errors=[],
+                        video_title="Tangled Up",
+                        video_url=_DummyVideo.watch_url,
+                        output_path=final_output,
+                        source_author=_DummyVideo.author,
+                        playlist_title="Electro Swing",
+                    )
+                ],
+                report_path=report_path,
+            )
+
+            package = builder.build_package(
+                final_output_path=final_output,
+                download_directory=Path(tmpdir),
+                video_obj=_DummyVideo(),
+                options=options,
+                requested_actions=["autotag"],
+                playlist_title="Electro Swing",
+                result_report_path=report_path,
+            )
+
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            pending_path = store.write_pending_package(package)
+
+            tag_writer = Mock()
+            tag_writer.write_candidate.return_value = TagWriteResult(True, "ok", ["artist", "title", "album"])
+
+            worker = TaggingWorker(
+                queue_store=store,
+                tag_writer=tag_writer,
+                poll_interval=0.01,
+                idle_timeout=0.05,
+            )
+            worker.process_package_file(pending_path)
+
+            with open(report_path, "r", newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["job_id"], package.job_id)
+            self.assertEqual(rows[0]["download_status"], "downloaded")
+            self.assertEqual(rows[0]["tag_state"], "written")
+            self.assertEqual(rows[0]["candidate_source"], "title_author_match")
+            self.assertEqual(rows[0]["candidate_write_allowed"], "true")
+            self.assertEqual(rows[0]["resolved_artist"], "Caro Emerald")
+            self.assertEqual(rows[0]["resolved_title"], "Tangled Up Odd Chap Bootleg")
+
     def test_worker_writes_tags_for_high_confidence_autotag_package(self):
         builder = TaggingPackageBuilder()
         options = DownloadOptions(autotag=True)
@@ -237,6 +304,78 @@ class TestTaggingWorker(unittest.TestCase):
             self.assertEqual(worker_started["queue_snapshot"]["counts"]["pending"], 1)
             self.assertEqual(worker_idle_exit["processed_count"], 1)
             self.assertEqual(worker_idle_exit["queue_snapshot"]["counts"]["done"], 1)
+
+    def test_worker_uses_playlist_artist_memory_for_same_artist_playlist(self):
+        builder = TaggingPackageBuilder()
+        options = DownloadOptions(autotag=True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            store = TaggingQueueStore(base_dir=queue_dir)
+            queue_paths = store.ensure_queue_dirs()
+            tag_writer = Mock()
+            tag_writer.write_candidate.return_value = TagWriteResult(True, "ok", ["artist", "title"])
+
+            dominant_payload = {
+                "job_id": "done-1",
+                "session_id": "session-1",
+                "sequence_no": 1,
+                "state": "written",
+                "created_at": "2026-05-17T19:33:40+00:00",
+                "playlist_title": "The Tech Thieves",
+                "resolved_tags": {
+                    "artist": "The Tech Thieves",
+                    "title": "Be Free",
+                    "album": "",
+                    "track": "",
+                    "source": "musicbrainz_confirmed",
+                    "confidence": 0.89,
+                    "write_allowed": True,
+                    "notes": [],
+                },
+            }
+            for idx in range(4):
+                payload = dict(dominant_payload)
+                payload["job_id"] = f"done-{idx+1}"
+                payload["sequence_no"] = idx + 1
+                store.write_package(
+                    queue_paths["done"] / f"done-{idx+1}.json",
+                    payload,
+                )
+
+            final_output = Path(tmpdir) / "Before You Go.m4a"
+            final_output.write_text("audio", encoding="utf-8")
+            video = _DummyVideo()
+            video.title = "The Tech Thieves - Before You Go"
+            video.author = "The Tech Thieves"
+            video.keywords = ["The Tech Thieves", "Before You Go"]
+            video.description = ""
+
+            package = builder.build_package(
+                final_output_path=final_output,
+                download_directory=Path(tmpdir),
+                video_obj=video,
+                options=options,
+                requested_actions=["autotag"],
+                session_id="session-1",
+                playlist_title="The Tech Thieves",
+            )
+            pending_path = store.write_pending_package(package)
+
+            worker = TaggingWorker(
+                queue_store=store,
+                tag_writer=tag_writer,
+                poll_interval=0.01,
+                idle_timeout=0.05,
+            )
+            done_path = worker.process_package_file(pending_path)
+
+            payload = json.loads(done_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["state"], "written")
+            self.assertEqual(payload["resolved_tags"]["artist"], "The Tech Thieves")
+            self.assertEqual(payload["resolved_tags"]["title"], "Before You Go")
+            self.assertIn(payload["resolved_tags"]["source"], {"title_author_match", "playlist_artist_memory"})
+            tag_writer.write_candidate.assert_called_once()
 
 
 if __name__ == "__main__":

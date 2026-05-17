@@ -282,6 +282,226 @@ class TestCandidateResolver(unittest.TestCase):
         self.assertEqual(candidate.source, "contextual_dash_split")
         self.assertFalse(candidate.write_allowed)
 
+    def test_reverse_hint_does_not_override_author_matched_title(self):
+        resolver = CandidateResolver()
+        payload = {
+            "playlist_title": "The Tech Thieves",
+            "source": {
+                "author": "The Tech Thieves",
+                "title": "The Tech Thieves - Before You Go",
+                "keywords": [
+                    "The Tech Thieves",
+                    "Before You Go",
+                ],
+                "description": "",
+            },
+            "normalization": {
+                "title_analysis": {
+                    "guessed_artist": "The Tech Thieves",
+                    "guessed_title": "Before You Go",
+                    "split_confidence": "author_matched_left",
+                    "lookup_title": "The Tech Thieves - Before You Go",
+                }
+            },
+        }
+
+        candidate = resolver.resolve(payload)
+
+        self.assertEqual(candidate.artist, "The Tech Thieves")
+        self.assertEqual(candidate.title, "Before You Go")
+        self.assertEqual(candidate.source, "title_author_match")
+        self.assertTrue(candidate.write_allowed)
+
+    def test_generic_uploaded_by_description_is_not_treated_as_song_metadata(self):
+        resolver = CandidateResolver()
+        payload = {
+            "playlist_title": "Best Fallout Songs",
+            "source": {
+                "author": "Dagre",
+                "title": "Fallout New Vegas Radio - In The Shadow Of The Valley",
+                "keywords": [
+                    "Fallout",
+                    "New",
+                    "Vegas",
+                    "OST",
+                ],
+                "description": (
+                    'Songs from the game "Fallout New Vegas"\\n'
+                    "Uploaded by a fan due of the incredible lack of these awesome songs."
+                ),
+            },
+            "normalization": {
+                "title_analysis": {
+                    "guessed_artist": "Fallout New Vegas Radio",
+                    "guessed_title": "In The Shadow Of The Valley",
+                    "split_confidence": "dash_split",
+                    "lookup_title": "Fallout New Vegas Radio - In The Shadow Of The Valley",
+                }
+            },
+        }
+
+        candidate = resolver.resolve(payload)
+
+        self.assertEqual(candidate.source, "contextual_dash_split")
+        self.assertFalse(candidate.write_allowed)
+
+    def test_accented_uploader_alias_still_confirms_collaboration_artist(self):
+        resolver = CandidateResolver()
+        payload = {
+            "playlist_title": "Today's Hits",
+            "source": {
+                "author": "ROSÉ",
+                "title": "ROSÉ & Bruno Mars - APT. (Official Music Video)",
+                "keywords": [
+                    "Rosé",
+                    "bruno mars",
+                    "APT.",
+                    "apt",
+                ],
+                "description": "ROSÉ & Bruno Mars - APT.",
+            },
+            "normalization": {
+                "title_analysis": {
+                    "guessed_artist": "ROSE & Bruno Mars",
+                    "guessed_title": "APT.",
+                    "split_confidence": "dash_split",
+                    "lookup_title": "ROSE & Bruno Mars - APT.",
+                }
+            },
+        }
+
+        candidate = resolver.resolve(payload)
+
+        self.assertEqual(candidate.artist, "ROSE & Bruno Mars")
+        self.assertEqual(candidate.title, "APT.")
+        self.assertEqual(candidate.source, "title_uploader_match")
+        self.assertTrue(candidate.write_allowed)
+
+    def test_title_by_pattern_does_not_hijack_song_titles_with_by_inside_name(self):
+        resolver = CandidateResolver()
+        payload = {
+            "playlist_title": "House Music 2025",
+            "source": {
+                "author": "Robin Schulz",
+                "title": "Robin Schulz & Topic ft. Oaks - One By One (Official Music Video)",
+                "keywords": [
+                    "Robin Schulz",
+                    "Topic",
+                    "Oaks",
+                    "One By One",
+                ],
+                "description": "Listen to One By One now.",
+            },
+            "normalization": {
+                "title_analysis": {
+                    "guessed_artist": "Robin Schulz & Topic ft. Oaks",
+                    "guessed_title": "One By One",
+                    "split_confidence": "dash_split",
+                    "lookup_title": "Robin Schulz & Topic ft. Oaks - One By One",
+                }
+            },
+        }
+
+        candidate = resolver.resolve(payload)
+
+        self.assertEqual(candidate.artist, "Robin Schulz & Topic ft. Oaks")
+        self.assertEqual(candidate.title, "One By One")
+        self.assertEqual(candidate.source, "title_uploader_match")
+        self.assertTrue(candidate.write_allowed)
+
+    def test_prod_by_suffix_is_not_misread_as_title_by_artist(self):
+        resolver = CandidateResolver()
+        payload = {
+            "playlist_title": "Top 100 Germany",
+            "source": {
+                "author": "385idéal",
+                "title": "Amo x Aymen - Love all night (prod. by SVRN BEATS) [official video]",
+                "keywords": [
+                    "Amo",
+                    "Aymen",
+                    "Love all night",
+                ],
+                "description": 'Das offizielle Video zur Single "Love all night" von Amo x Aymen.',
+            },
+            "normalization": {
+                "title_analysis": {
+                    "guessed_artist": "Amo x Aymen",
+                    "guessed_title": "Love all night prod. by SVRN BEATS",
+                    "split_confidence": "dash_split",
+                    "lookup_title": "Amo x Aymen - Love all night prod. by SVRN BEATS",
+                }
+            },
+        }
+
+        candidate = resolver.resolve(payload)
+
+        self.assertNotEqual(candidate.source, "title_by_pattern")
+        self.assertEqual(candidate.artist, "Amo x Aymen")
+        self.assertIn(candidate.title, {"Love all night", "Love all night prod. by SVRN BEATS"})
+
+    def test_keyword_supported_label_channel_split_can_be_auto_writable(self):
+        resolver = CandidateResolver()
+        payload = {
+            "playlist_title": "House Music 2025",
+            "source": {
+                "author": "Spinnin' Records",
+                "title": "VINAI - Rise Up (feat. Vamero) [Official Lyric Video]",
+                "keywords": [
+                    "vinai",
+                    "rise up",
+                    "vamero",
+                    "vinai rise up feat vamero",
+                ],
+                "description": "VINAI - Rise Up (feat. Vamero) is OUT NOW!",
+            },
+            "normalization": {
+                "title_analysis": {
+                    "guessed_artist": "VINAI",
+                    "guessed_title": "Rise Up feat. Vamero",
+                    "split_confidence": "dash_split",
+                    "lookup_title": "VINAI - Rise Up feat. Vamero",
+                }
+            },
+        }
+
+        candidate = resolver.resolve(payload)
+
+        self.assertEqual(candidate.artist, "VINAI")
+        self.assertEqual(candidate.title, "Rise Up feat. Vamero")
+        self.assertEqual(candidate.source, "title_keyword_match")
+        self.assertTrue(candidate.write_allowed)
+
+    def test_music_video_by_performing_description_is_trusted(self):
+        resolver = CandidateResolver()
+        payload = {
+            "playlist_title": "Today's Hits",
+            "source": {
+                "author": "PostMaloneVEVO",
+                "title": "Post Malone - I Had Some Help (feat. Morgan Wallen) (Official Video)",
+                "keywords": [
+                    "Post Malone",
+                    "Morgan Wallen",
+                    "Country",
+                ],
+                "description": "Music video by Post Malone performing I Had Some Help.",
+            },
+            "normalization": {
+                "title_analysis": {
+                    "guessed_artist": "Post Malone",
+                    "guessed_title": "I Had Some Help feat. Morgan Wallen",
+                    "split_confidence": "dash_split",
+                    "lookup_title": "Post Malone - I Had Some Help feat. Morgan Wallen",
+                }
+            },
+        }
+
+        candidate = resolver.resolve(payload)
+
+        self.assertEqual(candidate.artist, "Post Malone")
+        self.assertEqual(candidate.title, "I Had Some Help")
+        self.assertEqual(candidate.source, "description_structured")
+        self.assertTrue(candidate.write_allowed)
+
 
 if __name__ == "__main__":
     unittest.main()

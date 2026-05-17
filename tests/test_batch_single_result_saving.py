@@ -51,6 +51,18 @@ from utility.utils import DownloadOptions, DownloadResult
 
 
 class TestBatchSingleResultSaving(unittest.TestCase):
+    def test_autotag_forces_save_results(self):
+        cli = CommandCLI()
+        options = DownloadOptions(
+            default_download_directory="/tmp/ripper-test",
+            autotag=True,
+            save_results=False,
+        )
+
+        cli._normalize_options(options)
+
+        self.assertTrue(options.save_results)
+
     def test_non_playlist_batch_url_does_not_fetch_playlist_title(self):
         cli = CommandCLI()
         cli.ytd.download = Mock(
@@ -86,6 +98,8 @@ class TestBatchSingleResultSaving(unittest.TestCase):
         _, kwargs = cli.os.save_download_results.call_args
         self.assertIsNone(kwargs["playlist_name"])
         self.assertEqual(kwargs["timestamp"], start_time)
+        self.assertTrue(kwargs["batch_mode"])
+        self.assertIsNotNone(kwargs["report_path"])
 
     def test_direct_playlist_url_saves_results_without_batch_timestamp(self):
         cli = CommandCLI()
@@ -120,6 +134,8 @@ class TestBatchSingleResultSaving(unittest.TestCase):
         _, kwargs = cli.os.save_download_results.call_args
         self.assertEqual(kwargs["playlist_name"], "Playlist Title")
         self.assertIsNone(kwargs["timestamp"])
+        self.assertFalse(kwargs["batch_mode"])
+        self.assertIsNotNone(kwargs["report_path"])
 
     def test_failed_results_return_nonzero_without_save_results(self):
         cli = CommandCLI()

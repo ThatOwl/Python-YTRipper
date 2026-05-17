@@ -6,22 +6,17 @@
 - how to minimize exception handling 
 
 ## big
+- file parser for csv should be able to have results-csv as input (including playlist name)
 - TRAILING URL "-" BREAKES DOWNLOADER !
 - add cli flaggs that make "--<smth>" behave like user expects them (without 'true' or 'false' requirement) 
 - ??? pivot to secondary wrapper arounf yt-dlp
 - adapt the install bash script to a setup tool asking user for locations (checking if exists and or setting up) -> aliases -> notify what they can change
-- parallelize ffmpeg -> might need restructure => first download then spawn 6(?)-ffmpeg-children
 - tell ffmpeg to use GPU for videos ?
 - X refactor "download_dir" into "options" => DO NOT ... as file-dwnld may create multiple playlists => which have own dwnld-dirs !
-- ! Add behaviour for autotag
-- ! Add behaviour for datasaver (use video_obj.filesize or .length) 
 (in playlists dwdnld skip x > 15min->add url to output.txt & in single more complex)
 - DONE Add load_preset behaviour -> laod then overwrite with passed args -> only allow saving of custom!
-- !!! ONLY DEPEND ON INTERFACES ! => impl. interfaces
-- !! fix path handling and renaming o file ... including .mp4/mp3 bullshit
 - ! add unittesting
 - op. adapt stream_converter to accept SOME file-formats
-- !! validate user_saettings file for fields and content type
 
 - handle exception thrown resulting from internet connection timeout (cleanly)
 - add history CONSIDER: [argparse_history](https://pypi.org/project/argparse-history/) or in file with max size of 20 entries -> use arrow key for navigation during interaction

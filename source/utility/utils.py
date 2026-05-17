@@ -143,6 +143,13 @@ class DownloadResult:
     video_url: str = ""
     # Optional future field. Keeping it optional avoids forcing every caller to set it now.
     output_path: Path | None = None
+    source_author: str = ""
+    playlist_title: str = ""
+    tagging_job_id: str = ""
+    tagging_session_id: str = ""
+    tagging_sequence_no: int = 0
+    tagging_state: str = ""
+    tagging_reason: str = ""
 
     def __str__(self) -> str:
         status = "✓" if self.success else "✗"

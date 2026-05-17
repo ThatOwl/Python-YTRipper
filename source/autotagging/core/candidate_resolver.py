@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass
+import unicodedata
 from typing import Any
 
 from .evidence_extractor import SourceEvidence, SourceEvidenceExtractor
@@ -68,10 +69,6 @@ class CandidateResolver:
         if description_candidate is not None:
             return description_candidate
 
-        title_hint_candidate = self._from_title_hints(evidence=evidence)
-        if title_hint_candidate is not None:
-            return title_hint_candidate
-
         enriched_title_candidate = self._from_title_and_evidence(
             title_analysis=title_analysis,
             source=source,
@@ -79,6 +76,13 @@ class CandidateResolver:
         )
         if enriched_title_candidate is not None:
             return enriched_title_candidate
+
+        title_hint_candidate = self._from_title_hints(
+            title_analysis=title_analysis,
+            evidence=evidence,
+        )
+        if title_hint_candidate is not None:
+            return title_hint_candidate
 
         return self._from_title_analysis(title_analysis, source, evidence)
 
@@ -118,6 +122,11 @@ class CandidateResolver:
         if not description_title:
             return None
 
+        if evidence.description_kind == "description_song_by_artist" and not (
+            evidence.description_artist_supported and evidence.description_title_supported
+        ):
+            return None
+
         resolved_artist = description_artist or evidence.canonical_author or guessed_artist
         if not resolved_artist:
             return None
@@ -135,9 +144,22 @@ class CandidateResolver:
             notes=notes,
         )
 
-    def _from_title_hints(self, *, evidence: SourceEvidence) -> TagCandidate | None:
+    def _from_title_hints(
+        self,
+        *,
+        title_analysis: dict[str, Any],
+        evidence: SourceEvidence,
+    ) -> TagCandidate | None:
+        split_confidence = (title_analysis.get("split_confidence") or "").strip()
+        guessed_artist = (title_analysis.get("guessed_artist") or "").strip()
+
         for hint in evidence.title_hints:
             if hint.artist_is_contextual:
+                continue
+            if hint.source == "reverse_dash_artist_hint" and (
+                split_confidence.startswith("author_matched")
+                or self._artist_mentions_canonical_author(guessed_artist, evidence.canonical_author)
+            ):
                 continue
             if hint.artist_supported and hint.title_supported and hint.source not in {
                 "reverse_dash_artist_hint",
@@ -155,6 +177,11 @@ class CandidateResolver:
 
         for hint in evidence.title_hints:
             if hint.artist_is_contextual:
+                continue
+            if hint.source == "reverse_dash_artist_hint" and (
+                split_confidence.startswith("author_matched")
+                or self._artist_mentions_canonical_author(guessed_artist, evidence.canonical_author)
+            ):
                 continue
             return TagCandidate(
                 artist=hint.artist,
@@ -191,11 +218,15 @@ class CandidateResolver:
                     evidence.keyword_support_artist
                     and self._artist_mentions_canonical_author(guessed_artist, evidence.canonical_author)
                 )
+                or self._artist_mentions_canonical_author(guessed_artist, evidence.canonical_author)
                 )
+                and self._title_looks_clean(guessed_title)
             ):
                 notes = ["artist/title split supported by canonical uploader evidence"]
                 if evidence.keyword_support_title:
                     notes.append("title also supported by keywords")
+                if self._artist_mentions_canonical_author(guessed_artist, evidence.canonical_author):
+                    notes.append("one collaboration artist matches the uploader")
                 return TagCandidate(
                     artist=guessed_artist,
                     title=guessed_title,
@@ -205,6 +236,25 @@ class CandidateResolver:
                     write_allowed=True,
                     notes=notes,
                 )
+
+        if (
+            guessed_artist
+            and guessed_title
+            and not evidence.guessed_artist_is_contextual
+            and not split_confidence.startswith("author_matched")
+            and evidence.keyword_support_artist
+            and evidence.keyword_support_title
+            and self._title_looks_clean(guessed_title)
+        ):
+            return TagCandidate(
+                artist=guessed_artist,
+                title=guessed_title,
+                album=evidence.description_album or "",
+                source="title_keyword_match",
+                confidence=0.88,
+                write_allowed=True,
+                notes=["artist/title split supported by source keywords"],
+            )
 
         if lookup_title and evidence.canonical_author and evidence.keyword_support_title:
             if evidence.author_is_topic or evidence.description_album:
@@ -326,7 +376,8 @@ class CandidateResolver:
 
     @staticmethod
     def _normalise_compare_text(text: str) -> str:
-        cleaned = (text or "").lower().strip()
+        cleaned = unicodedata.normalize("NFKD", text or "")
+        cleaned = "".join(ch for ch in cleaned if not unicodedata.combining(ch)).lower().strip()
         cleaned = cleaned.replace("&", " and ")
         cleaned = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in cleaned)
         cleaned = " ".join(cleaned.split())
@@ -345,3 +396,22 @@ class CandidateResolver:
         if artist_key == author_key:
             return True
         return f" {author_key} " in f" {artist_key} "
+
+    @classmethod
+    def _title_looks_clean(cls, title: str) -> bool:
+        cleaned = cls._normalise_compare_text(title)
+        if not cleaned:
+            return False
+        dirty_terms = (
+            "official video",
+            "official music video",
+            "official audio",
+            "lyric video",
+            "lyrics",
+            "visualizer",
+            "performance video",
+            "official song clip",
+            "out now",
+            "letra",
+        )
+        return not any(term in cleaned for term in dirty_terms)

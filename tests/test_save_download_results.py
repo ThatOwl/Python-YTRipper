@@ -30,17 +30,22 @@ class TestSaveDownloadResults(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            OSInteractions.save_download_results([first_result], tmpdir, timestamp=timestamp)
-            OSInteractions.save_download_results([second_result], tmpdir, timestamp=timestamp)
+            OSInteractions.save_download_results([first_result], tmpdir, timestamp=timestamp, batch_mode=True)
+            OSInteractions.save_download_results([second_result], tmpdir, timestamp=timestamp, batch_mode=True)
 
-            output_path = Path(tmpdir) / "2026-05-16_12-00-00_batch_single_results.csv"
+            output_path = Path(tmpdir) / "2026-05-16_12-00-00_batch_results.csv"
             self.assertTrue(output_path.exists())
 
             lines = output_path.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(lines[0], "video_title,video_url,success,errors")
+            self.assertEqual(
+                lines[0],
+                "job_id,video_url,playlist_title,source_author,source_title,final_output_path,download_status,download_errors,tag_state,resolved_artist,resolved_title,resolved_album,candidate_source,candidate_confidence,candidate_write_allowed,enrichment_source,tag_reason,candidate_notes",
+            )
             self.assertEqual(len(lines), 3)
             self.assertIn("First Video", lines[1])
             self.assertIn("Second Video", lines[2])
+            self.assertIn("downloaded", lines[1])
+            self.assertIn("download_failed", lines[2])
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from dataclasses import asdict, dataclass, field
 
 
@@ -18,11 +19,19 @@ JUNK_PATTERNS = [
     r"\(debut.*?\)",
     r"\(Audio.*?\)",
     r"\(Video.*?\)",
+    r"\(Visualizer.*?\)",
+    r"\(Performance.*?\)",
+    r"\(Official Song Clip.*?\)",
+    r"\(prod\.\s*by.*?\)",
     r"\(.*?Version.*?\)",
     r"\(.*?Remix.*?\)",
     r"\(.*?Music\)",
     r"\[.*?\]",
     r"\blyrics?\b",
+    r"\bvisualizer\b",
+    r"\bperformance\s+video\b",
+    r"\bofficial\s+song\s+clip\b",
+    r"\bout\s+now\b",
     r"\.wmv$",
     r"\bHQ\b",
 ]
@@ -38,6 +47,11 @@ SEARCH_TRIM_PATTERNS = [
     r"\s+Official\s+(?:Music\s+)?(?:Video|Audio|Lyric\s+Video|Visualizer).*$",
     r"\s+Video\s+\w.*$",
     r"\s+Video\b.*$",
+    r"\s+Visualizer\b.*$",
+    r"\s+Performance\s+Video\b.*$",
+    r"\s+Official\s+Song\s+Clip\b.*$",
+    r"\s+OUT\s+NOW\b.*$",
+    r"\s+prod\.\s+by\s+.*$",
     r"\s+Remaster(?:ed)?\b.*$",
     r"\s+(?:4K|HD|HQ)\b.*$",
     r"\s+\d{3,4}p\b.*$",
@@ -88,7 +102,7 @@ class TitleNormalizer:
         )
 
     def clean_string(self, text: str) -> str:
-        cleaned = text or ""
+        cleaned = self._strip_accents(text or "")
         for pattern in JUNK_PATTERNS:
             cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"\s*:\s+", " - ", cleaned)
@@ -172,17 +186,22 @@ class TitleNormalizer:
 
     @staticmethod
     def _normalise_compare_text(text: str) -> str:
-        cleaned = (text or "").lower().strip()
+        cleaned = TitleNormalizer._strip_accents(text or "").lower().strip()
         cleaned = cleaned.replace("&", " and ")
         cleaned = re.sub(r"[^a-z0-9\s]", " ", cleaned)
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
         return cleaned
 
     @staticmethod
+    def _strip_accents(text: str) -> str:
+        normalized = unicodedata.normalize("NFKD", text or "")
+        return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+    @staticmethod
     def _canonicalize_author(author: str) -> str:
         cleaned = (author or "").strip()
         cleaned = re.sub(r"\s*-\s*topic\s*$", "", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"\s+official\s*$", "", cleaned, flags=re.IGNORECASE)
-        cleaned = re.sub(r"\s+vevo\s*$", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*vevo\s*$", "", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"\s+", " ", cleaned).strip(" -:")
         return cleaned

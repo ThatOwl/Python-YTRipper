@@ -2,10 +2,10 @@ import os
 import re
 import logging
 from pathlib import Path
-import csv
 from typing import Dict, List, Tuple
 from datetime import datetime
 
+from autotagging.runtime.results_report import TaggingResultsReport
 from utility.logger import get_logger
 import utility.preferences as preferences
 from infrastructure.url_handler import URLHandler
@@ -223,7 +223,14 @@ class OSInteractions:
     
     
     @staticmethod
-    def save_download_results(results: List[DownloadResult], download_dir: str | Path, playlist_name: str | None = None, timestamp: datetime | None = None) -> None:
+    def save_download_results(
+        results: List[DownloadResult],
+        download_dir: str | Path,
+        playlist_name: str | None = None,
+        timestamp: datetime | None = None,
+        report_path: str | Path | None = None,
+        batch_mode: bool = False,
+    ) -> None:
         """
         Save download results to a CSV file.
         Either creates a new file or appends to an existing one based on the presence of the playlist name in the filename. 
@@ -236,50 +243,17 @@ class OSInteractions:
             timestamp: Optional datetime to include in the filename (useful for single videos to avoid overwriting).
         """
         target_dir = Path(download_dir).expanduser()
-        target_dir.mkdir(parents=True, exist_ok=True) #FIXME this should not be needed 
-
-        #TODO batch mode will always pass a timestamp => playlists in batch-mode should not be included in the batch-results-file
+        target_dir.mkdir(parents=True, exist_ok=True)
+        reporter = TaggingResultsReport()
         try:
-            if playlist_name is not None:
-                safe_playlist_name = sanitize_filename(playlist_name).strip() or "batch_single"
-                output_path = target_dir / f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{safe_playlist_name}_results.csv"
-                
-                with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
-                    fieldnames = ['video_title', 'video_url', 'success', 'errors']
-                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-                    writer.writeheader()
-                    for result in results:
-                        writer.writerow(
-                            {
-                                'video_title': result.video_title,
-                                'video_url': result.video_url,
-                                'success': result.success,
-                                'errors': "; ".join(result.errors),
-                            }
-                        )
-                logger.info(f"Results saved to {output_path}")
-            
-            elif timestamp is not None: # single video download with timestamp to avoid overwriting results from multiple single video downloads in the same session, since there is no playlist name to use as an identifier for the results file like in actual playlist downloads
-                output_path = target_dir / f"{timestamp.strftime('%Y-%m-%d_%H-%M-%S')}_batch_single_results.csv"
-
-                write_header = not output_path.exists() or output_path.stat().st_size == 0
-                with open(output_path, 'a', newline='', encoding='utf-8') as csvfile:
-                    fieldnames = ['video_title', 'video_url', 'success', 'errors']
-                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                    if write_header:
-                        writer.writeheader()
-                    result = results[0] # already checked in caller that results is not empty before calling this method, so this should be safe
-                    writer.writerow(
-                        {
-                            'video_title': result.video_title,
-                            'video_url': result.video_url,
-                            'success': result.success,
-                            'errors': "; ".join(result.errors),
-                        }
-                    )
-                logger.info(f"Appended results to existing file: {output_path}")  
-                
+            output_path = Path(report_path) if report_path is not None else reporter.build_report_path(
+                target_dir,
+                playlist_name=playlist_name,
+                timestamp_label=(timestamp or datetime.now()).strftime("%Y-%m-%d_%H-%M-%S"),
+                batch_mode=batch_mode,
+            )
+            reporter.upsert_download_results(results, report_path=output_path)
+            logger.info(f"Results saved to {output_path}")
         except Exception as e:
             logger.error(f"Failed to save results to {output_path}: {e}")
             logger.debug("Unexpected error occurred while saving results to %s", output_path, exc_info=True)
