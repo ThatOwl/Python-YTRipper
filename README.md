@@ -69,7 +69,18 @@ python3 -m pip install -r requirements.txt
 
 ### Auto-tagging pipeline
 
-The main downloader exposes an `--autotag` flag in config/CLI, but actual tagging is not implemented in the main application yet.
+The main downloader now supports early-stage tagging package preparation:
+
+- `-at, --autotag true`
+  - downloads normally
+  - prepares tagging queue packages
+  - starts a lightweight background worker that currently performs shared title normalization asynchronously
+- `--prepare-tagging true`
+  - downloads normally
+  - prepares tagging queue packages only
+  - does not start worker-based processing
+
+This is the first architectural slice toward fuller embedded autotagging. The richer standalone tagging tool and MusicBrainz-heavy processing remain separate work in progress.
 
 For the separate metadata parsing/enrichment/tagging workflow, see:
 
@@ -135,7 +146,8 @@ Important preferences:
 - `preferred_abr`
 - `no_dir_date`
 - `save_results`
-- `autotag` (currently config-only; main app behavior not implemented)
+- `autotag`
+- `prepare_tagging`
 
 ### Presets
 
@@ -174,7 +186,8 @@ Other useful config-related flags:
 - `-sp, --show_preset` print effective options before running
 - `-sr, --save-results` save CSV download results in batch mode
 - `-vl, --visible-loglevel` set console log verbosity
-- `-at, --autotag` reserved for future main-app tagging integration
+- `-at, --autotag` prepare tagging packages and start the background tagging worker
+- `--prepare-tagging` prepare tagging packages without starting worker processing
 
 ### Current behavior notes
 
@@ -183,6 +196,7 @@ Other useful config-related flags:
 - `save_results` writes result CSVs for batch/file-driven runs and for direct playlist URLs.
 - Single standalone video URLs still do not write result CSVs. (as result easily be managed by user)
 - Batch result saving is still a young feature and may keep evolving.
+- `autotag` currently performs asynchronous package preparation plus background title normalization. It does not yet replace the richer standalone autotagging workflow.
 - `argcomplete` support is optional and not a primary workflow.
 
 ---

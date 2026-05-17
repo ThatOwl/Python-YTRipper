@@ -156,8 +156,28 @@ class TaggingQueueStore:
         created_label = package.created_at.replace(":", "").replace("+00:00", "Z")
         output_path = directories["pending"] / f"{created_label}_{safe_stem}_{package.job_id[:8]}.json"
 
-        with open(output_path, "w", encoding="utf-8") as handle:
-            json.dump(package.to_dict(), handle, indent=2, ensure_ascii=False)
-            handle.write("\n")
+        self.write_package(output_path, package.to_dict())
 
         return output_path
+
+    def list_state_files(self, state_name: str) -> list[Path]:
+        directory = self.ensure_queue_dirs()[state_name]
+        return sorted(directory.glob("*.json"))
+
+    def move_package(self, package_path: Path | str, state_name: str) -> Path:
+        target_directory = self.ensure_queue_dirs()[state_name]
+        source_path = Path(package_path)
+        target_path = target_directory / source_path.name
+        source_path.replace(target_path)
+        return target_path
+
+    @staticmethod
+    def read_package(package_path: Path | str) -> dict[str, Any]:
+        with open(package_path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    @staticmethod
+    def write_package(package_path: Path | str, payload: dict[str, Any]) -> None:
+        with open(package_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")

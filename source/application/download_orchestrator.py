@@ -53,7 +53,7 @@ class DownloadOrchestrator:
         self.stream_selector = stream_selector or StreamSelector()
         self.stream_download = stream_download or StreamDownloadService()
         self.tagging_package_builder = tagging_package_builder or TaggingPackageBuilder()
-        self.tagging_queue_store = tagging_queue_store or TaggingQueueStore()
+        self.tagging_queue_store = tagging_queue_store or TaggingQueueStore() # base-dir location should be managed by ? (user facing relevance?)
 
     def download_playlist(
         self,

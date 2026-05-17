@@ -2,6 +2,8 @@
 import argparse
 import datetime
 import shlex
+import subprocess
+import sys
 from pathlib import Path
 from typing import List
 
@@ -46,6 +48,7 @@ class CommandCLI(CLIBase):
         self.preferences = self.os.read_preferences()
         self.options = DownloadOptions.from_preferences(self.preferences)
         self.loaded_preset_path: Path | None = None
+        self._tagging_worker_process: subprocess.Popen | None = None
         
         # Normalize persisted config once on startup and apply runtime-only effects
         # such as visible log level to already-created visible handlers.
@@ -608,6 +611,7 @@ class CommandCLI(CLIBase):
 
     def _download_single_url(self, url: str, options: DownloadOptions, start_time: datetime.datetime | None = None) -> int:
         try:
+            self._ensure_tagging_worker(options)
             results: List[DownloadResult] = self.ytd.download(url=url, options=options)
             if not results:
                 logger.warning(f"No download results produced for {url}")
@@ -646,6 +650,32 @@ class CommandCLI(CLIBase):
         except Exception as exc:
             logger.error(f"Download failed for {url}: {exc}")
             return 1
+
+    def _ensure_tagging_worker(self, options: DownloadOptions) -> None:
+        if not options.autotag:
+            return
+
+        if self._tagging_worker_process is not None and self._tagging_worker_process.poll() is None:
+            return
+
+        worker_script = preferences.PROJECT_ROOT / "source" / "run_tagging_worker.py"
+        command = [
+            sys.executable,
+            str(worker_script),
+            "--idle-timeout",
+            "30",
+            "--poll-interval",
+            "1",
+        ]
+
+        self._tagging_worker_process = subprocess.Popen(
+            command,
+            cwd=str(preferences.PROJECT_ROOT),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        logger.info("Spawned background tagging worker: pid=%s", self._tagging_worker_process.pid)
 
     def _parse_file_params(self, file_params: str) -> argparse.Namespace | None:
         if not file_params:
