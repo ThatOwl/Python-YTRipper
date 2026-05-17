@@ -339,6 +339,89 @@ class TaggingQueueStore:
             "packages": [self.summarize_package(payload) for payload in sorted_packages],
         }
 
+    def requeue_failed_packages(
+        self,
+        *,
+        session_id: str | None = None,
+        job_id: str | None = None,
+        dry_run: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Move failed packages back to pending/prepared for manual retry."""
+        return self.requeue_packages(
+            source_state="failed",
+            session_id=session_id,
+            job_id=job_id,
+            dry_run=dry_run,
+        )
+
+    def requeue_packages(
+        self,
+        *,
+        source_state: str,
+        session_id: str | None = None,
+        job_id: str | None = None,
+        dry_run: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Move selected retryable package states back to pending/prepared."""
+        if source_state == "failed":
+            state_dir = "failed"
+            state_filter = None
+        elif source_state in {"skipped", "enriched"}:
+            state_dir = "done"
+            state_filter = source_state
+        else:
+            raise ValueError(f"Unsupported requeue source state: {source_state}")
+
+        results: list[dict[str, Any]] = []
+        for package_path in self.list_state_files(state_dir):
+            payload = self.read_package(package_path)
+            payload_state = str(payload.get("state", "") or "")
+            if state_filter and payload_state != state_filter:
+                continue
+            if session_id and str(payload.get("session_id", "") or "") != session_id:
+                continue
+            if job_id and str(payload.get("job_id", "") or "") != job_id:
+                continue
+
+            result = {
+                "job_id": payload.get("job_id", ""),
+                "session_id": payload.get("session_id", ""),
+                "sequence_no": payload.get("sequence_no", 0),
+                "source_state": payload_state,
+                "target_state": "prepared",
+                "source_queue_path": str(package_path),
+                "target_queue_path": str(self.ensure_queue_dirs()["pending"] / package_path.name),
+                "final_queue_path": "",
+                "final_output_path": payload.get("final_output_path", ""),
+                "final_state": "",
+                "status": "dry_run" if dry_run else "requeued",
+                "worker_processed": False,
+            }
+
+            if dry_run:
+                results.append(result)
+                continue
+
+            payload = self.update_state(payload, "prepared")
+            lifecycle = dict(payload.get("lifecycle", {}) or {})
+            lifecycle["last_manual_requeue_at"] = _utc_now_iso()
+            lifecycle["manual_requeue_count"] = int(lifecycle.get("manual_requeue_count", 0) or 0) + 1
+            payload["lifecycle"] = lifecycle
+
+            requeued_path = self.move_package(package_path, "pending")
+            self.write_package(requeued_path, payload)
+            self.event_logger.emit_package_event(
+                "package_requeued",
+                payload,
+                queue_path=str(requeued_path),
+                requeued_from=payload_state,
+                requeued_from_queue_state=state_dir,
+                requeue_reason="manual_retry",
+            )
+            result["target_queue_path"] = str(requeued_path)
+            results.append(result)
+        return results
+
     def prune_state_files(
         self,
         state_name: str,

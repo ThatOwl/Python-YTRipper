@@ -86,6 +86,7 @@ For the separate metadata parsing/enrichment/tagging workflow, see:
 
 - `scripts/python-autotagger.py`
 - `scripts/README_auto_tagging.md`
+- `README_Autotagger.md`
 
 ### Interactive Loop Mode
 

@@ -151,6 +151,142 @@ class TestTaggingQueueStore(unittest.TestCase):
                 ["job-pending", "job-done"],
             )
 
+    def test_requeue_failed_packages_moves_matching_package_back_to_pending(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            dirs = store.ensure_queue_dirs()
+            ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+            failed_path = dirs["failed"] / "job-1.json"
+            store.write_package(
+                failed_path,
+                {
+                    "job_id": "job-1",
+                    "session_id": "session-a",
+                    "sequence_no": 3,
+                    "state": "failed",
+                    "created_at": ts,
+                    "final_output_path": "/tmp/song-1.m4a",
+                    "lifecycle": {
+                        "failed_at": ts,
+                        "last_transition_at": ts,
+                        "state_history": [{"state": "failed", "at": ts}],
+                    },
+                },
+            )
+
+            results = store.requeue_failed_packages(job_id="job-1")
+
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0]["status"], "requeued")
+            self.assertFalse(failed_path.exists())
+            pending_files = store.list_state_files("pending")
+            self.assertEqual(len(pending_files), 1)
+            payload = json.loads(pending_files[0].read_text(encoding="utf-8"))
+            self.assertEqual(payload["state"], "prepared")
+            self.assertEqual(payload["lifecycle"]["manual_requeue_count"], 1)
+            events = [
+                json.loads(line)
+                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            event_types = [event["event_type"] for event in events]
+            self.assertIn("state_transition", event_types)
+            self.assertIn("package_requeued", event_types)
+
+    def test_requeue_failed_packages_dry_run_leaves_failed_package_in_place(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            dirs = store.ensure_queue_dirs()
+            ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+            failed_path = dirs["failed"] / "job-1.json"
+            store.write_package(
+                failed_path,
+                {
+                    "job_id": "job-1",
+                    "session_id": "session-a",
+                    "sequence_no": 1,
+                    "state": "failed",
+                    "created_at": ts,
+                    "final_output_path": "/tmp/song-1.m4a",
+                    "lifecycle": {
+                        "failed_at": ts,
+                        "last_transition_at": ts,
+                        "state_history": [{"state": "failed", "at": ts}],
+                    },
+                },
+            )
+
+            results = store.requeue_failed_packages(session_id="session-a", dry_run=True)
+
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0]["status"], "dry_run")
+            self.assertTrue(failed_path.exists())
+            self.assertEqual(store.list_state_files("pending"), [])
+            event_log = Path(tmpdir) / "runtime" / "tagging" / "events.jsonl"
+            self.assertFalse(event_log.exists())
+
+    def test_requeue_packages_can_move_skipped_package_from_done_back_to_pending(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            dirs = store.ensure_queue_dirs()
+            ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+            skipped_path = dirs["done"] / "job-skipped.json"
+            written_path = dirs["done"] / "job-written.json"
+            store.write_package(
+                skipped_path,
+                {
+                    "job_id": "job-skipped",
+                    "session_id": "session-a",
+                    "sequence_no": 1,
+                    "state": "skipped",
+                    "created_at": ts,
+                    "final_output_path": "/tmp/skipped.m4a",
+                    "lifecycle": {
+                        "skipped_at": ts,
+                        "last_transition_at": ts,
+                        "state_history": [{"state": "skipped", "at": ts}],
+                    },
+                },
+            )
+            store.write_package(
+                written_path,
+                {
+                    "job_id": "job-written",
+                    "session_id": "session-a",
+                    "sequence_no": 2,
+                    "state": "written",
+                    "created_at": ts,
+                    "final_output_path": "/tmp/written.m4a",
+                    "lifecycle": {
+                        "written_at": ts,
+                        "last_transition_at": ts,
+                        "state_history": [{"state": "written", "at": ts}],
+                    },
+                },
+            )
+
+            results = store.requeue_packages(source_state="skipped", session_id="session-a")
+
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0]["job_id"], "job-skipped")
+            self.assertEqual(results[0]["source_state"], "skipped")
+            self.assertTrue(written_path.exists())
+            self.assertFalse(skipped_path.exists())
+            pending_files = store.list_state_files("pending")
+            self.assertEqual(len(pending_files), 1)
+            payload = json.loads(pending_files[0].read_text(encoding="utf-8"))
+            self.assertEqual(payload["state"], "prepared")
+            self.assertEqual(payload["lifecycle"]["manual_requeue_count"], 1)
+            events = [
+                json.loads(line)
+                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            requeued_event = next(event for event in events if event["event_type"] == "package_requeued")
+            self.assertEqual(requeued_event["requeued_from"], "skipped")
+            self.assertEqual(requeued_event["requeued_from_queue_state"], "done")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -46,3 +46,42 @@ class TaggingEventLogger:
             lifecycle_last_transition_at=lifecycle.get("last_transition_at", ""),
             **extra,
         )
+
+    def read_events(
+        self,
+        *,
+        limit: int | None = None,
+        session_id: str | None = None,
+        job_id: str | None = None,
+        event_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Read recent structured events from the JSONL log with optional filters."""
+        if not self.event_log_path.exists():
+            return []
+
+        matched: list[dict[str, Any]] = []
+        try:
+            with open(self.event_log_path, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if session_id and str(record.get("session_id", "")) != session_id:
+                        continue
+                    if job_id and str(record.get("job_id", "")) != job_id:
+                        continue
+                    if event_type and str(record.get("event_type", "")) != event_type:
+                        continue
+                    matched.append(record)
+        except Exception as exc:
+            logger.warning("Failed to read tagging events from %s: %s", self.event_log_path, exc)
+            return []
+
+        matched.sort(key=lambda record: str(record.get("at", "")), reverse=True)
+        if limit is not None and limit >= 0:
+            return matched[:limit]
+        return matched
