@@ -4,7 +4,9 @@ from typing import Any
 
 from utility.logger import get_logger
 
+from .candidate_resolver import CandidateResolver
 from .package_builder import TaggingQueueStore
+from .tag_writer import TagWriter
 from .title_normalizer import TitleNormalizer
 
 logger = get_logger(__name__, "tagging_worker_debug.log")
@@ -17,11 +19,15 @@ class TaggingWorker:
         self,
         queue_store: TaggingQueueStore | None = None,
         title_normalizer: TitleNormalizer | None = None,
+        candidate_resolver: CandidateResolver | None = None,
+        tag_writer: TagWriter | None = None,
         poll_interval: float = 1.0,
         idle_timeout: float = 30.0,
     ):
         self.queue_store = queue_store or TaggingQueueStore()
         self.title_normalizer = title_normalizer or TitleNormalizer()
+        self.candidate_resolver = candidate_resolver or CandidateResolver()
+        self.tag_writer = tag_writer or TagWriter()
         self.poll_interval = poll_interval
         self.idle_timeout = idle_timeout
 
@@ -59,15 +65,20 @@ class TaggingWorker:
 
         try:
             payload = self._apply_title_normalization(payload)
-            payload["state"] = "done"
             completed_actions = list(payload.get("completed_actions", []))
             if "normalize_title" not in completed_actions:
                 completed_actions.append("normalize_title")
+            payload = self._resolve_candidates(payload)
+            if "resolve_candidates" not in completed_actions:
+                completed_actions.append("resolve_candidates")
             payload["completed_actions"] = completed_actions
-            done_path = self.queue_store.move_package(processing_path, "done")
-            self.queue_store.write_package(done_path, payload)
-            logger.info("Processed tagging package: %s", done_path)
-            return done_path
+            payload, final_state = self._maybe_write_tags(payload)
+            target_state_dir = "failed" if final_state == "failed" else "done"
+            final_path = self.queue_store.move_package(processing_path, target_state_dir)
+            payload["state"] = final_state
+            self.queue_store.write_package(final_path, payload)
+            logger.info("Processed tagging package: %s", final_path)
+            return final_path
         except Exception as exc:
             payload["state"] = "failed"
             errors = list(payload.get("errors", []))
@@ -88,3 +99,35 @@ class TaggingWorker:
         normalization["title_analysis"] = result.to_dict()
         payload["normalization"] = normalization
         return payload
+
+    def _resolve_candidates(self, payload: dict[str, Any]) -> dict[str, Any]:
+        candidate = self.candidate_resolver.resolve(payload)
+        payload["resolved_tags"] = candidate.to_dict()
+        return payload
+
+    def _maybe_write_tags(self, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+        requested_actions = set(payload.get("requested_actions", []) or [])
+        candidate = dict(payload.get("resolved_tags", {}) or {})
+
+        if "autotag" not in requested_actions:
+            return payload, "done"
+
+        if not candidate.get("write_allowed"):
+            payload["write_result"] = {
+                "success": False,
+                "status": "skipped: candidate not safe for auto-write",
+                "wrote_fields": [],
+            }
+            return payload, "skipped"
+
+        candidate_obj = self.candidate_resolver.resolve(payload)
+        result = self.tag_writer.write_candidate(payload.get("final_output_path", ""), candidate_obj)
+        payload["write_result"] = result.to_dict()
+        if result.success:
+            completed_actions = list(payload.get("completed_actions", []))
+            if "write_tags" not in completed_actions:
+                completed_actions.append("write_tags")
+            payload["completed_actions"] = completed_actions
+            return payload, "written"
+
+        return payload, "failed"

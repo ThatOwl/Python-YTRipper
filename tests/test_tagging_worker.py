@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = PROJECT_ROOT / "source"
@@ -10,6 +11,7 @@ if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
 from autotagging.package_builder import TaggingPackageBuilder, TaggingQueueStore
+from autotagging.tag_writer import TagWriteResult
 from autotagging.worker import TaggingWorker
 from utility.utils import DownloadOptions
 
@@ -30,7 +32,7 @@ class _DummyVideo:
 
 
 class TestTaggingWorker(unittest.TestCase):
-    def test_worker_moves_package_to_done_and_adds_title_analysis(self):
+    def test_worker_writes_tags_for_high_confidence_autotag_package(self):
         builder = TaggingPackageBuilder()
         options = DownloadOptions(autotag=True)
 
@@ -50,18 +52,73 @@ class TestTaggingWorker(unittest.TestCase):
             store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
             pending_path = store.write_pending_package(package)
 
-            worker = TaggingWorker(queue_store=store, poll_interval=0.01, idle_timeout=0.05)
+            tag_writer = Mock()
+            tag_writer.write_candidate.return_value = TagWriteResult(True, "ok", ["artist", "title", "album"])
+
+            worker = TaggingWorker(
+                queue_store=store,
+                tag_writer=tag_writer,
+                poll_interval=0.01,
+                idle_timeout=0.05,
+            )
             done_path = worker.process_package_file(pending_path)
 
             self.assertTrue(done_path.exists())
             self.assertIn("/done/", done_path.as_posix())
 
             payload = json.loads(done_path.read_text(encoding="utf-8"))
-            self.assertEqual(payload["state"], "done")
+            self.assertEqual(payload["state"], "written")
             self.assertIn("normalize_title", payload["completed_actions"])
+            self.assertIn("resolve_candidates", payload["completed_actions"])
+            self.assertIn("write_tags", payload["completed_actions"])
             analysis = payload["normalization"]["title_analysis"]
             self.assertEqual(analysis["guessed_artist"], "Caro Emerald")
             self.assertEqual(analysis["guessed_title"], "Tangled Up Odd Chap Bootleg")
+            self.assertEqual(payload["resolved_tags"]["source"], "title_author_match")
+            self.assertEqual(payload["write_result"]["status"], "ok")
+            tag_writer.write_candidate.assert_called_once()
+
+    def test_worker_skips_auto_write_for_weak_candidate(self):
+        builder = TaggingPackageBuilder()
+        options = DownloadOptions(autotag=True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            final_output = Path(tmpdir) / "Blaze.m4a"
+            final_output.write_text("audio", encoding="utf-8")
+
+            weak_video = _DummyVideo()
+            weak_video.title = "Odd Chap, Alanna Lyes - Blaze (Electro Swing)"
+            weak_video.author = "Some Other Channel"
+
+            package = builder.build_package(
+                final_output_path=final_output,
+                download_directory=Path(tmpdir),
+                video_obj=weak_video,
+                options=options,
+                requested_actions=["autotag"],
+                playlist_title="Electro Swing",
+            )
+
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            pending_path = store.write_pending_package(package)
+
+            tag_writer = Mock()
+            worker = TaggingWorker(
+                queue_store=store,
+                tag_writer=tag_writer,
+                poll_interval=0.01,
+                idle_timeout=0.05,
+            )
+            done_path = worker.process_package_file(pending_path)
+
+            payload = json.loads(done_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["state"], "skipped")
+            self.assertFalse(payload["resolved_tags"]["write_allowed"])
+            self.assertEqual(
+                payload["write_result"]["status"],
+                "skipped: candidate not safe for auto-write",
+            )
+            tag_writer.write_candidate.assert_not_called()
 
 
 if __name__ == "__main__":

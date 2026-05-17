@@ -196,7 +196,7 @@ Other useful config-related flags:
 - `save_results` writes result CSVs for batch/file-driven runs and for direct playlist URLs.
 - Single standalone video URLs still do not write result CSVs. (as result easily be managed by user)
 - Batch result saving is still a young feature and may keep evolving.
-- `autotag` currently performs asynchronous package preparation plus background title normalization. It does not yet replace the richer standalone autotagging workflow.
+- `autotag` currently performs asynchronous package preparation, background title normalization, conservative candidate resolution, and safe metadata writes for high-confidence cases. It does not yet replace the richer standalone autotagging workflow.
 - `argcomplete` support is optional and not a primary workflow.
 
 ---
