@@ -54,6 +54,11 @@ class TaggingWorker:
         if recovered:
             logger.info("Recovered %s stale tagging package(s) back to pending", len(recovered))
         self._apply_retention_policy()
+        self.queue_store.event_logger.emit(
+            "worker_started",
+            recovered_count=len(recovered),
+            queue_snapshot=self.queue_store.build_queue_snapshot(limit_per_state=3),
+        )
 
         while True:
             processed = self.process_next_pending_package()
@@ -65,6 +70,11 @@ class TaggingWorker:
 
             if time.monotonic() >= deadline:
                 self._apply_retention_policy()
+                self.queue_store.event_logger.emit(
+                    "worker_idle_exit",
+                    processed_count=processed_count,
+                    queue_snapshot=self.queue_store.build_queue_snapshot(limit_per_state=3),
+                )
                 logger.info("Tagging worker idle timeout reached; processed=%s", processed_count)
                 return processed_count
 
@@ -126,11 +136,25 @@ class TaggingWorker:
         normalization = dict(payload.get("normalization", {}) or {})
         normalization["title_analysis"] = result.to_dict()
         payload["normalization"] = normalization
+        self.queue_store.event_logger.emit_package_event(
+            "title_normalized",
+            payload,
+            guessed_artist=result.guessed_artist,
+            guessed_title=result.guessed_title,
+            split_confidence=result.split_confidence,
+        )
         return payload
 
     def _resolve_candidates(self, payload: dict[str, Any]) -> dict[str, Any]:
         candidate = self.candidate_resolver.resolve(payload)
         payload["resolved_tags"] = candidate.to_dict()
+        self.queue_store.event_logger.emit_package_event(
+            "candidate_resolved",
+            payload,
+            candidate_source=candidate.source,
+            candidate_confidence=candidate.confidence,
+            candidate_write_allowed=candidate.write_allowed,
+        )
         return payload
 
     def _maybe_enrich_candidate(self, payload: dict[str, Any]) -> tuple[dict[str, Any], bool]:
@@ -142,6 +166,11 @@ class TaggingWorker:
         enriched_candidate = self.musicbrainz_enricher.enrich(payload, current_candidate)
         if enriched_candidate is None:
             payload["enrichment_result"] = {"status": "no_match"}
+            self.queue_store.event_logger.emit_package_event(
+                "candidate_enrichment_missed",
+                payload,
+                enrichment_backend="musicbrainz",
+            )
             return payload, False
 
         payload["resolved_tags"] = enriched_candidate.to_dict()
@@ -151,6 +180,14 @@ class TaggingWorker:
             "confidence": enriched_candidate.confidence,
             "write_allowed": enriched_candidate.write_allowed,
         }
+        self.queue_store.event_logger.emit_package_event(
+            "candidate_enriched",
+            payload,
+            enrichment_backend="musicbrainz",
+            candidate_source=enriched_candidate.source,
+            candidate_confidence=enriched_candidate.confidence,
+            candidate_write_allowed=enriched_candidate.write_allowed,
+        )
         return payload, True
 
     def _maybe_write_tags(self, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
@@ -158,6 +195,10 @@ class TaggingWorker:
         candidate = dict(payload.get("resolved_tags", {}) or {})
 
         if "autotag" not in requested_actions:
+            self.queue_store.event_logger.emit_package_event(
+                "tag_write_not_requested",
+                payload,
+            )
             return payload, "done"
 
         if not candidate.get("write_allowed"):
@@ -166,6 +207,11 @@ class TaggingWorker:
                 "status": "skipped: candidate not safe for auto-write",
                 "wrote_fields": [],
             }
+            self.queue_store.event_logger.emit_package_event(
+                "tag_write_skipped",
+                payload,
+                reason=payload["write_result"]["status"],
+            )
             if payload.get("enrichment_result", {}).get("status") == "matched":
                 return payload, "enriched"
             return payload, "skipped"
@@ -178,8 +224,18 @@ class TaggingWorker:
             if "write_tags" not in completed_actions:
                 completed_actions.append("write_tags")
             payload["completed_actions"] = completed_actions
+            self.queue_store.event_logger.emit_package_event(
+                "tag_write_succeeded",
+                payload,
+                wrote_fields=list(result.wrote_fields),
+            )
             return payload, "written"
 
+        self.queue_store.event_logger.emit_package_event(
+            "tag_write_failed",
+            payload,
+            reason=result.status,
+        )
         return payload, "failed"
 
     def _apply_retention_policy(self) -> dict[str, list[Path]]:

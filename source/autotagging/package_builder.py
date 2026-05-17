@@ -9,6 +9,7 @@ from typing import Any
 import utility.preferences as preferences
 from utility.utils import DownloadOptions
 
+from .event_logger import TaggingEventLogger
 from .models import TaggingPackage, TaggingSourceSnapshot
 
 
@@ -149,12 +150,20 @@ class TaggingPackageBuilder:
 class TaggingQueueStore:
     """Persist tagging packages into a filesystem-backed queue."""
 
-    def __init__(self, base_dir: Path | str | None = None):
+    STATE_NAMES = ("pending", "processing", "done", "failed")
+
+    def __init__(
+        self,
+        base_dir: Path | str | None = None,
+        event_logger: TaggingEventLogger | None = None,
+    ):
         if base_dir is None:
             base_dir = preferences.PROJECT_ROOT / "runtime" / "tagging"
         self.base_dir = Path(base_dir)
+        self.event_logger = event_logger or TaggingEventLogger(self.base_dir / "events.jsonl")
 
     def ensure_queue_dirs(self) -> dict[str, Path]:
+        """Create queue state directories on demand and return their paths."""
         directories = {
             "pending": self.base_dir / "pending",
             "processing": self.base_dir / "processing",
@@ -166,20 +175,29 @@ class TaggingQueueStore:
         return directories
 
     def write_pending_package(self, package: TaggingPackage) -> Path:
+        """Persist a newly prepared package into the pending queue."""
         directories = self.ensure_queue_dirs()
         safe_stem = _safe_label(Path(package.final_output_path).stem)
         created_label = package.created_at.replace(":", "").replace("+00:00", "Z")
         output_path = directories["pending"] / f"{created_label}_{safe_stem}_{package.job_id[:8]}.json"
 
-        self.write_package(output_path, package.to_dict())
+        payload = package.to_dict()
+        self.write_package(output_path, payload)
+        self.event_logger.emit_package_event(
+            "package_prepared",
+            payload,
+            queue_path=str(output_path),
+        )
 
         return output_path
 
     def list_state_files(self, state_name: str) -> list[Path]:
+        """Return queue package paths for one state, sorted by filename."""
         directory = self.ensure_queue_dirs()[state_name]
         return sorted(directory.glob("*.json"))
 
     def move_package(self, package_path: Path | str, state_name: str) -> Path:
+        """Move a package JSON into another queue state directory."""
         target_directory = self.ensure_queue_dirs()[state_name]
         source_path = Path(package_path)
         target_path = target_directory / source_path.name
@@ -187,6 +205,8 @@ class TaggingQueueStore:
         return target_path
 
     def update_state(self, payload: dict[str, Any], state: str) -> dict[str, Any]:
+        """Update state and lifecycle timestamps in a package payload."""
+        previous_state = payload.get("state", "")
         timestamp = _utc_now_iso()
         payload["state"] = state
         lifecycle = dict(payload.get("lifecycle", {}) or {})
@@ -196,9 +216,16 @@ class TaggingQueueStore:
         history.append({"state": state, "at": timestamp})
         lifecycle["state_history"] = history
         payload["lifecycle"] = lifecycle
+        self.event_logger.emit_package_event(
+            "state_transition",
+            payload,
+            previous_state=previous_state,
+            new_state=state,
+        )
         return payload
 
     def recover_stale_processing(self, max_age_seconds: float = 300.0) -> list[Path]:
+        """Move stale processing packages back to pending so a worker can retry them."""
         recovered: list[Path] = []
         now = datetime.now(timezone.utc)
         for package_path in self.list_state_files("processing"):
@@ -220,8 +247,97 @@ class TaggingQueueStore:
             payload["lifecycle"] = lifecycle
             recovered_path = self.move_package(package_path, "pending")
             self.write_package(recovered_path, payload)
+            self.event_logger.emit_package_event(
+                "package_recovered",
+                payload,
+                queue_path=str(recovered_path),
+                recovered_from="processing",
+            )
             recovered.append(recovered_path)
         return recovered
+
+    def list_state_payloads(self, state_name: str) -> list[dict[str, Any]]:
+        """Load all packages for one queue state."""
+        return [self.read_package(path) for path in self.list_state_files(state_name)]
+
+    def build_queue_snapshot(self, limit_per_state: int = 10) -> dict[str, Any]:
+        """Return queue counts plus compact recent-package/session summaries."""
+        state_payloads = {
+            state_name: self.list_state_payloads(state_name)
+            for state_name in self.STATE_NAMES
+        }
+        recent = {
+            state_name: [
+                self.summarize_package(payload)
+                for payload in self._sort_payloads_desc(payloads)[:limit_per_state]
+            ]
+            for state_name, payloads in state_payloads.items()
+        }
+
+        sessions: dict[str, dict[str, Any]] = {}
+        for state_name, payloads in state_payloads.items():
+            for payload in payloads:
+                session_id = str(payload.get("session_id", "") or "")
+                if not session_id:
+                    continue
+                summary = sessions.setdefault(
+                    session_id,
+                    {
+                        "session_id": session_id,
+                        "counts": {name: 0 for name in self.STATE_NAMES},
+                        "package_count": 0,
+                        "created_at": payload.get("created_at", ""),
+                        "last_transition_at": self._payload_last_transition_at(payload),
+                    },
+                )
+                summary["counts"][state_name] += 1
+                summary["package_count"] += 1
+                summary["created_at"] = min(
+                    filter(None, [summary.get("created_at", ""), payload.get("created_at", "")]),
+                    default=summary.get("created_at", ""),
+                )
+                last_transition = self._payload_last_transition_at(payload)
+                if last_transition and last_transition > summary.get("last_transition_at", ""):
+                    summary["last_transition_at"] = last_transition
+
+        return {
+            "counts": {state_name: len(payloads) for state_name, payloads in state_payloads.items()},
+            "recent": recent,
+            "sessions": sorted(
+                sessions.values(),
+                key=lambda item: item.get("last_transition_at", ""),
+                reverse=True,
+            ),
+        }
+
+    def build_session_snapshot(self, session_id: str) -> dict[str, Any]:
+        """Return a session-focused view across every queue state."""
+        packages: list[dict[str, Any]] = []
+        counts = {state_name: 0 for state_name in self.STATE_NAMES}
+
+        for state_name in self.STATE_NAMES:
+            payloads = [
+                payload
+                for payload in self.list_state_payloads(state_name)
+                if str(payload.get("session_id", "") or "") == session_id
+            ]
+            counts[state_name] = len(payloads)
+            packages.extend(payloads)
+
+        sorted_packages = sorted(
+            packages,
+            key=lambda payload: (
+                int(payload.get("sequence_no", 0) or 0),
+                payload.get("created_at", ""),
+                payload.get("job_id", ""),
+            ),
+        )
+        return {
+            "session_id": session_id,
+            "counts": counts,
+            "package_count": len(sorted_packages),
+            "packages": [self.summarize_package(payload) for payload in sorted_packages],
+        }
 
     def prune_state_files(
         self,
@@ -230,6 +346,7 @@ class TaggingQueueStore:
         max_count: int | None = None,
         max_age_seconds: float | None = None,
     ) -> list[Path]:
+        """Delete old queue packages for one state by age and/or count budget."""
         records = []
         now = datetime.now(timezone.utc)
 
@@ -261,7 +378,14 @@ class TaggingQueueStore:
         deleted: list[Path] = []
         for package_path in to_delete.values():
             try:
+                payload = self.read_package(package_path)
                 package_path.unlink(missing_ok=True)
+                self.event_logger.emit_package_event(
+                    "package_pruned",
+                    payload,
+                    pruned_from=state_name,
+                    queue_path=str(package_path),
+                )
                 deleted.append(package_path)
             except Exception:
                 continue
@@ -275,6 +399,7 @@ class TaggingQueueStore:
         failed_max_count: int | None = None,
         failed_max_age_seconds: float | None = None,
     ) -> dict[str, list[Path]]:
+        """Apply retention settings to completed queue states."""
         return {
             "done": self.prune_state_files(
                 "done",
@@ -298,6 +423,48 @@ class TaggingQueueStore:
         with open(package_path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
+
+    @staticmethod
+    def summarize_package(payload: dict[str, Any]) -> dict[str, Any]:
+        """Project a full package payload into a compact UI/log-friendly summary."""
+        source = dict(payload.get("source", {}) or {})
+        lifecycle = dict(payload.get("lifecycle", {}) or {})
+        resolved_tags = dict(payload.get("resolved_tags", {}) or {})
+        write_result = dict(payload.get("write_result", {}) or {})
+        return {
+            "job_id": payload.get("job_id", ""),
+            "session_id": payload.get("session_id", ""),
+            "sequence_no": payload.get("sequence_no", 0),
+            "state": payload.get("state", ""),
+            "created_at": payload.get("created_at", ""),
+            "last_transition_at": lifecycle.get("last_transition_at", ""),
+            "final_output_path": payload.get("final_output_path", ""),
+            "playlist_title": payload.get("playlist_title", ""),
+            "requested_actions": list(payload.get("requested_actions", []) or []),
+            "source_title": source.get("title", ""),
+            "source_author": source.get("author", ""),
+            "candidate_source": resolved_tags.get("source", ""),
+            "candidate_confidence": resolved_tags.get("confidence"),
+            "write_allowed": resolved_tags.get("write_allowed"),
+            "write_status": write_result.get("status", ""),
+        }
+
+    @staticmethod
+    def _payload_last_transition_at(payload: dict[str, Any]) -> str:
+        lifecycle = dict(payload.get("lifecycle", {}) or {})
+        return str(lifecycle.get("last_transition_at", "") or payload.get("created_at", "") or "")
+
+    @classmethod
+    def _sort_payloads_desc(cls, payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return sorted(
+            payloads,
+            key=lambda payload: (
+                cls._payload_last_transition_at(payload),
+                int(payload.get("sequence_no", 0) or 0),
+                payload.get("job_id", ""),
+            ),
+            reverse=True,
+        )
 
     @staticmethod
     def _age_seconds(now: datetime, timestamp: str | None) -> float | None:

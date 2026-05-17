@@ -78,6 +78,14 @@ class TestTaggingWorker(unittest.TestCase):
             self.assertEqual(payload["resolved_tags"]["source"], "title_author_match")
             self.assertEqual(payload["write_result"]["status"], "ok")
             tag_writer.write_candidate.assert_called_once()
+            events = [
+                json.loads(line)
+                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            event_types = [event["event_type"] for event in events]
+            self.assertIn("title_normalized", event_types)
+            self.assertIn("candidate_resolved", event_types)
+            self.assertIn("tag_write_succeeded", event_types)
 
     def test_worker_skips_auto_write_for_weak_candidate(self):
         builder = TaggingPackageBuilder()
@@ -120,6 +128,13 @@ class TestTaggingWorker(unittest.TestCase):
                 "skipped: candidate not safe for auto-write",
             )
             tag_writer.write_candidate.assert_not_called()
+            events = [
+                json.loads(line)
+                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            event_types = [event["event_type"] for event in events]
+            self.assertIn("candidate_enrichment_missed", event_types)
+            self.assertIn("tag_write_skipped", event_types)
 
     def test_worker_promotes_weak_candidate_via_enrichment_then_writes(self):
         builder = TaggingPackageBuilder()
@@ -176,6 +191,52 @@ class TestTaggingWorker(unittest.TestCase):
             written_candidate = tag_writer.write_candidate.call_args.args[1]
             self.assertEqual(written_candidate.artist, "Odd Chap")
             self.assertEqual(written_candidate.title, "Blaze")
+
+    def test_run_until_idle_emits_worker_lifecycle_events(self):
+        builder = TaggingPackageBuilder()
+        options = DownloadOptions(autotag=True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            final_output = Path(tmpdir) / "Tangled Up.m4a"
+            final_output.write_text("audio", encoding="utf-8")
+
+            package = builder.build_package(
+                final_output_path=final_output,
+                download_directory=Path(tmpdir),
+                video_obj=_DummyVideo(),
+                options=options,
+                requested_actions=["autotag"],
+                playlist_title="Electro Swing",
+            )
+
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            store.write_pending_package(package)
+
+            tag_writer = Mock()
+            tag_writer.write_candidate.return_value = TagWriteResult(True, "ok", ["artist", "title"])
+
+            worker = TaggingWorker(
+                queue_store=store,
+                tag_writer=tag_writer,
+                poll_interval=0.01,
+                idle_timeout=0.02,
+            )
+
+            processed_count = worker.run_until_idle()
+
+            self.assertEqual(processed_count, 1)
+            events = [
+                json.loads(line)
+                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            event_types = [event["event_type"] for event in events]
+            self.assertIn("worker_started", event_types)
+            self.assertIn("worker_idle_exit", event_types)
+            worker_started = next(event for event in events if event["event_type"] == "worker_started")
+            worker_idle_exit = next(event for event in events if event["event_type"] == "worker_idle_exit")
+            self.assertEqual(worker_started["queue_snapshot"]["counts"]["pending"], 1)
+            self.assertEqual(worker_idle_exit["processed_count"], 1)
+            self.assertEqual(worker_idle_exit["queue_snapshot"]["counts"]["done"], 1)
 
 
 if __name__ == "__main__":

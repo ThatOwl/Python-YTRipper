@@ -70,6 +70,12 @@ class TestTaggingPackageBuilder(unittest.TestCase):
             self.assertEqual(payload["requested_actions"], ["prepare_tagging"])
             self.assertEqual(payload["source"]["author"], "Odd Chap")
             self.assertEqual(payload["download_options"]["audio_only"], True)
+            events = [
+                json.loads(line)
+                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual(events[-1]["event_type"], "package_prepared")
+            self.assertEqual(events[-1]["job_id"], payload["job_id"])
 
 
 if __name__ == "__main__":

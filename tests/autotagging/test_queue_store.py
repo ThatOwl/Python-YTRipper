@@ -44,6 +44,13 @@ class TestTaggingQueueStore(unittest.TestCase):
             self.assertEqual(recovered_payload["state"], "prepared")
             self.assertEqual(recovered_payload["lifecycle"]["recovery_count"], 1)
             self.assertIn("recovered_from_processing_at", recovered_payload["lifecycle"])
+            events = [
+                json.loads(line)
+                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            event_types = [event["event_type"] for event in events]
+            self.assertIn("state_transition", event_types)
+            self.assertIn("package_recovered", event_types)
 
     def test_prune_state_files_applies_age_and_count_limits(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -75,6 +82,74 @@ class TestTaggingQueueStore(unittest.TestCase):
             remaining = store.list_state_files("done")
             self.assertEqual(len(remaining), 1)
             self.assertTrue(remaining[0].name.endswith("done-3.json"))
+            events = [
+                json.loads(line)
+                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            pruned = [event for event in events if event["event_type"] == "package_pruned"]
+            self.assertEqual(len(pruned), 2)
+
+    def test_queue_snapshot_and_session_snapshot_summarize_packages(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            dirs = store.ensure_queue_dirs()
+            now = datetime.now(timezone.utc).replace(microsecond=0)
+
+            def _write_package(state: str, name: str, session_id: str, sequence_no: int, seconds_ago: int) -> None:
+                ts = (now - timedelta(seconds=seconds_ago)).isoformat()
+                payload = {
+                    "job_id": name,
+                    "session_id": session_id,
+                    "sequence_no": sequence_no,
+                    "state": state,
+                    "created_at": ts,
+                    "final_output_path": f"/tmp/{name}.m4a",
+                    "playlist_title": "Queue Test",
+                    "requested_actions": ["autotag"],
+                    "source": {
+                        "title": f"Title {name}",
+                        "author": "Author Test",
+                    },
+                    "resolved_tags": {
+                        "source": "title_author_match",
+                        "confidence": 0.91,
+                        "write_allowed": True,
+                    },
+                    "write_result": {
+                        "status": "ok" if state == "done" else "",
+                    },
+                    "lifecycle": {
+                        "last_transition_at": ts,
+                        f"{state}_at": ts,
+                        "state_history": [{"state": state, "at": ts}],
+                    },
+                }
+                store.write_package(dirs[state] / f"{name}.json", payload)
+
+            _write_package("pending", "job-pending", "session-a", 1, 60)
+            _write_package("done", "job-done", "session-a", 2, 30)
+            _write_package("failed", "job-failed", "session-b", 1, 10)
+
+            snapshot = store.build_queue_snapshot(limit_per_state=1)
+
+            self.assertEqual(snapshot["counts"]["pending"], 1)
+            self.assertEqual(snapshot["counts"]["done"], 1)
+            self.assertEqual(snapshot["counts"]["failed"], 1)
+            self.assertEqual(snapshot["recent"]["pending"][0]["job_id"], "job-pending")
+            self.assertEqual(snapshot["recent"]["done"][0]["write_status"], "ok")
+            self.assertEqual(snapshot["sessions"][0]["session_id"], "session-b")
+            self.assertEqual(snapshot["sessions"][1]["counts"]["pending"], 1)
+            self.assertEqual(snapshot["sessions"][1]["counts"]["done"], 1)
+
+            session_snapshot = store.build_session_snapshot("session-a")
+
+            self.assertEqual(session_snapshot["package_count"], 2)
+            self.assertEqual(session_snapshot["counts"]["pending"], 1)
+            self.assertEqual(session_snapshot["counts"]["done"], 1)
+            self.assertEqual(
+                [package["job_id"] for package in session_snapshot["packages"]],
+                ["job-pending", "job-done"],
+            )
 
 
 if __name__ == "__main__":
