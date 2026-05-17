@@ -12,7 +12,7 @@ SOURCE_ROOT = PROJECT_ROOT / "source"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from autotagging.package_builder import TaggingPackageBuilder, TaggingQueueStore
+from autotagging.runtime.package_builder import TaggingPackageBuilder, TaggingQueueStore
 from run_tagging_worker import main
 from utility.utils import DownloadOptions
 
@@ -444,6 +444,161 @@ class TestRunTaggingWorker(unittest.TestCase):
             self.assertEqual(len(done_files), 1)
             done_payload = json.loads(done_files[0].read_text(encoding="utf-8"))
             self.assertEqual(done_payload["state"], "skipped")
+
+    def test_review_override_and_review_list_surface_saved_review_metadata(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            store = TaggingQueueStore(base_dir=queue_dir)
+            dirs = store.ensure_queue_dirs()
+            ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+            store.write_package(
+                dirs["done"] / "job-skipped.json",
+                {
+                    "job_id": "job-skipped",
+                    "session_id": "session-a",
+                    "sequence_no": 1,
+                    "state": "skipped",
+                    "created_at": ts,
+                    "final_output_path": "/tmp/skipped.m4a",
+                    "source": {"title": "Blaze", "author": "Some Other Channel"},
+                    "resolved_tags": {"source": "title_dash_split", "confidence": 0.60, "write_allowed": False},
+                    "write_result": {"status": "skipped: candidate not safe for auto-write"},
+                    "lifecycle": {
+                        "skipped_at": ts,
+                        "last_transition_at": ts,
+                        "state_history": [{"state": "skipped", "at": ts}],
+                    },
+                },
+            )
+
+            override_output = io.StringIO()
+            with redirect_stdout(override_output):
+                exit_code = main(
+                    [
+                        "review-override",
+                        "--queue-dir",
+                        str(queue_dir),
+                        "--job-id",
+                        "job-skipped",
+                        "--artist",
+                        "Odd Chap",
+                        "--title",
+                        "Blaze",
+                        "--note",
+                        "manual confirmation",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("override_saved", override_output.getvalue())
+            self.assertIn("manual confirmation", override_output.getvalue())
+
+            review_list_output = io.StringIO()
+            with redirect_stdout(review_list_output):
+                exit_code = main(["review-list", "--queue-dir", str(queue_dir), "--session-id", "session-a"])
+
+            text = review_list_output.getvalue()
+            self.assertEqual(exit_code, 0)
+            self.assertIn("job-skipped,session-a,1,skipped,override_saved,true", text)
+            self.assertIn("manual confirmation", text)
+
+    def test_review_approve_and_plan_session_expose_follow_up_state(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            store = TaggingQueueStore(base_dir=queue_dir)
+            dirs = store.ensure_queue_dirs()
+            ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+            store.write_package(
+                dirs["failed"] / "job-failed.json",
+                {
+                    "job_id": "job-failed",
+                    "session_id": "session-a",
+                    "sequence_no": 1,
+                    "state": "failed",
+                    "created_at": ts,
+                    "final_output_path": "/tmp/failed.m4a",
+                    "lifecycle": {
+                        "failed_at": ts,
+                        "last_transition_at": ts,
+                        "state_history": [{"state": "failed", "at": ts}],
+                    },
+                },
+            )
+
+            approve_output = io.StringIO()
+            with redirect_stdout(approve_output):
+                exit_code = main(
+                    [
+                        "review-approve",
+                        "--queue-dir",
+                        str(queue_dir),
+                        "--job-id",
+                        "job-failed",
+                        "--note",
+                        "ready to retry",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("approved", approve_output.getvalue())
+
+            plan_output = io.StringIO()
+            with redirect_stdout(plan_output):
+                exit_code = main(["plan-session", "--queue-dir", str(queue_dir), "--session-id", "session-a"])
+
+            text = plan_output.getvalue()
+            self.assertEqual(exit_code, 0)
+            self.assertIn("scope,target_id,job_id,current_state,suggested_action,reason,review_decision,override_saved", text)
+            self.assertIn("session,session-a,job-failed,failed,inspect_then_retry", text)
+            self.assertIn(",approved,false", text)
+
+    def test_plan_queue_reports_pending_and_failed_maintenance_actions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            store = TaggingQueueStore(base_dir=queue_dir)
+            dirs = store.ensure_queue_dirs()
+            ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+            store.write_package(
+                dirs["pending"] / "job-pending.json",
+                {
+                    "job_id": "job-pending",
+                    "session_id": "session-a",
+                    "sequence_no": 1,
+                    "state": "prepared",
+                    "created_at": ts,
+                    "final_output_path": "/tmp/pending.m4a",
+                    "lifecycle": {
+                        "prepared_at": ts,
+                        "last_transition_at": ts,
+                        "state_history": [{"state": "prepared", "at": ts}],
+                    },
+                },
+            )
+            store.write_package(
+                dirs["failed"] / "job-failed.json",
+                {
+                    "job_id": "job-failed",
+                    "session_id": "session-b",
+                    "sequence_no": 2,
+                    "state": "failed",
+                    "created_at": ts,
+                    "final_output_path": "/tmp/failed.m4a",
+                    "lifecycle": {
+                        "failed_at": ts,
+                        "last_transition_at": ts,
+                        "state_history": [{"state": "failed", "at": ts}],
+                    },
+                },
+            )
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["plan-queue", "--queue-dir", str(queue_dir)])
+
+            text = output.getvalue()
+            self.assertEqual(exit_code, 0)
+            self.assertIn("queue,failed,,failed,review_and_retry", text)
+            self.assertIn("queue,pending,,pending,run_worker", text)
 
     def test_default_invocation_without_subcommand_still_runs_worker_mode(self):
         with tempfile.TemporaryDirectory() as tmpdir:

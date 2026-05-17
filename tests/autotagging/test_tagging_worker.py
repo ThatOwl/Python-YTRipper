@@ -10,10 +10,10 @@ SOURCE_ROOT = PROJECT_ROOT / "source"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from autotagging.candidate_resolver import TagCandidate
-from autotagging.package_builder import TaggingPackageBuilder, TaggingQueueStore
-from autotagging.tag_writer import TagWriteResult
-from autotagging.worker import TaggingWorker
+from autotagging.core.candidate_resolver import TagCandidate
+from autotagging.core.tag_writer import TagWriteResult
+from autotagging.runtime.package_builder import TaggingPackageBuilder, TaggingQueueStore
+from autotagging.runtime.worker import TaggingWorker
 from utility.utils import DownloadOptions
 
 

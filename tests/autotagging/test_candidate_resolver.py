@@ -7,7 +7,7 @@ SOURCE_ROOT = PROJECT_ROOT / "source"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from autotagging.candidate_resolver import CandidateResolver
+from autotagging.core.candidate_resolver import CandidateResolver
 
 
 class TestCandidateResolver(unittest.TestCase):
@@ -54,7 +54,7 @@ class TestCandidateResolver(unittest.TestCase):
 
         self.assertEqual(candidate.artist, "Caro Emerald")
         self.assertEqual(candidate.title, "Tangled Up Odd Chap Bootleg")
-        self.assertEqual(candidate.album, "Electro Swing")
+        self.assertEqual(candidate.album, "")
         self.assertEqual(candidate.source, "title_author_match")
         self.assertTrue(candidate.write_allowed)
 
@@ -76,6 +76,211 @@ class TestCandidateResolver(unittest.TestCase):
 
         self.assertFalse(candidate.write_allowed)
         self.assertEqual(candidate.source, "title_dash_split")
+
+    def test_official_uploader_alias_upgrades_clean_dash_split_to_auto_writable(self):
+        resolver = CandidateResolver()
+        payload = {
+            "playlist_title": "Rammstein_Mix",
+            "source": {
+                "author": "Rammstein Official",
+                "title": "Rammstein - Ich Will (Official Video)",
+                "keywords": [
+                    "Rammstein",
+                    "Ich Will",
+                    "Official Video",
+                ],
+                "description": "Single: Ich Will\nFrom the album: Mutter",
+            },
+            "normalization": {
+                "title_analysis": {
+                    "guessed_artist": "Rammstein",
+                    "guessed_title": "Ich Will",
+                    "split_confidence": "dash_split",
+                    "lookup_title": "Rammstein - Ich Will",
+                }
+            },
+        }
+
+        candidate = resolver.resolve(payload)
+
+        self.assertEqual(candidate.artist, "Rammstein")
+        self.assertEqual(candidate.title, "Ich Will")
+        self.assertEqual(candidate.album, "Mutter")
+        self.assertEqual(candidate.source, "description_structured")
+        self.assertTrue(candidate.write_allowed)
+        self.assertGreaterEqual(candidate.confidence, 0.9)
+
+    def test_description_release_parsing_makes_official_audio_auto_writable(self):
+        resolver = CandidateResolver()
+        payload = {
+            "playlist_title": "Rammstein_Mix",
+            "source": {
+                "author": "RHINO",
+                "title": "Black Sabbath - Paranoid (Official Audio)",
+                "keywords": [
+                    "black sabbath",
+                    "paranoid",
+                ],
+                "description": (
+                    "You're listening to the official audio for Black Sabbath - \"Paranoid\" "
+                    "from the album 'Paranoid' (1970)."
+                ),
+            },
+            "normalization": {
+                "title_analysis": {
+                    "guessed_artist": "Black Sabbath",
+                    "guessed_title": "Paranoid",
+                    "split_confidence": "dash_split",
+                    "lookup_title": "Black Sabbath - Paranoid",
+                }
+            },
+        }
+
+        candidate = resolver.resolve(payload)
+
+        self.assertEqual(candidate.artist, "Black Sabbath")
+        self.assertEqual(candidate.title, "Paranoid")
+        self.assertEqual(candidate.album, "Paranoid")
+        self.assertEqual(candidate.source, "description_structured")
+        self.assertTrue(candidate.write_allowed)
+
+    def test_topic_channel_release_description_beats_title_only_musicbrainz_path(self):
+        resolver = CandidateResolver()
+        payload = {
+            "playlist_title": "Rammstein_Mix",
+            "source": {
+                "author": "Rammstein - Topic",
+                "title": "Reise, Reise",
+                "keywords": [
+                    "Rammstein",
+                    "Reise, Reise",
+                ],
+                "description": (
+                    "Provided to YouTube by Universal Music Group\n\n"
+                    "Reise, Reise · Rammstein\n\n"
+                    "Reise, Reise\n\n"
+                    "℗ 2004 Vertigo/Capitol"
+                ),
+            },
+            "normalization": {
+                "title_analysis": {
+                    "guessed_artist": "",
+                    "guessed_title": "",
+                    "split_confidence": "",
+                    "lookup_title": "Reise, Reise",
+                }
+            },
+        }
+
+        candidate = resolver.resolve(payload)
+
+        self.assertEqual(candidate.artist, "Rammstein")
+        self.assertEqual(candidate.title, "Reise, Reise")
+        self.assertEqual(candidate.album, "Reise, Reise")
+        self.assertEqual(candidate.source, "description_structured")
+        self.assertTrue(candidate.write_allowed)
+
+    def test_collaboration_title_is_auto_writable_when_author_and_keywords_support_artists(self):
+        resolver = CandidateResolver()
+        payload = {
+            "playlist_title": "The Tech Thieves",
+            "source": {
+                "author": "Besomorph",
+                "title": "Besomorph & The Tech Thieves - Anxiety [Lyric Video]",
+                "keywords": [
+                    "Besomorph",
+                    "the tech thieves",
+                    "anxiety",
+                ],
+                "description": "Stream & Download Anxiety",
+            },
+            "normalization": {
+                "title_analysis": {
+                    "guessed_artist": "Besomorph & The Tech Thieves",
+                    "guessed_title": "Anxiety",
+                    "split_confidence": "dash_split",
+                    "lookup_title": "Besomorph & The Tech Thieves - Anxiety",
+                }
+            },
+        }
+
+        candidate = resolver.resolve(payload)
+
+        self.assertEqual(candidate.artist, "Besomorph & The Tech Thieves")
+        self.assertEqual(candidate.title, "Anxiety")
+        self.assertEqual(candidate.source, "title_uploader_match")
+        self.assertTrue(candidate.write_allowed)
+
+    def test_description_song_by_artist_recovers_fan_upload_pair(self):
+        resolver = CandidateResolver()
+        payload = {
+            "playlist_title": "Best Fallout Songs",
+            "source": {
+                "author": "Powell Yap",
+                "title": "A Kiss To Build A Dream On - Louis Armstrong",
+                "keywords": [
+                    "Kiss",
+                    "To",
+                    "Build",
+                    "Dream",
+                    "On",
+                    "Fallout",
+                    "soundtrack",
+                    "Louis",
+                    "Armstrong",
+                ],
+                "description": "A Kiss To Build A Dream On by Louis Armstrong",
+            },
+            "normalization": {
+                "title_analysis": {
+                    "guessed_artist": "A Kiss To Build A Dream On",
+                    "guessed_title": "Louis Armstrong",
+                    "split_confidence": "dash_split",
+                    "lookup_title": "A Kiss To Build A Dream On - Louis Armstrong",
+                }
+            },
+        }
+
+        candidate = resolver.resolve(payload)
+
+        self.assertEqual(candidate.artist, "Louis Armstrong")
+        self.assertEqual(candidate.title, "A Kiss To Build A Dream On")
+        self.assertEqual(candidate.source, "description_structured")
+        self.assertTrue(candidate.write_allowed)
+
+    def test_contextual_dash_split_is_blocked_from_auto_writing_fake_artist(self):
+        resolver = CandidateResolver()
+        payload = {
+            "playlist_title": "Best Fallout Songs",
+            "source": {
+                "author": "Człowiek Drzewo",
+                "title": "Fallout 76 - Take Me Home, Country Roads (Original Trailer Soundtrack)",
+                "keywords": [
+                    "Fallout 76",
+                    "Soundtrack",
+                    "OST",
+                    "HQ",
+                    "Trailer",
+                    "Song",
+                ],
+                "description": "Buy the song on iTunes and support the Habitat for Humanity charity.",
+            },
+            "normalization": {
+                "title_analysis": {
+                    "guessed_artist": "Fallout 76",
+                    "guessed_title": "Take Me Home, Country Roads",
+                    "split_confidence": "dash_split",
+                    "lookup_title": "Fallout 76 - Take Me Home, Country Roads",
+                }
+            },
+        }
+
+        candidate = resolver.resolve(payload)
+
+        self.assertEqual(candidate.artist, "")
+        self.assertEqual(candidate.title, "Take Me Home, Country Roads")
+        self.assertEqual(candidate.source, "contextual_dash_split")
+        self.assertFalse(candidate.write_allowed)
 
 
 if __name__ == "__main__":

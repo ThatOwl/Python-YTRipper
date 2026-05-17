@@ -1,4 +1,4 @@
-from autotagging.standalone_app import TaggingStandaloneCLI
+from autotagging.standalone.app import TaggingStandaloneCLI
 
 
 def main(argv: list[str] | None = None) -> int:

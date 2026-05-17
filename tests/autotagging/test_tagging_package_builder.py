@@ -9,7 +9,7 @@ SOURCE_ROOT = PROJECT_ROOT / "source"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from autotagging.package_builder import TaggingPackageBuilder, TaggingQueueStore
+from autotagging.runtime.package_builder import TaggingPackageBuilder, TaggingQueueStore
 from utility.utils import DownloadOptions
 
 

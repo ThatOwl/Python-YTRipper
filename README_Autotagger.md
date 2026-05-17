@@ -30,6 +30,8 @@ Implemented pieces:
 - queue/session/event inspection is available from a standalone CLI
 - failed, skipped, and enriched jobs can be manually requeued
 - selected jobs can be requeued and immediately reprocessed
+- operator review decisions and manual overrides can be persisted
+- simple session and queue repair suggestions are available
 
 Still missing for a fuller standalone mode:
 
@@ -66,22 +68,46 @@ Examples:
 
 Shared queue / worker core:
 
-- [source/autotagging/package_builder.py](source/autotagging/package_builder.py)
-- [source/autotagging/worker.py](source/autotagging/worker.py)
-- [source/autotagging/event_logger.py](source/autotagging/event_logger.py)
-- [source/autotagging/reporting.py](source/autotagging/reporting.py)
+- [source/autotagging/runtime/package_builder.py](source/autotagging/runtime/package_builder.py)
+- [source/autotagging/runtime/worker.py](source/autotagging/runtime/worker.py)
+- [source/autotagging/runtime/event_logger.py](source/autotagging/runtime/event_logger.py)
 
 Standalone operator surface:
 
-- [source/autotagging/standalone_app.py](source/autotagging/standalone_app.py)
+- [source/autotagging/standalone/app.py](source/autotagging/standalone/app.py)
+- [source/autotagging/standalone/reporting.py](source/autotagging/standalone/reporting.py)
+- [source/autotagging/standalone/review_store.py](source/autotagging/standalone/review_store.py)
+- [source/autotagging/standalone/repair_planner.py](source/autotagging/standalone/repair_planner.py)
 - [source/run_tagging_worker.py](source/run_tagging_worker.py)
 
 Core tagging helpers:
 
-- [source/autotagging/title_normalizer.py](source/autotagging/title_normalizer.py)
-- [source/autotagging/candidate_resolver.py](source/autotagging/candidate_resolver.py)
-- [source/autotagging/musicbrainz_enricher.py](source/autotagging/musicbrainz_enricher.py)
-- [source/autotagging/tag_writer.py](source/autotagging/tag_writer.py)
+- [source/autotagging/core/title_normalizer.py](source/autotagging/core/title_normalizer.py)
+- [source/autotagging/core/evidence_extractor.py](source/autotagging/core/evidence_extractor.py)
+- [source/autotagging/core/candidate_resolver.py](source/autotagging/core/candidate_resolver.py)
+- [source/autotagging/core/musicbrainz_enricher.py](source/autotagging/core/musicbrainz_enricher.py)
+- [source/autotagging/core/tag_writer.py](source/autotagging/core/tag_writer.py)
+
+## Current Matching Strategy
+
+The current matching logic is intentionally layered:
+
+- explicit YouTube music metadata wins immediately
+- structured descriptions are treated as high-confidence evidence
+  - `Provided to YouTube by ...`
+  - `Single: ... / From the album: ...`
+  - `Song: "..." by ...`
+- uploader, keywords, and normalized title splits are combined for official uploads and collaborations
+- fan-upload title hints are parsed conservatively for patterns like:
+  - `Title by Artist`
+  - contextual prefixes such as `Radio New Vegas - Title (Artist)`
+  - reverse forms like `Title - Artist`
+- weak candidates can be confirmed through a bounded MusicBrainz query plan instead of brute-forcing every combination
+
+Current emphasis:
+
+- avoid false positives where franchise or playlist context is mistaken for the artist
+- improve hit rate on private/fan playlists when title and artist are both present somewhere in the source metadata
 
 ## Standalone CLI
 
@@ -101,6 +127,18 @@ Available commands:
   - inspect one session’s package summaries
 - `events`
   - inspect recent lifecycle events
+- `review-list`
+  - inspect packages that likely need operator attention
+- `review-override`
+  - persist manual artist/title/album overrides for one job
+- `review-approve`
+  - persist an approval decision for one job
+- `review-reject`
+  - persist a rejection decision for one job
+- `plan-session`
+  - suggest follow-up actions for one session
+- `plan-queue`
+  - suggest queue-level operator actions
 - `retry`
   - requeue matching packages back to `pending`
 - `retry-run`
@@ -112,6 +150,12 @@ Examples:
 python source/run_tagging_worker.py status
 python source/run_tagging_worker.py session --session-id <session-id>
 python source/run_tagging_worker.py events --event-type candidate_resolved --limit 20
+python source/run_tagging_worker.py review-list
+python source/run_tagging_worker.py review-override --job-id <job-id> --artist "Artist" --title "Title"
+python source/run_tagging_worker.py review-approve --job-id <job-id> --note "ready to retry"
+python source/run_tagging_worker.py review-reject --job-id <job-id> --reason "needs manual research"
+python source/run_tagging_worker.py plan-session --session-id <session-id>
+python source/run_tagging_worker.py plan-queue
 python source/run_tagging_worker.py retry --job-id <job-id>
 python source/run_tagging_worker.py retry --session-id <session-id> --source-state skipped
 python source/run_tagging_worker.py retry-run --job-id <job-id>
@@ -152,7 +196,7 @@ Each package-scoped event carries stable operator identifiers like:
 
 ## Planned Standalone Classes
 
-The newer standalone code now includes some intentionally incomplete roadmap classes in [source/autotagging/standalone_app.py](source/autotagging/standalone_app.py).
+The newer standalone code now includes explicit operator classes in [source/autotagging/standalone/app.py](source/autotagging/standalone/app.py), [source/autotagging/standalone/review_store.py](source/autotagging/standalone/review_store.py), and [source/autotagging/standalone/repair_planner.py](source/autotagging/standalone/repair_planner.py).
 
 Implemented now:
 
@@ -161,14 +205,10 @@ Implemented now:
 - `TaggingStandaloneCLI`
   - parser and command dispatch
 
-Sketched for later:
-
 - `TaggingReviewStore`
-  - intended place for persistent approval / override / operator-note state
+  - persists approval, rejection, note, and override metadata
 - `TaggingRepairPlanner`
-  - intended place for higher-level “what should I do next?” logic
-
-These placeholders exist on purpose so the missing pieces are visible in code instead of only implied in chat history.
+  - generates conservative follow-up suggestions from queue and review state
 
 ## What Is Still Missing
 
@@ -188,3 +228,4 @@ The biggest missing functional areas are:
 - Queue state should be debuggable on disk without hidden process memory.
 - Event history should explain why a package ended up in `failed`, `skipped`, or `enriched`.
 - Standalone tooling should grow toward operator workflows, not just raw helper commands.
+- Temporary top-level wrapper modules remain under `source/autotagging/` for compatibility while imports migrate to the new `core`, `runtime`, and `standalone` subpackages.

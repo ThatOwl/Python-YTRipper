@@ -17,7 +17,7 @@ from utility.utils import (
     StreamInfo,
     sanitize_filename,
 )
-from autotagging.package_builder import TaggingPackageBuilder, TaggingQueueStore
+from autotagging.runtime.package_builder import TaggingPackageBuilder, TaggingQueueStore
 from infrastructure.media_assembler import MediaAssembler
 from infrastructure.stream_converter import StreamConverter
 from infrastructure.url_handler import URLHandler
