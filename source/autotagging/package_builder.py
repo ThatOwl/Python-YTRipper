@@ -40,6 +40,10 @@ def _safe_label(text: str) -> str:
     return label or "tagging"
 
 
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
 class TaggingPackageBuilder:
     """Build a stable JSON-safe tagging package from downloader context."""
 
@@ -54,17 +58,23 @@ class TaggingPackageBuilder:
         video_obj: Any,
         options: DownloadOptions,
         requested_actions: list[str],
+        session_id: str | None = None,
+        sequence_no: int = 0,
         playlist_title: str | None = None,
     ) -> TaggingPackage:
         final_path = Path(final_output_path)
         download_dir = Path(download_directory)
+        created_at = _utc_now_iso()
+        active_session_id = session_id or str(uuid.uuid4())
 
         return TaggingPackage(
             package_version=self.PACKAGE_VERSION,
             job_id=str(uuid.uuid4()),
+            session_id=active_session_id,
+            sequence_no=sequence_no,
             state="prepared",
             requested_actions=list(requested_actions),
-            created_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            created_at=created_at,
             final_output_path=str(final_path.resolve(strict=False)),
             download_directory=str(download_dir.resolve(strict=False)),
             container=final_path.suffix.lstrip(".").lower(),
@@ -72,6 +82,11 @@ class TaggingPackageBuilder:
             source=self._build_source_snapshot(video_obj),
             download_options=_json_safe(options.to_dict()),
             normalization={"normalization_version": self.NORMALIZATION_VERSION},
+            lifecycle={
+                "prepared_at": created_at,
+                "last_transition_at": created_at,
+                "state_history": [{"state": "prepared", "at": created_at}],
+            },
         )
 
     def _build_source_snapshot(self, video_obj: Any) -> TaggingSourceSnapshot:
@@ -171,6 +186,43 @@ class TaggingQueueStore:
         source_path.replace(target_path)
         return target_path
 
+    def update_state(self, payload: dict[str, Any], state: str) -> dict[str, Any]:
+        timestamp = _utc_now_iso()
+        payload["state"] = state
+        lifecycle = dict(payload.get("lifecycle", {}) or {})
+        lifecycle["last_transition_at"] = timestamp
+        lifecycle[f"{state}_at"] = timestamp
+        history = list(lifecycle.get("state_history", []) or [])
+        history.append({"state": state, "at": timestamp})
+        lifecycle["state_history"] = history
+        payload["lifecycle"] = lifecycle
+        return payload
+
+    def recover_stale_processing(self, max_age_seconds: float = 300.0) -> list[Path]:
+        recovered: list[Path] = []
+        now = datetime.now(timezone.utc)
+        for package_path in self.list_state_files("processing"):
+            payload = self.read_package(package_path)
+            lifecycle = dict(payload.get("lifecycle", {}) or {})
+            started_at = (
+                lifecycle.get("processing_at")
+                or lifecycle.get("last_transition_at")
+                or payload.get("created_at")
+            )
+            age_seconds = self._age_seconds(now, started_at)
+            if age_seconds is None or age_seconds < max_age_seconds:
+                continue
+
+            payload = self.update_state(payload, "prepared")
+            lifecycle = dict(payload.get("lifecycle", {}) or {})
+            lifecycle["recovered_from_processing_at"] = _utc_now_iso()
+            lifecycle["recovery_count"] = int(lifecycle.get("recovery_count", 0) or 0) + 1
+            payload["lifecycle"] = lifecycle
+            recovered_path = self.move_package(package_path, "pending")
+            self.write_package(recovered_path, payload)
+            recovered.append(recovered_path)
+        return recovered
+
     @staticmethod
     def read_package(package_path: Path | str) -> dict[str, Any]:
         with open(package_path, "r", encoding="utf-8") as handle:
@@ -181,3 +233,15 @@ class TaggingQueueStore:
         with open(package_path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
+
+    @staticmethod
+    def _age_seconds(now: datetime, timestamp: str | None) -> float | None:
+        if not timestamp:
+            return None
+        try:
+            parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return (now - parsed).total_seconds()

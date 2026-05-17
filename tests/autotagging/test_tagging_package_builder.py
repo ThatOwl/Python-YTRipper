@@ -43,16 +43,21 @@ class TestTaggingPackageBuilder(unittest.TestCase):
                 video_obj=_DummyVideo(),
                 options=options,
                 requested_actions=["prepare_tagging"],
+                session_id="session-123",
+                sequence_no=7,
                 playlist_title="Electro Swing Queue",
             )
 
             self.assertEqual(package.state, "prepared")
+            self.assertEqual(package.session_id, "session-123")
+            self.assertEqual(package.sequence_no, 7)
             self.assertEqual(package.container, "m4a")
             self.assertEqual(package.playlist_title, "Electro Swing Queue")
             self.assertEqual(package.source.video_id, "abc123xyz89")
             self.assertTrue(package.source.captions_available)
             self.assertEqual(package.source.caption_track_count, 2)
             self.assertEqual(package.normalization["normalization_version"], "yt-title-v1")
+            self.assertEqual(package.lifecycle["state_history"][0]["state"], "prepared")
 
             store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
             output_path = store.write_pending_package(package)
@@ -60,6 +65,8 @@ class TestTaggingPackageBuilder(unittest.TestCase):
             self.assertTrue(output_path.exists())
             payload = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(payload["state"], "prepared")
+            self.assertEqual(payload["session_id"], "session-123")
+            self.assertEqual(payload["sequence_no"], 7)
             self.assertEqual(payload["requested_actions"], ["prepare_tagging"])
             self.assertEqual(payload["source"]["author"], "Odd Chap")
             self.assertEqual(payload["download_options"]["audio_only"], True)

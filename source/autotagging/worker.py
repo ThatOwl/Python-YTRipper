@@ -37,6 +37,9 @@ class TaggingWorker:
     def run_until_idle(self) -> int:
         processed_count = 0
         deadline = time.monotonic() + self.idle_timeout
+        recovered = self.queue_store.recover_stale_processing()
+        if recovered:
+            logger.info("Recovered %s stale tagging package(s) back to pending", len(recovered))
 
         while True:
             processed = self.process_next_pending_package()
@@ -63,7 +66,7 @@ class TaggingWorker:
     def process_package_file(self, package_path: Path) -> Path:
         processing_path = self.queue_store.move_package(package_path, "processing")
         payload = self.queue_store.read_package(processing_path)
-        payload["state"] = "processing"
+        payload = self.queue_store.update_state(payload, "processing")
         self.queue_store.write_package(processing_path, payload)
 
         try:
@@ -80,16 +83,16 @@ class TaggingWorker:
                 completed_actions = list(payload.get("completed_actions", []))
                 if "enrich_candidate" not in completed_actions:
                     completed_actions.append("enrich_candidate")
-                payload["completed_actions"] = completed_actions
+            payload["completed_actions"] = completed_actions
             payload, final_state = self._maybe_write_tags(payload)
             target_state_dir = "failed" if final_state == "failed" else "done"
             final_path = self.queue_store.move_package(processing_path, target_state_dir)
-            payload["state"] = final_state
+            payload = self.queue_store.update_state(payload, final_state)
             self.queue_store.write_package(final_path, payload)
             logger.info("Processed tagging package: %s", final_path)
             return final_path
         except Exception as exc:
-            payload["state"] = "failed"
+            payload = self.queue_store.update_state(payload, "failed")
             errors = list(payload.get("errors", []))
             errors.append(str(exc))
             payload["errors"] = errors

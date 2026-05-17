@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import List
 import re
+import uuid
 
 import pytubefix as ptf
 
@@ -54,6 +55,8 @@ class DownloadOrchestrator:
         self.stream_download = stream_download or StreamDownloadService()
         self.tagging_package_builder = tagging_package_builder or TaggingPackageBuilder()
         self.tagging_queue_store = tagging_queue_store or TaggingQueueStore() # base-dir location should be managed by ? (user facing relevance?)
+        self.tagging_session_id = str(uuid.uuid4())
+        self.tagging_sequence_no = 0
 
     def download_playlist(
         self,
@@ -193,8 +196,6 @@ class DownloadOrchestrator:
         # Side effect of this being here: _download_single_video can downlaod both streams separat without being blocked by find_existing_file_by_stem()
         existing_file = self.os_handler.find_existing_file_by_stem(download_dir, base_filename)
 
-        
-        # ask codex for reasoning on this
         if existing_file is not None:
             self._prepare_tagging_package(
                 final_path=existing_file,
@@ -261,6 +262,8 @@ class DownloadOrchestrator:
         if not requested_actions:
             return None
 
+        self.tagging_sequence_no += 1
+
         try:
             package = self.tagging_package_builder.build_package(
                 final_output_path=final_path,
@@ -268,6 +271,8 @@ class DownloadOrchestrator:
                 video_obj=video_obj,
                 options=options,
                 requested_actions=requested_actions,
+                session_id=self.tagging_session_id,
+                sequence_no=self.tagging_sequence_no,
                 playlist_title=playlist_title,
             )
             package_path = self.tagging_queue_store.write_pending_package(package)

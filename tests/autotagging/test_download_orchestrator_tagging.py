@@ -96,7 +96,43 @@ class TestDownloadOrchestratorTagging(unittest.TestCase):
             self.assertEqual(kwargs["requested_actions"], ["prepare_tagging"])
             self.assertEqual(kwargs["playlist_title"], "Prepared Playlist")
             self.assertEqual(kwargs["final_output_path"], existing_file)
+            self.assertTrue(kwargs["session_id"])
+            self.assertEqual(kwargs["sequence_no"], 1)
             queue_store.write_pending_package.assert_called_once_with(tagging_package)
+
+    def test_prepare_tagging_sequence_increments_across_packages(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            existing_file = Path(tmpdir) / "Prepared Video.m4a"
+            existing_file.write_text("audio", encoding="utf-8")
+
+            os_handler = Mock()
+            os_handler.find_existing_file_by_stem.return_value = existing_file
+
+            media_assembler = Mock()
+            media_assembler.expected_extension.return_value = ".m4a"
+
+            package_builder = Mock()
+            package_builder.build_package.return_value = object()
+
+            queue_store = Mock()
+
+            orchestrator = DownloadOrchestrator(
+                os_handler=os_handler,
+                media_assembler=media_assembler,
+                tagging_package_builder=package_builder,
+                tagging_queue_store=queue_store,
+            )
+
+            options = DownloadOptions(default_download_directory=tmpdir, prepare_tagging=True)
+            orchestrator.download_single(options=options, download_dir=Path(tmpdir), video_obj=_DummyVideo())
+            orchestrator.download_single(options=options, download_dir=Path(tmpdir), video_obj=_DummyVideo())
+
+            self.assertEqual(package_builder.build_package.call_count, 2)
+            first_kwargs = package_builder.build_package.call_args_list[0].kwargs
+            second_kwargs = package_builder.build_package.call_args_list[1].kwargs
+            self.assertEqual(first_kwargs["sequence_no"], 1)
+            self.assertEqual(second_kwargs["sequence_no"], 2)
+            self.assertEqual(first_kwargs["session_id"], second_kwargs["session_id"])
 
 
 if __name__ == "__main__":

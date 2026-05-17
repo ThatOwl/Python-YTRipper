@@ -23,6 +23,8 @@ class TaggingSourceSnapshot:
 class TaggingPackage:
     package_version: int
     job_id: str
+    session_id: str
+    sequence_no: int
     state: str
     requested_actions: list[str]
     created_at: str
@@ -33,6 +35,7 @@ class TaggingPackage:
     source: TaggingSourceSnapshot = field(default_factory=TaggingSourceSnapshot)
     download_options: dict[str, Any] = field(default_factory=dict)
     normalization: dict[str, Any] = field(default_factory=dict)
+    lifecycle: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
