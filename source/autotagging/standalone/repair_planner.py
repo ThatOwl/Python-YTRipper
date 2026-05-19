@@ -1,7 +1,7 @@
 from typing import Any
 
-from ..runtime.package_builder import TaggingQueueStore
-from .review_store import TaggingReviewStore
+from autotagging.runtime_tagging.package_builder import TaggingQueueStore
+from autotagging.standalone.review_store import TaggingReviewStore
 
 
 class TaggingRepairPlanner:

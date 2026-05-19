@@ -163,7 +163,7 @@ fi
 
 # Clone the repository (fresh install or after update)
 echo "Cloning repository..."
-git clone https://github.com/RF-at-FH-Joanneum/Python-YTRipper.git
+git clone https://github.com/ThatOwl/Python-YTRipper.git
 
 cd "$REPO_NAME"
 

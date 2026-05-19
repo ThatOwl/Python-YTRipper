@@ -2,8 +2,8 @@ import difflib
 import time
 from typing import Any
 
-from .candidate_resolver import TagCandidate
-from .evidence_extractor import SourceEvidenceExtractor
+from autotagging.core.candidate_resolver import TagCandidate
+from autotagging.core.evidence_extractor import SourceEvidenceExtractor
 
 
 class MusicBrainzEnricher:

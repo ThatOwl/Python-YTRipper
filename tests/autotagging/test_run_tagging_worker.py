@@ -12,7 +12,7 @@ SOURCE_ROOT = PROJECT_ROOT / "source"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from autotagging.runtime.package_builder import TaggingPackageBuilder, TaggingQueueStore
+from autotagging.runtime_tagging.package_builder import TaggingPackageBuilder, TaggingQueueStore
 from run_tagging_worker import main
 from utility.utils import DownloadOptions
 
@@ -59,7 +59,7 @@ class TestRunTaggingWorker(unittest.TestCase):
 
     def test_status_command_outputs_csv_counts_and_recent_rows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             store = TaggingQueueStore(base_dir=queue_dir)
             dirs = store.ensure_queue_dirs()
             now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -121,7 +121,7 @@ class TestRunTaggingWorker(unittest.TestCase):
 
     def test_session_command_outputs_csv_rows_for_selected_session(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             store = TaggingQueueStore(base_dir=queue_dir)
             dirs = store.ensure_queue_dirs()
             now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -164,7 +164,7 @@ class TestRunTaggingWorker(unittest.TestCase):
 
     def test_status_command_supports_json_output(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             store = TaggingQueueStore(base_dir=queue_dir)
             store.ensure_queue_dirs()
 
@@ -179,7 +179,7 @@ class TestRunTaggingWorker(unittest.TestCase):
 
     def test_events_command_outputs_filtered_csv_rows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             store = TaggingQueueStore(base_dir=queue_dir)
 
             store.event_logger.emit(
@@ -234,7 +234,7 @@ class TestRunTaggingWorker(unittest.TestCase):
 
     def test_events_command_supports_json_output_and_event_type_filter(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             store = TaggingQueueStore(base_dir=queue_dir)
 
             store.event_logger.emit(
@@ -279,7 +279,7 @@ class TestRunTaggingWorker(unittest.TestCase):
 
     def test_retry_command_requeues_failed_package_and_outputs_csv(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             store = TaggingQueueStore(base_dir=queue_dir)
             dirs = store.ensure_queue_dirs()
             ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -313,7 +313,7 @@ class TestRunTaggingWorker(unittest.TestCase):
 
     def test_retry_command_dry_run_reports_matches_without_changing_queue(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             store = TaggingQueueStore(base_dir=queue_dir)
             dirs = store.ensure_queue_dirs()
             ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -348,7 +348,7 @@ class TestRunTaggingWorker(unittest.TestCase):
 
     def test_retry_command_returns_nonzero_when_no_failed_packages_match(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             store = TaggingQueueStore(base_dir=queue_dir)
             store.ensure_queue_dirs()
 
@@ -361,7 +361,7 @@ class TestRunTaggingWorker(unittest.TestCase):
 
     def test_retry_command_can_requeue_skipped_packages_from_done_state(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             store = TaggingQueueStore(base_dir=queue_dir)
             dirs = store.ensure_queue_dirs()
             ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -438,7 +438,7 @@ class TestRunTaggingWorker(unittest.TestCase):
         options = DownloadOptions(autotag=True)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             store = TaggingQueueStore(base_dir=queue_dir)
             dirs = store.ensure_queue_dirs()
             final_output = Path(tmpdir) / "Blaze.m4a"
@@ -486,7 +486,7 @@ class TestRunTaggingWorker(unittest.TestCase):
 
     def test_review_override_and_review_list_surface_saved_review_metadata(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             store = TaggingQueueStore(base_dir=queue_dir)
             dirs = store.ensure_queue_dirs()
             ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -543,7 +543,7 @@ class TestRunTaggingWorker(unittest.TestCase):
 
     def test_review_approve_and_plan_session_expose_follow_up_state(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             store = TaggingQueueStore(base_dir=queue_dir)
             dirs = store.ensure_queue_dirs()
             ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -593,7 +593,7 @@ class TestRunTaggingWorker(unittest.TestCase):
 
     def test_plan_queue_reports_pending_and_failed_maintenance_actions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             store = TaggingQueueStore(base_dir=queue_dir)
             dirs = store.ensure_queue_dirs()
             ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -641,7 +641,7 @@ class TestRunTaggingWorker(unittest.TestCase):
 
     def test_default_invocation_without_subcommand_still_runs_worker_mode(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             output = io.StringIO()
             with redirect_stdout(output):
                 exit_code = main(["--queue-dir", str(queue_dir), "--idle-timeout", "0", "--poll-interval", "0.01"])

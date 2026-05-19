@@ -1,0 +1,18 @@
+{
+    "current_preset": "default",
+    "default_download_directory": "~/RipperTarget",
+    "audio_only": false,
+    "audio_mp3": false,
+    "show_preset": true,
+    "preferred_audio_quality": "medium",
+    "preferred_video_quality": "medium",
+    "preferred_resolution": "720p",
+    "preferred_abr": "",
+    "preferred_format": "",
+    "preferred_fps": 30,
+    "visible_loglevel": "INFO",
+    "donotconvert": false,
+    "no_dir_date": false,
+    "autotag": true,
+    "save_results": true
+}

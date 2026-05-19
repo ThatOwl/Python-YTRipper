@@ -9,7 +9,7 @@ SOURCE_ROOT = PROJECT_ROOT / "source"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from autotagging.runtime.package_builder import TaggingPackageBuilder, TaggingQueueStore
+from autotagging.runtime_tagging.package_builder import TaggingPackageBuilder, TaggingQueueStore
 from utility.utils import DownloadOptions
 
 
@@ -59,7 +59,7 @@ class TestTaggingPackageBuilder(unittest.TestCase):
             self.assertEqual(package.normalization["normalization_version"], "yt-title-v1")
             self.assertEqual(package.lifecycle["state_history"][0]["state"], "prepared")
 
-            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime-tagging")
             output_path = store.write_pending_package(package)
 
             self.assertTrue(output_path.exists())
@@ -72,7 +72,7 @@ class TestTaggingPackageBuilder(unittest.TestCase):
             self.assertEqual(payload["download_options"]["audio_only"], True)
             events = [
                 json.loads(line)
-                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+                for line in (Path(tmpdir) / "runtime-tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
             ]
             self.assertEqual(events[-1]["event_type"], "package_prepared")
             self.assertEqual(events[-1]["job_id"], payload["job_id"])

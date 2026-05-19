@@ -1,11 +1,6 @@
-# Command-line interface for YouTube video downloading
+"""CLI package exports."""
 
-"""from .cli_interactive import InteractiveCLI
-from .cli_command import CommandCLI
-from .cli_base import CLIBase
+from cli.cli_base import CLIBase
+from cli.cli_command import CommandCLI
 
-__all__ = [
-    "InteractiveCLI",
-    "CommandCLI",
-    "CLIBase",
-]"""
+__all__ = ["CLIBase", "CommandCLI"]

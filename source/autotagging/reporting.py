@@ -1,4 +1,4 @@
-from .standalone.reporting import (
+from autotagging.standalone.reporting import (
     format_events,
     format_queue_snapshot,
     format_repair_plans,

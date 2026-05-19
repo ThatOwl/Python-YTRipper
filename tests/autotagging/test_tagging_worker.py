@@ -13,9 +13,9 @@ if str(SOURCE_ROOT) not in sys.path:
 
 from autotagging.core.candidate_resolver import TagCandidate
 from autotagging.core.tag_writer import TagWriteResult
-from autotagging.runtime.package_builder import TaggingPackageBuilder, TaggingQueueStore
-from autotagging.runtime.results_report import TaggingResultsReport
-from autotagging.runtime.worker import TaggingWorker
+from autotagging.runtime_tagging.package_builder import TaggingPackageBuilder, TaggingQueueStore
+from autotagging.runtime_tagging.results_report import TaggingResultsReport
+from autotagging.runtime_tagging.worker import TaggingWorker
 from utility.utils import DownloadOptions, DownloadResult
 
 
@@ -74,7 +74,7 @@ class TestTaggingWorker(unittest.TestCase):
                 result_report_path=report_path,
             )
 
-            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime-tagging")
             pending_path = store.write_pending_package(package)
 
             tag_writer = Mock()
@@ -119,7 +119,7 @@ class TestTaggingWorker(unittest.TestCase):
                 playlist_title="Electro Swing",
             )
 
-            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime-tagging")
             pending_path = store.write_pending_package(package)
 
             tag_writer = Mock()
@@ -149,7 +149,7 @@ class TestTaggingWorker(unittest.TestCase):
             tag_writer.write_candidate.assert_called_once()
             events = [
                 json.loads(line)
-                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+                for line in (Path(tmpdir) / "runtime-tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
             ]
             event_types = [event["event_type"] for event in events]
             self.assertIn("title_normalized", event_types)
@@ -177,7 +177,7 @@ class TestTaggingWorker(unittest.TestCase):
                 playlist_title="Electro Swing",
             )
 
-            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime-tagging")
             pending_path = store.write_pending_package(package)
 
             tag_writer = Mock()
@@ -199,7 +199,7 @@ class TestTaggingWorker(unittest.TestCase):
             tag_writer.write_candidate.assert_not_called()
             events = [
                 json.loads(line)
-                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+                for line in (Path(tmpdir) / "runtime-tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
             ]
             event_types = [event["event_type"] for event in events]
             self.assertIn("candidate_enrichment_missed", event_types)
@@ -226,7 +226,7 @@ class TestTaggingWorker(unittest.TestCase):
                 playlist_title="Electro Swing",
             )
 
-            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime-tagging")
             pending_path = store.write_pending_package(package)
 
             tag_writer = Mock()
@@ -278,7 +278,7 @@ class TestTaggingWorker(unittest.TestCase):
                 playlist_title="Electro Swing",
             )
 
-            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime-tagging")
             store.write_pending_package(package)
 
             tag_writer = Mock()
@@ -296,7 +296,7 @@ class TestTaggingWorker(unittest.TestCase):
             self.assertEqual(processed_count, 1)
             events = [
                 json.loads(line)
-                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+                for line in (Path(tmpdir) / "runtime-tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
             ]
             event_types = [event["event_type"] for event in events]
             self.assertIn("worker_started", event_types)
@@ -312,7 +312,7 @@ class TestTaggingWorker(unittest.TestCase):
         options = DownloadOptions(autotag=True)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue_dir = Path(tmpdir) / "runtime" / "tagging"
+            queue_dir = Path(tmpdir) / "runtime-tagging"
             store = TaggingQueueStore(base_dir=queue_dir)
             queue_paths = store.ensure_queue_dirs()
             tag_writer = Mock()

@@ -3,9 +3,9 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-from ..runtime.package_builder import TaggingQueueStore
-from ..runtime.worker import TaggingWorker
-from .reporting import (
+from autotagging.runtime_tagging.package_builder import TaggingQueueStore
+from autotagging.runtime_tagging.worker import TaggingWorker
+from autotagging.standalone.reporting import (
     format_events,
     format_queue_snapshot,
     format_repair_plans,
@@ -13,9 +13,9 @@ from .reporting import (
     format_review_candidates,
     format_session_snapshot,
 )
-from .local_directory import LocalDirectoryTagger
-from .repair_planner import TaggingRepairPlanner
-from .review_store import TaggingReviewStore
+from autotagging.standalone.local_directory import LocalDirectoryTagger
+from autotagging.standalone.repair_planner import TaggingRepairPlanner
+from autotagging.standalone.review_store import TaggingReviewStore
 
 
 class TaggingStandaloneService:

@@ -1,7 +1,7 @@
-from .app import TaggingStandaloneCLI, TaggingStandaloneService
-from .local_directory import LocalDirectoryTagger
-from .repair_planner import TaggingRepairPlanner
-from .reporting import (
+from autotagging.standalone.app import TaggingStandaloneCLI, TaggingStandaloneService
+from autotagging.standalone.local_directory import LocalDirectoryTagger
+from autotagging.standalone.repair_planner import TaggingRepairPlanner
+from autotagging.standalone.reporting import (
     format_events,
     format_queue_snapshot,
     format_repair_plans,
@@ -9,7 +9,7 @@ from .reporting import (
     format_review_candidates,
     format_session_snapshot,
 )
-from .review_store import TaggingReviewStore
+from autotagging.standalone.review_store import TaggingReviewStore
 
 __all__ = [
     "TaggingRepairPlanner",

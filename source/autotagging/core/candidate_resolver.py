@@ -2,7 +2,7 @@ from dataclasses import asdict, dataclass
 import unicodedata
 from typing import Any
 
-from .evidence_extractor import SourceEvidence, SourceEvidenceExtractor
+from autotagging.core.evidence_extractor import SourceEvidence, SourceEvidenceExtractor
 
 
 @dataclass

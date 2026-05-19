@@ -43,12 +43,16 @@ Install system packages:
 sudo apt install python3-full python3-venv ffmpeg
 ```
 
-"Installer" usage:
+### "Installer"
 
-- download only install.sh and make it executable
-- but it into a directory of your choosing for the application files to reside in
- * e.g. ~/RipperApplication
-- run the script (it will pull the repo, )
+- Fownload only [install.sh](./microtools/install.sh) and make it executable
+- Put it into a directory of your choosing for the application files to reside in
+  * e.g. ~/RipperApplication
+- run the script and it will:
+  *  pull the repo
+  * setup shell aliases
+  * install requirements
+  * setup virtual environment
 
 ### Manual Installation
 
@@ -107,7 +111,10 @@ For the separate metadata parsing/enrichment/tagging workflow, see:
 ### Interactive Loop Mode
 
 ```bash
+# from project root
 ./start_w_args.sh --loop
+# or (shell alias)
+ytl 
 ```
 
 Starts the prompt-based loop. Each entered line is parsed like a normal one-shot CLI command.
@@ -120,17 +127,20 @@ When `prompt_toolkit` is installed and the CLI is running in a real terminal, lo
 
 ### Command Mode
 
+**REQUIRS**
+- **virtual envirnoment when launched via python3 ...**  
+- **commands launched from application root**  
+
+
 ```bash
+source .venv/bin/activate
 python3 source/yt_ripper.py <URL> [options]
-./start_w_args.sh --help
+./start_w_args.sh <URL> [options]
 ```
 
 ### Examples
 
 ```bash
-# Download a single video with current defaults
-python3 source/yt_ripper.py "https://www.youtube.com/watch?v=7S_cMrxjZFo"
-
 # Audio-only download
 python3 source/yt_ripper.py "https://www.youtube.com/watch?v=7S_cMrxjZFo" -a true
 
@@ -141,12 +151,6 @@ python3 source/yt_ripper.py -f ./tests/test_download.txt
 python3 source/yt_ripper.py "https://www.youtube.com/watch?v=7S_cMrxjZFo" --info
 ```
 
-### Manual Virtual Environment Activation
-
-```bash
-source .venv/bin/activate
-python3 source/yt_ripper.py --help
-```
 
 ---
 

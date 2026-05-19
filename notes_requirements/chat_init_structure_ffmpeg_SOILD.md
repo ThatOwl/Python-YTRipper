@@ -72,7 +72,7 @@ GitHub Copilot: Yes, it is **common and recommended** in larger Python projects 
 2. **In your modules:**  
    ```python
    # filepath: source/url_handler.py
-   from .logger import get_logger
+   from utility.logger import get_logger
    logger = get_logger(__name__)
    ```
 

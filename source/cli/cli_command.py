@@ -31,7 +31,7 @@ from utility.utils import (
 
 import utility.preferences as preferences
 
-from autotagging.runtime.results_report import TaggingResultsReport
+from autotagging.runtime_tagging.results_report import TaggingResultsReport
 
 logger = get_logger(__name__, "cli_command_debug.log")
 
@@ -98,10 +98,12 @@ class CommandCLI(CLIBase):
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog=(
                 "Examples:\n"
-                "  yt_ripper <URL> -a true -q high\n"
-                "  yt_ripper <URL> -r 1080p -o ~/Downloads\n"
-                "  yt_ripper -f ~/urls.txt -a true -q low\n"
-                "  yt_ripper <URL> -vl debug"
+                "  yt_ripper> <URL> -a true -q high\n"
+                "  yt_ripper> <URL> -lp 0 -a true -q high  (overrides preset for session)\n"
+                "  yt_ripper> <URL> -r 1080p -o ~/Downloads\n"
+                "  yt_ripper> -f ~/urls.txt -a true -q low\n"
+                "  yt_ripper> <URL> -vl debug -sr true (save download results)\n"
+                "  yt_ripper> <URL> -at true (attempt auto-tagging with metadata)\n"
             ),
         )
 

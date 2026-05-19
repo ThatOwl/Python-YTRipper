@@ -1,0 +1,17 @@
+{
+    "default_download_directory": "/mnt/d/Program_Targets/RipperTarget",
+    "audio_only": true,
+    "audio_mp3": false,
+    "show_preset": false,
+    "preferred_audio_quality": "high",
+    "preferred_video_quality": "high",
+    "preferred_resolution": "",
+    "preferred_abr": "",
+    "preferred_format": "",
+    "preferred_fps": 0,
+    "visible_loglevel": "INFO",
+    "donotconvert": false,
+    "no_dir_date": false,
+    "autotag": true,
+    "save_results": true
+}

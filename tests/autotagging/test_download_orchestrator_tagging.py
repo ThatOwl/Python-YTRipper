@@ -72,7 +72,7 @@ class TestDownloadOrchestratorTagging(unittest.TestCase):
             package_builder.build_package.return_value = tagging_package
 
             queue_store = Mock()
-            queue_store.write_pending_package.return_value = Path(tmpdir) / "runtime" / "tagging" / "pending" / "pkg.json"
+            queue_store.write_pending_package.return_value = Path(tmpdir) / "runtime-tagging" / "pending" / "pkg.json"
 
             orchestrator = DownloadOrchestrator(
                 os_handler=os_handler,

@@ -24,9 +24,6 @@
 
 ## documentation
 - user should know that re-downloading after a try (without renaming or moving download-dir / target-dir) AUTOCOMPLETES the playlists
-- adapt readme to guide install with install.sh
-- exmples corection in README
-- document install bvehaviour -> shell interactions -> venv etc (warn)
 - check setup and cleanup shell.conf 
 - adapt the install bash script to a setup tool asking user for locations (checking if exists and or setting up) -> aliases -> notify what they can change
 - ytf ytp ytl ... 

@@ -5,7 +5,7 @@ from typing import Any
 
 import utility.preferences as preferences
 
-from ..runtime.package_builder import TaggingQueueStore
+from autotagging.runtime_tagging.package_builder import TaggingQueueStore
 
 
 def _utc_now_iso() -> str:
@@ -19,7 +19,7 @@ class TaggingReviewStore:
 
     def __init__(self, base_dir: Path | str | None = None):
         if base_dir is None:
-            base_dir = preferences.PROJECT_ROOT / "runtime" / "tagging"
+            base_dir = preferences.PROJECT_ROOT / "runtime-tagging"
         self.base_dir = Path(base_dir)
         self.review_dir = self.base_dir / "reviews"
 

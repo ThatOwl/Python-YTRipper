@@ -10,13 +10,13 @@ SOURCE_ROOT = PROJECT_ROOT / "source"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from autotagging.runtime.package_builder import TaggingQueueStore
+from autotagging.runtime_tagging.package_builder import TaggingQueueStore
 
 
 class TestTaggingQueueStore(unittest.TestCase):
     def test_recover_stale_processing_moves_package_back_to_pending(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime-tagging")
             dirs = store.ensure_queue_dirs()
             processing_path = dirs["processing"] / "stale.json"
 
@@ -46,7 +46,7 @@ class TestTaggingQueueStore(unittest.TestCase):
             self.assertIn("recovered_from_processing_at", recovered_payload["lifecycle"])
             events = [
                 json.loads(line)
-                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+                for line in (Path(tmpdir) / "runtime-tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
             ]
             event_types = [event["event_type"] for event in events]
             self.assertIn("state_transition", event_types)
@@ -54,7 +54,7 @@ class TestTaggingQueueStore(unittest.TestCase):
 
     def test_prune_state_files_applies_age_and_count_limits(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime-tagging")
             dirs = store.ensure_queue_dirs()
             now = datetime.now(timezone.utc).replace(microsecond=0)
 
@@ -84,14 +84,14 @@ class TestTaggingQueueStore(unittest.TestCase):
             self.assertTrue(remaining[0].name.endswith("done-3.json"))
             events = [
                 json.loads(line)
-                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+                for line in (Path(tmpdir) / "runtime-tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
             ]
             pruned = [event for event in events if event["event_type"] == "package_pruned"]
             self.assertEqual(len(pruned), 2)
 
     def test_queue_snapshot_and_session_snapshot_summarize_packages(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime-tagging")
             dirs = store.ensure_queue_dirs()
             now = datetime.now(timezone.utc).replace(microsecond=0)
 
@@ -153,7 +153,7 @@ class TestTaggingQueueStore(unittest.TestCase):
 
     def test_requeue_failed_packages_moves_matching_package_back_to_pending(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime-tagging")
             dirs = store.ensure_queue_dirs()
             ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -187,7 +187,7 @@ class TestTaggingQueueStore(unittest.TestCase):
             self.assertEqual(payload["lifecycle"]["manual_requeue_count"], 1)
             events = [
                 json.loads(line)
-                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+                for line in (Path(tmpdir) / "runtime-tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
             ]
             event_types = [event["event_type"] for event in events]
             self.assertIn("state_transition", event_types)
@@ -195,7 +195,7 @@ class TestTaggingQueueStore(unittest.TestCase):
 
     def test_requeue_failed_packages_dry_run_leaves_failed_package_in_place(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime-tagging")
             dirs = store.ensure_queue_dirs()
             ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -223,12 +223,12 @@ class TestTaggingQueueStore(unittest.TestCase):
             self.assertEqual(results[0]["status"], "dry_run")
             self.assertTrue(failed_path.exists())
             self.assertEqual(store.list_state_files("pending"), [])
-            event_log = Path(tmpdir) / "runtime" / "tagging" / "events.jsonl"
+            event_log = Path(tmpdir) / "runtime-tagging" / "events.jsonl"
             self.assertFalse(event_log.exists())
 
     def test_requeue_packages_can_move_skipped_package_from_done_back_to_pending(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime" / "tagging")
+            store = TaggingQueueStore(base_dir=Path(tmpdir) / "runtime-tagging")
             dirs = store.ensure_queue_dirs()
             ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -281,7 +281,7 @@ class TestTaggingQueueStore(unittest.TestCase):
             self.assertEqual(payload["lifecycle"]["manual_requeue_count"], 1)
             events = [
                 json.loads(line)
-                for line in (Path(tmpdir) / "runtime" / "tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+                for line in (Path(tmpdir) / "runtime-tagging" / "events.jsonl").read_text(encoding="utf-8").splitlines()
             ]
             requeued_event = next(event for event in events if event["event_type"] == "package_requeued")
             self.assertEqual(requeued_event["requeued_from"], "skipped")

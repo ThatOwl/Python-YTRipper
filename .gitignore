@@ -208,7 +208,6 @@ __marimo__/
 
 #Test outputs and config
 temp_*/
-config/
 .batch_fix/
 scripts/extend_videos_longer.py
-runtime/
+/runtime-tagging/

@@ -6,10 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from ..core.candidate_resolver import CandidateResolver, TagCandidate
-from ..core.musicbrainz_enricher import MusicBrainzEnricher
-from ..core.tag_writer import TagWriter
-from ..core.title_normalizer import TitleNormalizer
+from autotagging.core.candidate_resolver import CandidateResolver, TagCandidate
+from autotagging.core.musicbrainz_enricher import MusicBrainzEnricher
+from autotagging.core.tag_writer import TagWriter
+from autotagging.core.title_normalizer import TitleNormalizer
 
 SUPPORTED_AUDIO_EXTENSIONS = (".mp3", ".m4a", ".mp4")
 DEFAULT_SCAN_FIELDS = [

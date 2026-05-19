@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from .candidate_resolver import TagCandidate
+from autotagging.core.candidate_resolver import TagCandidate
 
 
 @dataclass

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 from datetime import datetime
 
-from autotagging.runtime.results_report import TaggingResultsReport
+from autotagging.runtime_tagging.results_report import TaggingResultsReport
 from utility.logger import get_logger
 import utility.preferences as preferences
 from infrastructure.url_handler import URLHandler
