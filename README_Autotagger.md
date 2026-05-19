@@ -5,7 +5,7 @@ This document tracks the newer package-driven autotagging subsystem inside `Pyth
 It complements:
 
 - [README.md](README.md) for the main downloader
-- [scripts/README_auto_tagging.md](scripts/README_auto_tagging.md) for the older standalone `python-autotagger.py`
+- [scripts/README_auto_tagging.md](scripts/README_auto_tagging.md) for legacy reference on the older standalone `python-autotagger.py`
 
 ## Goal
 
@@ -131,7 +131,13 @@ Quick DAU/operator notes before the command list:
   - `done` is a queue folder, not a success state
   - logical states inside `done/` can still be `written`, `skipped`, or `enriched`
 
-Current entrypoint:
+Current launcher:
+
+```bash
+./start_autotagger_w_args.sh <command> [options]
+```
+
+Direct Python entrypoint:
 
 ```bash
 python3 source/run_tagging_worker.py <command> [options]
@@ -140,9 +146,26 @@ python3 source/run_tagging_worker.py <command> [options]
 It can also run in an interactive prompt loop like the main downloader CLI:
 
 ```bash
+./start_autotagger_w_args.sh
+./start_autotagger_w_args.sh --loop
 python3 source/run_tagging_worker.py
 python3 source/run_tagging_worker.py --loop
 ```
+
+Opinionated shell helpers for the most common paths live in `microtools/shell_aliases.sh`:
+
+- `tagDir [directory]`
+  - scan missing metadata and keep MusicBrainz confirmation enabled
+- `tagDirFast [directory]`
+  - same as `tagDir` but skip MusicBrainz for a quicker first pass
+- `tagDirAll [directory]`
+  - scan everything in the directory, including already-tagged files
+- `tagApply <csv>`
+  - apply reviewed suggestions back into the source files with safe `missing` overwrite mode
+- `tagLoop`
+  - open the standalone autotagger prompt
+- `tagStatus`
+  - inspect current queue state
 
 Available commands:
 

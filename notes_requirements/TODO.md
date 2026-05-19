@@ -7,7 +7,6 @@
 - op. adapt stream_converter to accept SOME file-formats
 - handle exception thrown resulting from internet connection timeout (cleanly)
 
-
 ## warning
 - X refactor "download_dir" into "options" => DO NOT ... as file-dwnld may create multiple playlists => which have own dwnld-dirs !
 (in playlists dwdnld skip x > 15min->add url to output.txt & in single more complex)
@@ -15,6 +14,10 @@
 
 ## Small
 - Vary testing URLs for better robustness ... maybe search for specific codecs and paring them together
+- write two scripts for installation and aliases
+
+## later 
+- if packaged -> use std paths in os (e.g. appdata for win) 
 
 ## By Topic
 ## research
@@ -23,6 +26,7 @@
 - find out if start_radio is appended to valid playlists => add case so list can still be downloaded (Pasting link is not well-defined)
 
 ## documentation
+- RECOMMEND users to use presets as much as possible -> way less work
 - user should know that re-downloading after a try (without renaming or moving download-dir / target-dir) AUTOCOMPLETES the playlists
 - check setup and cleanup shell.conf 
 - adapt the install bash script to a setup tool asking user for locations (checking if exists and or setting up) -> aliases -> notify what they can change

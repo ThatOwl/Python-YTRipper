@@ -209,5 +209,7 @@ __marimo__/
 #Test outputs and config
 temp_*/
 .batch_fix/
-scripts/extend_videos_longer.py
 /runtime-tagging/
+scripts/
+config/yt_tagger_history.txt
+config/yt_ripper_history.txt

@@ -307,14 +307,27 @@ class TaggingStandaloneCLI:
         queue_store_factory: Callable[[Path | str | None], TaggingQueueStore] | None = None,
     ):
         self.queue_store_factory = queue_store_factory or self._default_queue_store_factory
+        self.parser = self.build_parser()
+        self.enable_argcomplete(self.parser)
 
     @staticmethod
     def _default_queue_store_factory(queue_dir: Path | str | None) -> TaggingQueueStore:
         return TaggingQueueStore(base_dir=queue_dir) if queue_dir else TaggingQueueStore()
 
     def build_parser(self) -> argparse.ArgumentParser:
-        parser = argparse.ArgumentParser(description="Background worker and operator CLI for ytripper tagging packages")
+        parser = argparse.ArgumentParser(
+            description="Background worker and operator CLI for ytripper tagging packages",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog=(
+                "Examples:\n"
+                "  yt-tagger> status\n"
+                "  yt-tagger> scan-dir --directory ~/Music\n"
+                "  yt-tagger> scan-dir --directory ~/Music --no-enrich\n"
+                "  yt-tagger> apply-csv --csv ~/Music/2026-05-19_tag_suggestions.csv\n"
+            ),
+        )
         subparsers = parser.add_subparsers(dest="command")
+        parser._completion_default_subcommand = "run"
 
         run_parser = subparsers.add_parser("run", help="Run the background tagging worker")
         run_parser.add_argument("--queue-dir", default=None, help="Optional queue directory override")
@@ -481,9 +494,17 @@ class TaggingStandaloneCLI:
         )
         return parser
 
+    @staticmethod
+    def enable_argcomplete(parser: argparse.ArgumentParser) -> None:
+        try:
+            import argcomplete
+
+            argcomplete.autocomplete(parser)
+        except ImportError:
+            pass
+
     def execute(self, argv: list[str] | None = None) -> int:
-        parser = self.build_parser()
-        args = parser.parse_args(self._normalize_argv(argv))
+        args = self.parser.parse_args(self._normalize_argv(argv))
         queue_dir = getattr(args, "queue_dir", None)
         service = TaggingStandaloneService(self.queue_store_factory(queue_dir))
 

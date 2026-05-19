@@ -102,7 +102,17 @@ The main downloader now supports early-stage tagging package preparation:
 
 This is the first architectural slice toward fuller embedded autotagging. The richer standalone tagging tool and MusicBrainz-heavy processing remain separate work in progress.
 
-For the separate metadata parsing/enrichment/tagging workflow, see:
+For the current standalone autotagger workflow, use:
+
+- `./start_autotagger_w_args.sh --loop`
+- `./start_autotagger_w_args.sh scan-dir --directory ~/Music`
+- shell helpers from `microtools/shell_aliases.sh`
+  - `tagDir [directory]` scans the current shell directory when no default/argument is provided
+  - `tagDirFast [directory]` does the same scan without MusicBrainz enrichment
+  - `tagDirAll [directory]` scans everything, including already-tagged files
+  - `tagApply <csv>` writes reviewed CSV suggestions back into the files
+
+For legacy reference only, see:
 
 - `scripts/python-autotagger.py`
 - `scripts/README_auto_tagging.md`
@@ -236,6 +246,9 @@ Python-YTRipper/
 ├── config/
 │   ├── default_settings_<username>.json
 │   └── presets/
+├── microtools/
+│   ├── install.sh
+│   └── shell_aliases.sh
 ├── source/
 │   ├── yt_ripper.py
 │   ├── application/
@@ -248,6 +261,7 @@ Python-YTRipper/
 │   ├── README_auto_tagging.md
 │   └── ...
 ├── tests/
+├── start_autotagger_w_args.sh
 ├── start_w_args.sh
 └── requirements.txt
 ```

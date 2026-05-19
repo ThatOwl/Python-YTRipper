@@ -1,13 +1,15 @@
-import shlex
 import sys
 
 from autotagging.standalone.app import TaggingStandaloneCLI
-from cli.interactive_prompt import InteractivePrompt
+from cli.interactive_prompt import InteractivePrompt, split_prompt_command
+import utility.preferences as preferences
 
 
 def main(argv: list[str] | None = None) -> int:
+    cli = TaggingStandaloneCLI()
+
     if argv is not None:
-        return TaggingStandaloneCLI().execute(argv)
+        return cli.execute(argv)
 
     args = sys.argv[1:]
     if args and args[0] in ("help", "-h", "--help"):
@@ -16,11 +18,14 @@ def main(argv: list[str] | None = None) -> int:
         print("- Loop mode: no args or -l/--loop")
         print("- Command mode: provide a normal command and flags")
         print("")
-        return TaggingStandaloneCLI().execute(["--help"])
+        return cli.execute(["--help"])
 
     if not args or args[0] in ("-l", "--loop", "loop"):
-        cli = TaggingStandaloneCLI()
-        prompt = InteractivePrompt(lambda: cli.build_parser(), prompt_label="yt-tagger> ")
+        prompt = InteractivePrompt(
+            lambda: cli.parser,
+            prompt_label="yt-tagger> ",
+            history_path=preferences.CONFIG_DIR / "yt_tagger_history.txt",
+        )
         while True:
             try:
                 command = prompt.prompt().strip()
@@ -36,9 +41,9 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             if not command:
                 continue
-            cli.execute(shlex.split(command))
+            cli.execute(split_prompt_command(command))
 
-    return TaggingStandaloneCLI().execute(args)
+    return cli.execute(args)
 
 
 if __name__ == "__main__":

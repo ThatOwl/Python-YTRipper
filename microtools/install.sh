@@ -19,23 +19,31 @@ install_shell_aliases_config() {
     fi
 
     if [ -f "$config_file" ]; then
-        echo "Alias config already exists: $config_file"
+        if ! grep -q '^# TAGDIR_DEFAULT_DIRECTORY=' "$config_file" && ! grep -q '^TAGDIR_DEFAULT_DIRECTORY=' "$config_file"; then
+            cat >> "$config_file" <<'EOF'
+
+# Optional default directory used by `tagDir`, `tagDirFast`, and `tagDirAll`.
+# Leave commented out to let those aliases default to your current shell directory.
+# TAGDIR_DEFAULT_DIRECTORY="$HOME/RipperTarget"
+EOF
+            echo "Updated alias config with tagger defaults: $config_file"
+        else
+            echo "Alias config already exists: $config_file"
+        fi
         return 0
     fi
 
     cat > "$config_file" <<'EOF'
 # Python-YTRipper shell aliases configuration
-# This file is sourced by scripts/shell_aliases.sh.
+# This file is sourced by microtools/shell_aliases.sh.
 # Override these values for your environment.
-
-# Default root scanned by `autotag` / `autotag-mb`
-AUTOTAG_DEFAULT_ROOT="/mnt/d/Program_Targets/MusicBrainz"
-
-# Default target used by `autotag` / `autotag-mb`
-AUTOTAG_DEFAULT_TARGET="/mnt/d/Program_Targets/TaggingTarget"
 
 # Default file used by `ytp` (calls ytf <file>)
 YTF_DEFAULT_FILE="$HOME/RipperTarget/paste-here.txt"
+
+# Optional default directory used by `tagDir`, `tagDirFast`, and `tagDirAll`.
+# Leave commented out to let those aliases default to your current shell directory.
+# TAGDIR_DEFAULT_DIRECTORY="$HOME/RipperTarget"
 EOF
 
     echo "Created alias config: $config_file"
@@ -44,7 +52,7 @@ EOF
 # Ensure shell aliases are sourced from ~/.bashrc
 install_shell_aliases() {
     local repo_root="$1"
-    local aliases_file="$repo_root/scripts/shell_aliases.sh"
+    local aliases_file="$repo_root/microtools/shell_aliases.sh"
     local bashrc="$HOME/.bashrc"
     local source_line="source $aliases_file"
 
@@ -56,6 +64,7 @@ install_shell_aliases() {
     touch "$bashrc"
     # Keep only one shell_aliases source line and make sure it points to this repo.
     sed -i '/source .*\/scripts\/shell_aliases\.sh/d' "$bashrc"
+    sed -i '/source .*\/microtools\/shell_aliases\.sh/d' "$bashrc"
     if grep -Fqx "$source_line" "$bashrc"; then
         echo "Shell aliases already configured in $bashrc"
     else
@@ -73,9 +82,12 @@ print_post_install_help() {
     echo "Start the app with:"
     echo "  cd $repo_root"
     echo "  ./start_w_args.sh --loop"
+    echo "  ./start_autotagger_w_args.sh --loop"
+    echo "  tagDir ~/Music"
     echo ""
     echo "README:"
     echo "  $repo_root/README.md"
+    echo "  $repo_root/README_Autotagger.md"
     echo "Please open the README for usage, flags, loop mode, and setup details."
     echo ""
     echo "Or activate the virtual environment manually:"

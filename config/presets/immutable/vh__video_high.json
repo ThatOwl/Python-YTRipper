@@ -13,6 +13,6 @@
     "visible_loglevel": "INFO",
     "donotconvert": false,
     "no_dir_date": false,
-    "autotag": true,
+    "autotag": false,
     "save_results": true
 }

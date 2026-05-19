@@ -1,7 +1,6 @@
 
 import argparse
 import datetime
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -32,6 +31,7 @@ from utility.utils import (
 import utility.preferences as preferences
 
 from autotagging.runtime_tagging.results_report import TaggingResultsReport
+from cli.interactive_prompt import split_prompt_command
 
 logger = get_logger(__name__, "cli_command_debug.log")
 
@@ -297,15 +297,7 @@ class CommandCLI(CLIBase):
 
     @staticmethod
     def _split_command(command: str) -> list[str]:
-        r"""
-        Split a loop-mode command string while preserving Windows backslashes.
-
-        shlex.split(..., posix=True) treats backslashes as escapes, so a path like
-        D:\Music\Target becomes D:MusicTarget. posix=False preserves the path but
-        keeps surrounding quotes; strip only paired outer quotes from each token.
-        """
-        tokens = shlex.split(command, posix=False)
-        return [token.strip().strip('"').strip("'") for token in tokens]
+        return split_prompt_command(command)
 
     def _parse_args(self, command: str) -> argparse.Namespace | None:
         self._last_parse_exit_code = 0

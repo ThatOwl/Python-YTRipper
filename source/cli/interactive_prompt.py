@@ -16,8 +16,12 @@ FPS_SUGGESTIONS = ("true", "false", "0", "any", "none")
 LOGLEVEL_SUGGESTIONS = ("debug", "info", "warning", "error", "critical")
 PRESET_SUGGESTIONS = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "ah", "vh", "vl", "test", "ds")
 QUALITY_SUGGESTIONS = tuple(sorted(set(QUALITY_ALIAS_MAP.values())))
+OUTPUT_FORMAT_SUGGESTIONS = ("csv", "json")
 SCAN_SCOPE_SUGGESTIONS = ("missing-any", "untagged", "missing-artist", "missing-title", "all")
 OVERWRITE_MODE_SUGGESTIONS = ("missing", "all")
+QUEUE_VIEW_SUGGESTIONS = ("counts", "recent", "both")
+REQUEUE_SOURCE_STATE_SUGGESTIONS = ("failed", "skipped", "enriched")
+REVIEW_STATE_SUGGESTIONS = ("failed", "skipped", "enriched")
 PATH_FLAGS = {"-f", "--file", "-o", "--download_directory", "--directory", "--report-csv", "--csv", "--queue-dir"}
 FLAG_VALUE_SUGGESTIONS = {
     "-a": BOOLEAN_SUGGESTIONS,
@@ -48,17 +52,30 @@ FLAG_VALUE_SUGGESTIONS = {
     "--save-results": BOOLEAN_SUGGESTIONS,
     "-vl": LOGLEVEL_SUGGESTIONS,
     "--visible-loglevel": LOGLEVEL_SUGGESTIONS,
+    "--format": OUTPUT_FORMAT_SUGGESTIONS,
+    "--view": QUEUE_VIEW_SUGGESTIONS,
     "--scan-scope": SCAN_SCOPE_SUGGESTIONS,
     "--overwrite-mode": OVERWRITE_MODE_SUGGESTIONS,
+    "--source-state": REQUEUE_SOURCE_STATE_SUGGESTIONS,
+    "--states": REVIEW_STATE_SUGGESTIONS,
 }
+
+
+def split_prompt_command(command: str) -> list[str]:
+    r"""
+    Split an interactive command string while preserving Windows backslashes.
+
+    shlex.split(..., posix=True) treats backslashes as escapes, so a path like
+    D:\Music\Target becomes D:MusicTarget. posix=False preserves the path but
+    keeps surrounding quotes; strip only paired outer quotes from each token.
+    """
+    tokens = shlex.split(command, posix=False)
+    return [token.strip().strip('"').strip("'") for token in tokens]
 
 
 def _tokenize_for_completion(text: str) -> list[str]:
     try:
-        lexer = shlex.shlex(text, posix=False)
-        lexer.whitespace_split = True
-        lexer.commenters = ""
-        return list(lexer)
+        return split_prompt_command(text)
     except ValueError:
         return text.split()
 
@@ -82,6 +99,13 @@ class CompletionContext:
         return self.current_token.startswith("-") or not self.current_token
 
 
+@dataclass(frozen=True)
+class ParserResolution:
+    parser: argparse.ArgumentParser
+    explicit_command: str | None
+    available_commands: tuple[str, ...]
+
+
 def parse_completion_context(text_before_cursor: str) -> CompletionContext:
     tokens = _tokenize_for_completion(text_before_cursor)
 
@@ -101,6 +125,87 @@ def parse_completion_context(text_before_cursor: str) -> CompletionContext:
         current_token=current_token,
         active_flag=active_flag,
     )
+
+
+def resolve_completion_parser(
+    parser: argparse.ArgumentParser,
+    context: CompletionContext,
+) -> ParserResolution:
+    subparsers_action = _find_subparsers_action(parser)
+    if subparsers_action is None:
+        return ParserResolution(parser=parser, explicit_command=None, available_commands=())
+
+    command_names = tuple(subparsers_action.choices.keys())
+    for token in context.prior_tokens:
+        if token in subparsers_action.choices:
+            return ParserResolution(
+                parser=subparsers_action.choices[token],
+                explicit_command=token,
+                available_commands=command_names,
+            )
+
+    default_command = getattr(parser, "_completion_default_subcommand", None)
+    if context.current_token.startswith("-") and default_command in subparsers_action.choices:
+        return ParserResolution(
+            parser=subparsers_action.choices[default_command],
+            explicit_command=None,
+            available_commands=command_names,
+        )
+    if context.active_flag and default_command in subparsers_action.choices:
+        return ParserResolution(
+            parser=subparsers_action.choices[default_command],
+            explicit_command=None,
+            available_commands=command_names,
+        )
+
+    return ParserResolution(parser=parser, explicit_command=None, available_commands=command_names)
+
+
+def collect_completion_candidates(
+    parser: argparse.ArgumentParser,
+    text_before_cursor: str,
+) -> list[str]:
+    context = parse_completion_context(text_before_cursor)
+    resolution = resolve_completion_parser(parser, context)
+    token_prefix = context.current_token.lower()
+
+    if context.expects_value:
+        return [
+            value
+            for value in FLAG_VALUE_SUGGESTIONS[context.active_flag]
+            if value.lower().startswith(token_prefix)
+        ]
+
+    if resolution.available_commands and resolution.explicit_command is None and not context.current_token.startswith("-"):
+        return [
+            command
+            for command in resolution.available_commands
+            if command.startswith(context.current_token)
+        ]
+
+    if not context.wants_flag_suggestions:
+        return []
+
+    return [
+        option
+        for option in _collect_option_strings(resolution.parser)
+        if option.startswith(context.current_token)
+    ]
+
+
+def _find_subparsers_action(parser: argparse.ArgumentParser) -> argparse._SubParsersAction | None:
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return action
+    return None
+
+
+def _collect_option_strings(parser: argparse.ArgumentParser) -> tuple[str, ...]:
+    option_strings: list[str] = []
+    for action in parser._actions:
+        for option in action.option_strings:
+            option_strings.append(option)
+    return tuple(dict.fromkeys(option_strings))
 
 
 class InteractivePrompt:
@@ -185,7 +290,6 @@ class _ParserAwareCompleter:
         from prompt_toolkit.document import Document
 
         context = parse_completion_context(document.text_before_cursor)
-        token_prefix = context.current_token.lstrip("\"'").lower()
 
         if context.expects_path:
             path_document = Document(
@@ -195,29 +299,10 @@ class _ParserAwareCompleter:
             yield from self._path_completer.get_completions(path_document, complete_event)
             return
 
-        if context.expects_value:
-            for value in FLAG_VALUE_SUGGESTIONS[context.active_flag]:
-                if value.lower().startswith(token_prefix):
-                    yield Completion(value, start_position=-len(context.current_token))
-            return
-
-        if not context.wants_flag_suggestions:
-            return
-
-        for option in self._collect_option_strings():
-            if option.startswith(context.current_token):
-                yield Completion(option, start_position=-len(context.current_token))
+        parser = self._parser_getter()
+        for candidate in collect_completion_candidates(parser, document.text_before_cursor):
+            yield Completion(candidate, start_position=-len(context.current_token))
 
     async def get_completions_async(self, document, complete_event):
         for completion in self.get_completions(document, complete_event):
             yield completion
-
-    def _collect_option_strings(self) -> tuple[str, ...]:
-        parser = self._parser_getter()
-        option_strings: list[str] = []
-
-        for action in parser._actions:
-            for option in action.option_strings:
-                option_strings.append(option)
-
-        return tuple(dict.fromkeys(option_strings))

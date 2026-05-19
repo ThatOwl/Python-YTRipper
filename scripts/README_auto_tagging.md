@@ -1,4 +1,8 @@
-# python-autotagger.py — Usage Documentation
+# python-autotagger.py — Legacy Reference
+
+This document is kept as reference for the older standalone `python-autotagger.py`.
+It is no longer the active shell-integrated autotagger workflow in this repository.
+Current day-to-day tagging helpers now target `source/run_tagging_worker.py`; see [README_Autotagger.md](../README_Autotagger.md) and `microtools/shell_aliases.sh`.
 
 Batch audio metadata cleanup and tagging pipeline for `.mp3` and `.m4a` files.  
 Parses artist / title / track / album from filenames and folder structure, optionally
@@ -18,29 +22,10 @@ pip install mutagen musicbrainzngs
 
 ---
 
-## Shell helpers and config
+## Legacy shell helper note
 
-If `scripts/shell_aliases.sh` is sourced in your shell, these helpers are available:
-
-- `autotag` → runs autotagger with configured default root/target and `--enrich-all --write`
-- `autotag-mb` → same as `autotag` plus `--mb-only`
-- `stripnum <dir>` → filename-only track-prefix cleanup (`--strip-track-prefix`)
-- `ytf`, `ytp`, `ytl`, `ytl-h`, `slf`, `slf-h`
-
-Config file location:
-
-- `config/shell_aliases.conf`
-
-Config keys:
-
-- `AUTOTAG_DEFAULT_ROOT`
-- `AUTOTAG_DEFAULT_TARGET`
-- `YTF_DEFAULT_FILE`
-
-Related docs:
-
-- `scripts/README_show_large_files.md`
-- `scripts/README_batch_convert.md`
+The old `autotag`, `autotag-mb`, and `stripnum` shell helpers are retired.
+This script, its runner, and this README are intentionally kept only as reference material.
 
 ---
 
