@@ -18,6 +18,45 @@ from utility.utils import DownloadOptions
 
 
 class TestRunTaggingWorker(unittest.TestCase):
+    def test_scan_dir_command_writes_local_suggestion_csv(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "Best of Rammstein"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "Rammstein - Sonne.m4a").write_text("audio", encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["scan-dir", "--directory", str(root), "--no-enrich"])
+
+            text = output.getvalue()
+            self.assertEqual(exit_code, 0)
+            self.assertIn("report_csv=", text)
+            report_paths = list(root.glob("*_tag_suggestions.csv"))
+            self.assertEqual(len(report_paths), 1)
+            with open(report_paths[0], "r", encoding="utf-8") as handle:
+                csv_text = handle.read()
+            self.assertIn("artist_to_write,title_to_write", csv_text)
+            self.assertIn("Rammstein", csv_text)
+            self.assertIn("Sonne", csv_text)
+            self.assertIn("local_filename_dash_split", csv_text)
+
+    def test_apply_csv_command_accepts_overwrite_mode(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "scan.csv"
+            with open(csv_path, "w", encoding="utf-8", newline="") as handle:
+                writer = io.StringIO()
+            csv_path.write_text(
+                "path,current_artist,current_title,current_album,artist_to_write,title_to_write,album_to_write,suggestion_source,suggestion_confidence,suggestion_reason,apply_mode,write_status,write_details,written_artist,written_title\n",
+                encoding="utf-8",
+            )
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["apply-csv", "--csv", str(csv_path), "--overwrite-mode", "all"])
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("rows_seen=0", output.getvalue())
+
     def test_status_command_outputs_csv_counts_and_recent_rows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             queue_dir = Path(tmpdir) / "runtime" / "tagging"

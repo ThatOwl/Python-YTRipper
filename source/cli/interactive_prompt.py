@@ -16,7 +16,9 @@ FPS_SUGGESTIONS = ("true", "false", "0", "any", "none")
 LOGLEVEL_SUGGESTIONS = ("debug", "info", "warning", "error", "critical")
 PRESET_SUGGESTIONS = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "ah", "vh", "vl", "test", "ds")
 QUALITY_SUGGESTIONS = tuple(sorted(set(QUALITY_ALIAS_MAP.values())))
-PATH_FLAGS = {"-f", "--file", "-o", "--download_directory"}
+SCAN_SCOPE_SUGGESTIONS = ("missing-any", "untagged", "missing-artist", "missing-title", "all")
+OVERWRITE_MODE_SUGGESTIONS = ("missing", "all")
+PATH_FLAGS = {"-f", "--file", "-o", "--download_directory", "--directory", "--report-csv", "--csv", "--queue-dir"}
 FLAG_VALUE_SUGGESTIONS = {
     "-a": BOOLEAN_SUGGESTIONS,
     "--audio_only": BOOLEAN_SUGGESTIONS,
@@ -46,6 +48,8 @@ FLAG_VALUE_SUGGESTIONS = {
     "--save-results": BOOLEAN_SUGGESTIONS,
     "-vl": LOGLEVEL_SUGGESTIONS,
     "--visible-loglevel": LOGLEVEL_SUGGESTIONS,
+    "--scan-scope": SCAN_SCOPE_SUGGESTIONS,
+    "--overwrite-mode": OVERWRITE_MODE_SUGGESTIONS,
 }
 
 

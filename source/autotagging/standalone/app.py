@@ -13,6 +13,7 @@ from .reporting import (
     format_review_candidates,
     format_session_snapshot,
 )
+from .local_directory import LocalDirectoryTagger
 from .repair_planner import TaggingRepairPlanner
 from .review_store import TaggingReviewStore
 
@@ -24,10 +25,12 @@ class TaggingStandaloneService:
         self,
         queue_store: TaggingQueueStore | None = None,
         review_store: TaggingReviewStore | None = None,
+        local_directory_tagger: LocalDirectoryTagger | None = None,
     ):
         self.queue_store = queue_store or TaggingQueueStore()
         self.review_store = review_store or TaggingReviewStore(self.queue_store.base_dir)
         self.repair_planner = TaggingRepairPlanner(self.queue_store, self.review_store)
+        self.local_directory_tagger = local_directory_tagger or LocalDirectoryTagger()
 
     def render_queue_status(
         self,
@@ -250,6 +253,51 @@ class TaggingStandaloneService:
         worker.run_until_idle()
         return 0
 
+    def scan_local_directory(
+        self,
+        *,
+        directory: str,
+        report_csv: str | None = None,
+        include_tagged: bool = False,
+        enrich: bool = True,
+        scan_scope: str = "missing-any",
+    ) -> str:
+        summary = self.local_directory_tagger.scan_directory(
+            directory,
+            report_csv=report_csv,
+            include_tagged=include_tagged,
+            enrich=enrich,
+            scan_scope=scan_scope,
+        )
+        return (
+            f"scan_directory={summary['directory']}\n"
+            f"report_csv={summary['report_csv']}\n"
+            f"files_seen={summary['files_seen']}\n"
+            f"rows_written={summary['rows_written']}\n"
+            f"already_tagged_skipped={summary['already_tagged_skipped']}\n"
+            f"write_ready_rows={summary['write_ready_rows']}\n"
+            f"review_rows={summary['review_rows']}\n"
+            f"no_suggestion_rows={summary['no_suggestion_rows']}\n"
+        )
+
+    def apply_local_csv(
+        self,
+        *,
+        csv_path: str,
+        overwrite_mode: str = "missing",
+    ) -> str:
+        summary = self.local_directory_tagger.apply_csv_with_overwrite_mode(
+            csv_path,
+            overwrite_mode=overwrite_mode,
+        )
+        return (
+            f"csv_path={summary['csv_path']}\n"
+            f"rows_seen={summary['rows_seen']}\n"
+            f"rows_written={summary['rows_written']}\n"
+            f"rows_skipped={summary['rows_skipped']}\n"
+            f"rows_errored={summary['rows_errored']}\n"
+        )
+
 
 class TaggingStandaloneCLI:
     """Parser and command dispatcher for the standalone autotagging tool."""
@@ -402,12 +450,42 @@ class TaggingStandaloneCLI:
             help="Requeue packages and process just those packages immediately",
         )
         self._add_retry_arguments(retry_run_parser)
+
+        scan_dir_parser = subparsers.add_parser("scan-dir", help="Crawl a local directory and write a tag suggestion CSV")
+        scan_dir_parser.add_argument("--directory", required=True, help="Root directory to scan recursively")
+        scan_dir_parser.add_argument("--report-csv", default=None, help="Optional destination CSV path")
+        scan_dir_parser.add_argument(
+            "--include-tagged",
+            action="store_true",
+            help="Include files that already have both artist and title tags",
+        )
+        scan_dir_parser.add_argument(
+            "--scan-scope",
+            choices=("missing-any", "untagged", "missing-artist", "missing-title", "all"),
+            default="missing-any",
+            help="Which files should be included in the scan before any CSV review",
+        )
+        scan_dir_parser.add_argument(
+            "--no-enrich",
+            action="store_true",
+            help="Disable MusicBrainz confirmation during the local scan",
+        )
+
+        apply_csv_parser = subparsers.add_parser("apply-csv", help="Write reviewed CSV suggestions back into source files in place")
+        apply_csv_parser.add_argument("--csv", required=True, help="CSV created by scan-dir and optionally edited by the user")
+        apply_csv_parser.add_argument(
+            "--overwrite-mode",
+            choices=("missing", "all"),
+            default="missing",
+            help="Whether to fill only missing fields or overwrite existing tag fields too",
+        )
         return parser
 
     def execute(self, argv: list[str] | None = None) -> int:
         parser = self.build_parser()
         args = parser.parse_args(self._normalize_argv(argv))
-        service = TaggingStandaloneService(self.queue_store_factory(args.queue_dir))
+        queue_dir = getattr(args, "queue_dir", None)
+        service = TaggingStandaloneService(self.queue_store_factory(queue_dir))
 
         if args.command == "status":
             print(
@@ -529,6 +607,29 @@ class TaggingStandaloneCLI:
             print(output, end="")
             return exit_code
 
+        if args.command == "scan-dir":
+            print(
+                service.scan_local_directory(
+                    directory=args.directory,
+                    report_csv=args.report_csv,
+                    include_tagged=args.include_tagged,
+                    enrich=not args.no_enrich,
+                    scan_scope=args.scan_scope,
+                ),
+                end="",
+            )
+            return 0
+
+        if args.command == "apply-csv":
+            print(
+                service.apply_local_csv(
+                    csv_path=args.csv,
+                    overwrite_mode=args.overwrite_mode,
+                ),
+                end="",
+            )
+            return 0
+
         return service.run_worker(
             poll_interval=args.poll_interval,
             idle_timeout=args.idle_timeout,
@@ -537,6 +638,8 @@ class TaggingStandaloneCLI:
     @staticmethod
     def _normalize_argv(argv: list[str] | None) -> list[str]:
         normalized = list(sys.argv[1:] if argv is None else argv)
+        if normalized and normalized[0] in ("-h", "--help"):
+            return normalized
         if not normalized or normalized[0].startswith("-"):
             return ["run", *normalized]
         return normalized

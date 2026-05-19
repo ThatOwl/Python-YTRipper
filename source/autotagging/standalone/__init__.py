@@ -1,4 +1,5 @@
 from .app import TaggingStandaloneCLI, TaggingStandaloneService
+from .local_directory import LocalDirectoryTagger
 from .repair_planner import TaggingRepairPlanner
 from .reporting import (
     format_events,
@@ -13,6 +14,7 @@ from .review_store import TaggingReviewStore
 __all__ = [
     "TaggingRepairPlanner",
     "TaggingReviewStore",
+    "LocalDirectoryTagger",
     "TaggingStandaloneCLI",
     "TaggingStandaloneService",
     "format_events",
