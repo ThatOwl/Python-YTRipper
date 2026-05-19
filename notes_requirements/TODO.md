@@ -5,12 +5,20 @@
 - how to properly log
 - how to minimize exception handling 
 
+## documentation
+- adapt readme to guide install with install.sh
+- exmples corection in README
+- document install bvehaviour -> shell interactions -> venv etc (warn)
+- check setup and cleanup shell.conf 
+- adapt the install bash script to a setup tool asking user for locations (checking if exists and or setting up) -> aliases -> notify what they can change
+- ytf ytp ytl ... 
+
 ## big
+- retry wrapper 5s timeout
 - file parser for csv should be able to have results-csv as input (including playlist name)
 - TRAILING URL "-" BREAKES DOWNLOADER !
 - add cli flaggs that make "--<smth>" behave like user expects them (without 'true' or 'false' requirement) 
 - ??? pivot to secondary wrapper arounf yt-dlp
-- adapt the install bash script to a setup tool asking user for locations (checking if exists and or setting up) -> aliases -> notify what they can change
 - tell ffmpeg to use GPU for videos ?
 - X refactor "download_dir" into "options" => DO NOT ... as file-dwnld may create multiple playlists => which have own dwnld-dirs !
 (in playlists dwdnld skip x > 15min->add url to output.txt & in single more complex)

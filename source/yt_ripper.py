@@ -2,13 +2,14 @@ import shlex
 import sys
 
 from cli.cli_command import CommandCLI
+from cli.interactive_prompt import InteractivePrompt
 
 
 def main():
     args = sys.argv[1:]
 
-    if not args or args[0] in ("-h", "--help", "-l", "--loop"):
-        if args and args[0] in ("-h", "--help"):
+    if not args or args[0] in ("help", "-h", "--help", "-l", "--loop"):
+        if args and args[0] in ("help", "-h", "--help"):
             print("YouTube Downloader CLI (type 'exit' or '(q)uit' to leave)")
             print("Either run in loop-mode or single by providing a single command.")
             print("- Loop mode [l]oop: command menu repeatedly after each command.")
@@ -19,9 +20,14 @@ def main():
 
         cli = CommandCLI()
 
+        prompt = InteractivePrompt(lambda: cli.parser)
+
         while True:
             try:
-                command = input("yt-ripper> ").strip()
+                command = prompt.prompt().strip()
+            except KeyboardInterrupt:
+                print("")
+                continue
             except EOFError:
                 print("\nExiting CLI.")
                 return 1

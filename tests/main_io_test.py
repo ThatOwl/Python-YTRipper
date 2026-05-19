@@ -1,11 +1,14 @@
+import importlib.util
 import subprocess
 import sys
 import unittest
 from pathlib import Path
 
 # Path to the CLI entry script
-SCRIPT_PATH = Path(__file__).parent / "yt_ripper.py"
+SCRIPT_PATH = Path(__file__).resolve().parents[1] / "source" / "yt_ripper.py"
+HAS_RUNTIME_DEPS = importlib.util.find_spec("pytubefix") is not None
 
+@unittest.skipUnless(HAS_RUNTIME_DEPS, "CLI subprocess tests require pytubefix to be installed")
 class TestYouTubeDownloaderCLI(unittest.TestCase):
     """Tests for the CLI entry behavior (argument handling and IO)."""
 
@@ -25,7 +28,7 @@ class TestYouTubeDownloaderCLI(unittest.TestCase):
         """No args should start the InteractiveCLI."""
         result = self.run_cli(input_text="exit\n")
         output = result.stdout.lower()
-        self.assertIn("exit", output)  # expected text in output
+        self.assertIn("exiting cli", output)
         self.assertEqual(result.returncode, 0, msg=f"Unexpected exit code: {result.returncode}")
 
     # 2️⃣ Test help mode

@@ -39,7 +39,7 @@ class TestSaveDownloadResults(unittest.TestCase):
             lines = output_path.read_text(encoding="utf-8").splitlines()
             self.assertEqual(
                 lines[0],
-                "job_id,video_url,playlist_title,source_author,source_title,final_output_path,download_status,download_errors,tag_state,resolved_artist,resolved_title,resolved_album,candidate_source,candidate_confidence,candidate_write_allowed,enrichment_source,tag_reason,candidate_notes",
+                "job_id,video_url,playlist_title,source_author,source_title,final_output_path,download_status,download_errors,tag_state,written_artist,written_title,resolved_artist,resolved_title,resolved_album,candidate_source,candidate_confidence,candidate_write_allowed,enrichment_source,tag_reason,candidate_notes",
             )
             self.assertEqual(len(lines), 3)
             self.assertIn("First Video", lines[1])

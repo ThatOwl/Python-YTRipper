@@ -64,6 +64,24 @@ install_shell_aliases() {
     fi
 }
 
+print_post_install_help() {
+    local repo_root="$1"
+
+    echo ""
+    echo "✓ Setup complete."
+    echo "Repository: $repo_root"
+    echo "Start the app with:"
+    echo "  cd $repo_root"
+    echo "  ./start_w_args.sh --loop"
+    echo ""
+    echo "README:"
+    echo "  $repo_root/README.md"
+    echo "Please open the README for usage, flags, loop mode, and setup details."
+    echo ""
+    echo "Or activate the virtual environment manually:"
+    echo "  source $repo_root/.venv/bin/activate"
+}
+
 # Function to find repo root
 find_repo_root() {
     local current_dir="$PWD"
@@ -129,7 +147,7 @@ if [ -n "$REPO_ROOT" ]; then
             install_shell_aliases "$REPO_ROOT"
 
             deactivate
-            echo "Setup complete. To use the app, run: ./run.sh"
+            print_post_install_help "$REPO_ROOT"
             exit 0
             ;;
         3)
@@ -163,14 +181,4 @@ deactivate
 install_shell_aliases_config "$(pwd)"
 install_shell_aliases "$(pwd)"
 
-echo ""
-echo "✓ Setup complete."
-echo "To activate and run the app:"
-echo "  cd $REPO_NAME"
-echo "  ./start_w_args.sh "
-echo "  with: "
-echo "   --loop " 
-echo "   --menu "
-echo ""
-echo "Or activate venv manually:"
-echo "  source .venv/bin/activate"
+print_post_install_help "$(pwd)"

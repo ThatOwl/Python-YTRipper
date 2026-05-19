@@ -95,6 +95,8 @@ class TestTaggingWorker(unittest.TestCase):
             self.assertEqual(rows[0]["job_id"], package.job_id)
             self.assertEqual(rows[0]["download_status"], "downloaded")
             self.assertEqual(rows[0]["tag_state"], "written")
+            self.assertEqual(rows[0]["written_artist"], "Caro Emerald")
+            self.assertEqual(rows[0]["written_title"], "Tangled Up Odd Chap Bootleg")
             self.assertEqual(rows[0]["candidate_source"], "title_author_match")
             self.assertEqual(rows[0]["candidate_write_allowed"], "true")
             self.assertEqual(rows[0]["resolved_artist"], "Caro Emerald")

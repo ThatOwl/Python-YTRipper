@@ -6,6 +6,7 @@ requests
 ffmpeg-python 
 urllib3 
 argcomplete
-# (Additional) for scripts
+prompt_toolkit
+# (Additional) for scripts for music metadata retrieval and processing
 musicbrainzngs
 mutagen

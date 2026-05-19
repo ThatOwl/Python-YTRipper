@@ -11,6 +11,7 @@ It is intended for private use, experimentation, and gradual extension, with a s
 ### Current state
 
 - Downloads for videos and playlists work
+- many features work
 - Some edge cases and YouTube-side breakage still exist
 - Linux is the primary target right now; WSL can work if paths and tools are set up carefully
 
@@ -20,7 +21,7 @@ It is intended for private use, experimentation, and gradual extension, with a s
 
 - Download YouTube videos and playlists
 - Audio-only or video download options
-- Interactive loop mode
+- Loop mode with session persistance
 - One-shot command-line mode for automation
 - Presets and per-user saved defaults
 - Thumbnail download for audio conversion workflows
@@ -42,6 +43,13 @@ Install system packages:
 sudo apt install python3-full python3-venv ffmpeg
 ```
 
+"Installer" usage:
+
+- download only install.sh and make it executable
+- but it into a directory of your choosing for the application files to reside in
+ * e.g. ~/RipperApplication
+- run the script (it will pull the repo, )
+
 ### Manual Installation
 
 ```bash
@@ -62,6 +70,14 @@ source .venv/bin/activate
 curl -sS https://bootstrap.pypa.io/get-pip.py | python
 python3 -m pip install -r requirements.txt
 ```
+
+### Enthusiaste setup notes
+
+- TODO 
+- all config options and files and their usage/influence of behaviour
+- fmpeg behaviour
+- autotag behaviour
+- 
 
 ---
 
@@ -95,6 +111,12 @@ For the separate metadata parsing/enrichment/tagging workflow, see:
 ```
 
 Starts the prompt-based loop. Each entered line is parsed like a normal one-shot CLI command.
+When `prompt_toolkit` is installed and the CLI is running in a real terminal, loop mode also gets:
+
+- arrow-key editing
+- command history across sessions
+- `Ctrl-R` history search
+- completion for flags, common flag values, and filesystem paths after `-f` / `-o`
 
 ### Command Mode
 
@@ -193,6 +215,7 @@ Other useful config-related flags:
 ### Current behavior notes
 
 - Loop mode replaces the older interactive menu flow.
+- Loop mode uses `prompt_toolkit` when available in a real terminal and falls back to basic input in non-interactive contexts.
 - `--menu` is no longer supported.
 - `save_results` writes result CSVs for batch/file-driven runs and for direct playlist URLs.
 - Single standalone video URLs still do not write result CSVs. (as result easily be managed by user)
