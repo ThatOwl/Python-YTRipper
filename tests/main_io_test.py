@@ -47,14 +47,14 @@ class TestYouTubeDownloaderCLI(unittest.TestCase):
         self.assertIn("exiting cli", output)
         self.assertEqual(result.returncode, 0)
 
-    # 4️⃣ Test command mode — provide dummy URL
-    def test_command_mode_dummy_url(self):
-        """Providing a single argument should run CommandCLI with it."""
-        result = self.run_cli("https://youtu.be/dQw4w9WgXcQ")
+    # 4️⃣ Test command mode — provide a fast-failing non-YouTube URL
+    def test_command_mode_invalid_non_youtube_url(self):
+        """Providing one URL argument should still exercise CommandCLI without hanging on network IO."""
+        result = self.run_cli("https://example.com/not-youtube")
         output = result.stdout + result.stderr
-        # No fixed output expected — just ensure no crash
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not a valid youtube url", output.lower())
         self.assertIsInstance(result.returncode, int)
-        self.assertTrue(len(output) >= 0)
 
     # 5️⃣ Test invalid flag — should show argparse error or fail
     def test_invalid_argument_flag(self):

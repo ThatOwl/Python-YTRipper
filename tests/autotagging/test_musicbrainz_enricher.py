@@ -1,6 +1,8 @@
 import sys
+import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_ROOT = PROJECT_ROOT / "source"
@@ -32,6 +34,12 @@ class _StubMusicBrainzClient:
 
 
 class TestMusicBrainzEnricher(unittest.TestCase):
+    def test_load_client_returns_none_for_incomplete_module_stub(self):
+        incomplete_stub = types.ModuleType("musicbrainzngs")
+
+        with patch.dict(sys.modules, {"musicbrainzngs": incomplete_stub}):
+            self.assertIsNone(MusicBrainzEnricher._load_client())
+
     def test_enricher_queries_recovered_title_artist_hint_before_title_only(self):
         payload = {
             "playlist_title": "Best Fallout Songs",

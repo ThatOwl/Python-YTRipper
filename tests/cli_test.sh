@@ -26,8 +26,14 @@ fi
 cd "$SOURCE_DIR" || exit 1
 echo "📂 Changed directory to: $(pwd)"
 
-# Main Python entrypoint (adjust if needed)
-SCRIPT="./main.py"
+if [[ -x "$PROJECT_ROOT/.venv/bin/python" ]]; then
+    PYTHON_BIN="$PROJECT_ROOT/.venv/bin/python"
+else
+    PYTHON_BIN="python3"
+fi
+
+# Main Python entrypoint
+SCRIPT="./yt_ripper.py"
 
 # Helper function to run tests cleanly
 run_test() {
@@ -54,20 +60,20 @@ run_test() {
 }
 
 # 1️⃣ Test default (interactive) mode — no arguments
-run_test "No arguments (should enter interactive mode)" python3 "$SCRIPT"
+run_test "No arguments (should enter interactive mode)" bash -c "printf 'exit\n' | '$PYTHON_BIN' '$SCRIPT'"
 
 # 2️⃣ Test help mode — should print help text and exit
-run_test "Help flag (--help)" python3 "$SCRIPT" --help
+run_test "Help flag (--help)" "$PYTHON_BIN" "$SCRIPT" --help
 
 # 3️⃣ Test loop mode — simulate a short interactive session
 # We’ll simulate input (exit immediately) to avoid hanging
-run_test "Loop mode with simulated input (exit immediately)" bash -c "echo 'exit' | python3 '$SCRIPT' -l"
+run_test "Loop mode with simulated input (exit immediately)" bash -c "echo 'exit' | '$PYTHON_BIN' '$SCRIPT' -l"
 
-# 4️⃣ Test command mode with a typical argument (valid or dummy)
-run_test "Command mode with dummy URL" python3 "$SCRIPT" "https://youtu.be/dQw4w9WgXcQ"
+# 4️⃣ Test command mode with a fast-failing non-YouTube URL
+run_test "Command mode with invalid non-YouTube URL" "$PYTHON_BIN" "$SCRIPT" "https://example.com/not-youtube"
 
 # 5️⃣ Test invalid argument (expected to fail or misbehave)
-run_test "Invalid argument flag (should print error or unexpected behaviour)" python3 "$SCRIPT" --nonexistent
+run_test "Invalid argument flag (should print error or unexpected behaviour)" "$PYTHON_BIN" "$SCRIPT" --nonexistent
 
 echo "------------------------------------------------------------"
 echo "All tests executed."

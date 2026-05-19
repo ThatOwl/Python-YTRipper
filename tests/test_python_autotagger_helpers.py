@@ -35,7 +35,9 @@ def _load_autotagger_module():
     sys.modules["mutagen.mp3"] = mutagen_mp3
     sys.modules["mutagen.mp4"] = mutagen_mp4
     sys.modules["mutagen.id3"] = mutagen_id3
-    sys.modules["musicbrainzngs"] = types.ModuleType("musicbrainzngs")
+    musicbrainzngs = types.ModuleType("musicbrainzngs")
+    musicbrainzngs.set_useragent = lambda *args, **kwargs: None
+    sys.modules["musicbrainzngs"] = musicbrainzngs
 
     script_path = Path(__file__).resolve().parents[1] / "scripts" / "python-autotagger.py"
     spec = importlib.util.spec_from_file_location(module_name, script_path)

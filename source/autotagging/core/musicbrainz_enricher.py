@@ -197,7 +197,15 @@ class MusicBrainzEnricher:
         except ImportError:
             return None
 
-        musicbrainzngs.set_useragent("ytripper-autotag-worker", "1.0", "github.com/ThatOwl")
+        set_useragent = getattr(musicbrainzngs, "set_useragent", None)
+        if not callable(set_useragent):
+            return None
+
+        try:
+            set_useragent("ytripper-autotag-worker", "1.0", "github.com/ThatOwl")
+        except Exception:
+            return None
+
         return musicbrainzngs
 
     @staticmethod

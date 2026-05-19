@@ -49,6 +49,7 @@ class CommandCLI(CLIBase):
         self.preferences = self.os.read_preferences()
         self.options = DownloadOptions.from_preferences(self.preferences)
         self.loaded_preset_path: Path | None = None
+        self._last_parse_exit_code = 0
         self._tagging_worker_process: subprocess.Popen | None = None
         
         # Normalize persisted config once on startup and apply runtime-only effects
@@ -305,10 +306,12 @@ class CommandCLI(CLIBase):
         return [token.strip().strip('"').strip("'") for token in tokens]
 
     def _parse_args(self, command: str) -> argparse.Namespace | None:
+        self._last_parse_exit_code = 0
         try:
             return self.parser.parse_args(self._split_command(command))
         except SystemExit as exc:
-            if exc.code == 0:
+            self._last_parse_exit_code = exc.code if isinstance(exc.code, int) else 1
+            if self._last_parse_exit_code == 0:
                 return None
 
             logger.error("Invalid command or arguments.")
@@ -820,7 +823,7 @@ class CommandCLI(CLIBase):
         args = self._parse_args(command)
 
         if args is None:
-            return 0
+            return self._last_parse_exit_code
 
         if not args.url and not args.file:
             logger.error("Either provide a URL or use -f/--file for batch processing.")

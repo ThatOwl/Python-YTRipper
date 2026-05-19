@@ -259,7 +259,7 @@ There is no authoritative full test suite yet. A few focused regression tests ex
 Example:
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -p 'test*.py' -v
+.venv/bin/python -m unittest discover -s tests -t . -p 'test*.py' -v
 ```
 
 ### Debugging in VS Code
