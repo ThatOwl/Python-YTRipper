@@ -64,6 +64,14 @@ class TestBatchSingleResultSaving(unittest.TestCase):
 
         self.assertTrue(options.save_results)
 
+    def test_oauth_session_is_normalized_as_boolean(self):
+        cli = CommandCLI()
+        options = DownloadOptions(oauth_session="true")
+
+        cli._normalize_options(options)
+
+        self.assertTrue(options.oauth_session)
+
     def test_non_playlist_batch_url_does_not_fetch_playlist_title(self):
         cli = CommandCLI()
         cli.ytd.download = Mock(
@@ -104,6 +112,39 @@ class TestBatchSingleResultSaving(unittest.TestCase):
         self.assertTrue(kwargs["batch_mode"])
         self.assertIsNotNone(kwargs["report_path"])
 
+    def test_batch_url_allows_interactive_oauth_when_oauth_session_enabled(self):
+        cli = CommandCLI()
+        cli.ytd.download = Mock(
+            return_value=[
+                DownloadResult(
+                    success=True,
+                    errors=[],
+                    video_title="Example Video",
+                    video_url="https://www.youtube.com/watch?v=WRfiUywCdZU",
+                )
+            ]
+        )
+        cli.media_info_service.is_playlist = Mock(return_value=False)
+        cli.os.save_download_results = Mock()
+
+        options = DownloadOptions(
+            default_download_directory="/tmp/ripper-test",
+            save_results=True,
+            oauth_session=True,
+        )
+        start_time = datetime.datetime(2026, 5, 12, 12, 0, 0)
+
+        exit_code = cli._download_single_url(
+            "https://www.youtube.com/watch?v=WRfiUywCdZU",
+            options,
+            start_time=start_time,
+            allow_interactive_oauth=False,
+        )
+
+        self.assertEqual(exit_code, 0)
+        _, download_kwargs = cli.ytd.download.call_args
+        self.assertTrue(download_kwargs["allow_interactive_oauth"])
+
     def test_direct_playlist_url_saves_results_without_batch_timestamp(self):
         cli = CommandCLI()
         cli.ytd.download = Mock(
@@ -141,6 +182,37 @@ class TestBatchSingleResultSaving(unittest.TestCase):
         self.assertIsNone(kwargs["timestamp"])
         self.assertFalse(kwargs["batch_mode"])
         self.assertIsNotNone(kwargs["report_path"])
+
+    def test_direct_playlist_url_allows_interactive_oauth_when_oauth_session_enabled(self):
+        cli = CommandCLI()
+        cli.ytd.download = Mock(
+            return_value=[
+                DownloadResult(
+                    success=True,
+                    errors=[],
+                    video_title="Playlist Video",
+                    video_url="https://www.youtube.com/watch?v=zg2yp9NHYEQ",
+                )
+            ]
+        )
+        cli.media_info_service.is_playlist = Mock(return_value=True)
+        cli.media_info_service.get_playlist_title = Mock(return_value="Playlist Title")
+        cli.os.save_download_results = Mock()
+
+        options = DownloadOptions(
+            default_download_directory="/tmp/ripper-test",
+            save_results=True,
+            oauth_session=True,
+        )
+
+        exit_code = cli._download_single_url(
+            "https://www.youtube.com/watch?v=zg2yp9NHYEQ&list=PLNC-2EHussAB-YMr1L_0AblQc6611RQ0y",
+            options,
+        )
+
+        self.assertEqual(exit_code, 0)
+        _, download_kwargs = cli.ytd.download.call_args
+        self.assertTrue(download_kwargs["allow_interactive_oauth"])
 
     def test_failed_results_return_nonzero_without_save_results(self):
         cli = CommandCLI()

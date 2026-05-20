@@ -89,6 +89,14 @@ class TestInteractivePrompt(unittest.TestCase):
 
         self.assertIn("--idle-timeout", suggestions)
 
+    def test_collect_completion_candidates_suggests_auth_session_boolean_values(self):
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument("--auth-session")
+
+        suggestions = collect_completion_candidates(parser, "--auth-session t")
+
+        self.assertIn("true", suggestions)
+
 
 if __name__ == "__main__":
     unittest.main()

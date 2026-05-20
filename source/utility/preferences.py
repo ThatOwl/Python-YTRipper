@@ -32,6 +32,7 @@ DEFAULT_PREFS: Dict = {
     "donotconvert": False,
     "no_dir_date": False,
     "autotag": False,
+    "oauth_session": False,
     "prepare_tagging": False,
     "save_results": False
 }

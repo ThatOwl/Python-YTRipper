@@ -126,7 +126,7 @@ class VideoFetcher(object):
         return (
             "Age-restricted content requires an interactive OAuth session. "
             "This run is non-interactive (batch/playlist), so the item was skipped. "
-            f"Re-run this video separately, or start a dedicated authenticated session first: {video_url}"
+            f"Re-run this video separately, or start a dedicated authenticated session first with --auth-session true: {video_url}"
         )
 
     @staticmethod

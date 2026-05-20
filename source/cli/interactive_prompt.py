@@ -47,6 +47,8 @@ FLAG_VALUE_SUGGESTIONS = {
     "--no_dir_date": BOOLEAN_SUGGESTIONS,
     "-at": BOOLEAN_SUGGESTIONS,
     "--autotag": BOOLEAN_SUGGESTIONS,
+    "--auth-session": BOOLEAN_SUGGESTIONS,
+    "--oauth-session": BOOLEAN_SUGGESTIONS,
     "--prepare-tagging": BOOLEAN_SUGGESTIONS,
     "-sr": BOOLEAN_SUGGESTIONS,
     "--save-results": BOOLEAN_SUGGESTIONS,

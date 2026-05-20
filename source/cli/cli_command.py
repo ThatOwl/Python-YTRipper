@@ -104,6 +104,7 @@ class CommandCLI(CLIBase):
                 "  yt_ripper> -f ~/urls.txt -a true -q low\n"
                 "  yt_ripper> <URL> -vl debug -sr true (save download results)\n"
                 "  yt_ripper> <URL> -at true (attempt auto-tagging with metadata)\n"
+                "  yt_ripper> -f ~/urls.txt --auth-session true (allow one OAuth sign-in for the whole batch)\n"
             ),
         )
 
@@ -253,6 +254,18 @@ class CommandCLI(CLIBase):
             type=str,
             default=None,
             help=f"Attempt to auto-tag downloaded files with metadata (true/false). Current default: {self.options.autotag}",
+        )
+
+        parser.add_argument(
+            "--auth-session",
+            "--oauth-session",
+            dest="oauth_session",
+            type=str,
+            default=None,
+            help=(
+                "Allow one interactive OAuth sign-in for batch or playlist runs and reuse the cached session. "
+                f"Current default: {self.options.oauth_session}"
+            ),
         )
 
         parser.add_argument(
@@ -417,6 +430,9 @@ class CommandCLI(CLIBase):
         if args.autotag is not None:
             updates["autotag"] = parse_bool_string(args.autotag)
 
+        if args.oauth_session is not None:
+            updates["oauth_session"] = parse_bool_string(args.oauth_session)
+
         if args.prepare_tagging is not None:
             updates["prepare_tagging"] = parse_bool_string(args.prepare_tagging)
 
@@ -448,6 +464,7 @@ class CommandCLI(CLIBase):
             "donotconvert",
             "no_dir_date",
             "autotag",
+            "oauth_session",
             "prepare_tagging",
             "save_results",
         )
@@ -621,9 +638,12 @@ class CommandCLI(CLIBase):
             self._ensure_tagging_worker(options)
             is_playlist = self.media_info_service.is_playlist(url)
             effective_allow_interactive_oauth = (
-                allow_interactive_oauth
-                and start_time is None
-                and not is_playlist
+                options.oauth_session
+                or (
+                    allow_interactive_oauth
+                    and start_time is None
+                    and not is_playlist
+                )
             )
             report_path: Path | None = None
             playlist_name: str | None = None
@@ -715,13 +735,14 @@ class CommandCLI(CLIBase):
             logger.warning(f"Invalid params in batch file; ignoring params: {file_params}")
             return None
 
-    def _run_info_mode(self, url: str) -> int:
+    def _run_info_mode(self, url: str, options: DownloadOptions) -> int:
         print("Fetching video/playlist info...")
 
         try:
+            is_playlist = self.media_info_service.is_playlist(url)
             lines = self.media_info_service.get_info_lines(
                 url,
-                allow_interactive_oauth=not self.media_info_service.is_playlist(url),
+                allow_interactive_oauth=options.oauth_session or not is_playlist,
             )
             for line in lines:
                 print(line)
@@ -828,7 +849,7 @@ class CommandCLI(CLIBase):
         logger.info(f"Download directory: {effective_options.default_download_directory}")
 
         if args.info:
-            return self._run_info_mode(args.url)
+            return self._run_info_mode(args.url, effective_options)
 
         print("------ Starting Download ------")
         return self._download_single_url(

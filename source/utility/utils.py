@@ -116,6 +116,7 @@ class DownloadOptions:
     donotconvert: bool = False
     no_dir_date: bool = False
     autotag: bool = False
+    oauth_session: bool = False
     prepare_tagging: bool = False
     save_results: bool = False
 
