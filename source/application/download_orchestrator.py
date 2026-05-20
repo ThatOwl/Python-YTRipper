@@ -209,7 +209,7 @@ class DownloadOrchestrator:
                 results_report_path=results_report_path,
             )
             logger.info("⏭ Skipping (already exists): %s -> %s", video_title, existing_file.name)
-            return DownloadResult(
+            return DownloadResult( # FIXME
                 success=True,
                 errors=[],
                 video_title=video_title,

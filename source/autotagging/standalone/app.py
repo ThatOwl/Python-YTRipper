@@ -1,7 +1,7 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from autotagging.runtime_tagging.package_builder import TaggingQueueStore
 from autotagging.runtime_tagging.worker import TaggingWorker
@@ -214,6 +214,7 @@ class TaggingStandaloneService:
         job_id: str | None = None,
         dry_run: bool = False,
         output_format: str = "csv",
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> tuple[str, int]:
         results = self.queue_store.requeue_packages(
             source_state=source_state,
@@ -225,7 +226,10 @@ class TaggingStandaloneService:
             return format_requeue_results(results, output_format=output_format), 1
 
         if not dry_run:
-            worker = TaggingWorker(queue_store=self.queue_store)
+            worker = TaggingWorker(
+                queue_store=self.queue_store,
+                progress_callback=progress_callback,
+            )
             for result in results:
                 pending_path = Path(result.get("target_queue_path", "") or "")
                 if not pending_path.exists():
@@ -244,11 +248,13 @@ class TaggingStandaloneService:
         *,
         poll_interval: float = 1.0,
         idle_timeout: float = 30.0,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> int:
         worker = TaggingWorker(
             queue_store=self.queue_store,
             poll_interval=poll_interval,
             idle_timeout=idle_timeout,
+            progress_callback=progress_callback,
         )
         worker.run_until_idle()
         return 0
@@ -261,6 +267,7 @@ class TaggingStandaloneService:
         include_tagged: bool = False,
         enrich: bool = True,
         scan_scope: str = "missing-any",
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> str:
         summary = self.local_directory_tagger.scan_directory(
             directory,
@@ -268,6 +275,7 @@ class TaggingStandaloneService:
             include_tagged=include_tagged,
             enrich=enrich,
             scan_scope=scan_scope,
+            progress_callback=progress_callback,
         )
         return (
             f"scan_directory={summary['directory']}\n"
@@ -278,6 +286,8 @@ class TaggingStandaloneService:
             f"write_ready_rows={summary['write_ready_rows']}\n"
             f"review_rows={summary['review_rows']}\n"
             f"no_suggestion_rows={summary['no_suggestion_rows']}\n"
+            f"enrichment_timeouts={summary['enrichment_timeouts']}\n"
+            f"enrichment_failures={summary['enrichment_failures']}\n"
         )
 
     def apply_local_csv(
@@ -624,6 +634,7 @@ class TaggingStandaloneCLI:
                 job_id=args.job_id,
                 dry_run=args.dry_run,
                 output_format=args.format,
+                progress_callback=self._render_worker_progress,
             )
             print(output, end="")
             return exit_code
@@ -636,6 +647,7 @@ class TaggingStandaloneCLI:
                     include_tagged=args.include_tagged,
                     enrich=not args.no_enrich,
                     scan_scope=args.scan_scope,
+                    progress_callback=self._render_scan_progress,
                 ),
                 end="",
             )
@@ -654,6 +666,7 @@ class TaggingStandaloneCLI:
         return service.run_worker(
             poll_interval=args.poll_interval,
             idle_timeout=args.idle_timeout,
+            progress_callback=self._render_worker_progress,
         )
 
     @staticmethod
@@ -688,3 +701,57 @@ class TaggingStandaloneCLI:
             action="store_true",
             help="Show which packages would be requeued without modifying the queue",
         )
+
+    @staticmethod
+    def _render_scan_progress(event: dict[str, Any]) -> None:
+        event_name = str(event.get("event", "") or "")
+        if event_name == "scan_started":
+            print(
+                f"[scan {event.get('files_seen', 0)}] scanning {event.get('path', '')}",
+                file=sys.stderr,
+                flush=True,
+            )
+            return
+
+        if event_name != "scan_completed":
+            return
+
+        parts = [f"[scan {event.get('files_seen', 0)}] {event.get('apply_mode', 'skip')}"]
+        suggestion_source = str(event.get("suggestion_source", "") or "").strip()
+        enrichment_status = str(event.get("enrichment_status", "") or "").strip()
+        if suggestion_source:
+            parts.append(f"source={suggestion_source}")
+        if enrichment_status and enrichment_status not in {"disabled", "not_needed", "no_match", "matched"}:
+            parts.append(f"enrichment={enrichment_status}")
+        print(
+            " ".join(parts) + f" :: {event.get('path', '')}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    @staticmethod
+    def _render_worker_progress(event: dict[str, Any]) -> None:
+        event_name = str(event.get("event", "") or "")
+        job_id = str(event.get("job_id", "") or "")
+        job_label = job_id[:8] if job_id else "unknown"
+        output_path = str(event.get("final_output_path", "") or "")
+
+        if event_name == "package_started":
+            print(
+                f"[queue {job_label}] pending -> processing :: {output_path}",
+                file=sys.stderr,
+                flush=True,
+            )
+            return
+
+        if event_name != "package_finished":
+            return
+
+        final_queue = str(event.get("queue_to", "") or "")
+        final_state = str(event.get("state", "") or "")
+        write_status = str(event.get("write_status", "") or "").strip()
+        status_label = final_state or write_status or "completed"
+        line = f"[queue {job_label}] pending -> {final_queue} [{status_label}] :: {output_path}"
+        if write_status and write_status != final_state:
+            line = f"{line} ({write_status})"
+        print(line, file=sys.stderr, flush=True)

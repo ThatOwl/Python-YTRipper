@@ -181,8 +181,12 @@ class TestTaggingWorker(unittest.TestCase):
             pending_path = store.write_pending_package(package)
 
             tag_writer = Mock()
+            enricher = Mock()
+            enricher.enrich.return_value = None
+            enricher.last_lookup_details = {"status": "no_match"}
             worker = TaggingWorker(
                 queue_store=store,
+                musicbrainz_enricher=enricher,
                 tag_writer=tag_writer,
                 poll_interval=0.01,
                 idle_timeout=0.05,

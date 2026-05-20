@@ -1,5 +1,8 @@
 import difflib
+import importlib
+import socket
 import time
+from contextlib import contextmanager
 from typing import Any
 
 from autotagging.core.candidate_resolver import TagCandidate
@@ -15,6 +18,9 @@ class MusicBrainzEnricher:
         title_similarity_min: float = 0.75,
         title_only_similarity_min: float = 0.85,
         request_delay: float = 1.1,
+        request_timeout: float = 5.0,
+        max_retries: int = 1,
+        retry_delay_delta: float = 0.5,
         max_queries: int = 6,
         evidence_extractor: SourceEvidenceExtractor | None = None,
     ):
@@ -22,13 +28,20 @@ class MusicBrainzEnricher:
         self.title_similarity_min = title_similarity_min
         self.title_only_similarity_min = title_only_similarity_min
         self.request_delay = request_delay
+        self.request_timeout = request_timeout
+        self.max_retries = max_retries
+        self.retry_delay_delta = retry_delay_delta
         self.max_queries = max_queries
         self.evidence_extractor = evidence_extractor or SourceEvidenceExtractor()
+        self.last_lookup_details: dict[str, Any] = {"status": "idle"}
 
     def enrich(self, payload: dict[str, Any], current_candidate: TagCandidate) -> TagCandidate | None:
+        self.last_lookup_details = {"status": "not_attempted"}
         client = self._load_client()
         if client is None:
+            self.last_lookup_details = {"status": "client_unavailable"}
             return None
+        self._configure_client_network_limits()
 
         source = payload.get("source", {}) or {}
         title_analysis = (payload.get("normalization", {}) or {}).get("title_analysis", {}) or {}
@@ -36,6 +49,7 @@ class MusicBrainzEnricher:
         lookup_title = (title_analysis.get("lookup_title") or current_candidate.title or "").strip()
 
         if not lookup_title:
+            self.last_lookup_details = {"status": "missing_lookup_title"}
             return None
 
         evidence = self.evidence_extractor.extract(
@@ -54,14 +68,31 @@ class MusicBrainzEnricher:
             evidence=evidence,
             lookup_title=lookup_title,
         ):
-            hit = self._query_best(
+            hit, error = self._query_best(
                 client=client,
                 title=query["title"],
                 artist=query["artist"],
                 album=release_hint,
                 required_similarity=self.title_similarity_min,
             )
+            if error is not None:
+                self.last_lookup_details = {
+                    **error,
+                    "query_title": query["title"],
+                    "query_artist": query["artist"],
+                    "query_reason": query["reason"],
+                }
+                return None
             if hit and self._artists_equivalent(hit["artist"], query["artist"]):
+                self.last_lookup_details = {
+                    "status": "matched",
+                    "source": "musicbrainz_confirmed",
+                    "query_title": query["title"],
+                    "query_artist": query["artist"],
+                    "query_reason": query["reason"],
+                    "matched_artist": hit["artist"],
+                    "matched_title": hit["title"],
+                }
                 return TagCandidate(
                     artist=hit["artist"],
                     title=hit["title"],
@@ -72,14 +103,31 @@ class MusicBrainzEnricher:
                     notes=[f"musicbrainz confirmed candidate via {query['reason']}"],
                 )
 
-        title_only_hit = self._query_best(
+        title_only_hit, error = self._query_best(
             client=client,
             title=lookup_title,
             artist="",
             album=release_hint,
             required_similarity=self.title_only_similarity_min,
         )
+        if error is not None:
+            self.last_lookup_details = {
+                **error,
+                "query_title": lookup_title,
+                "query_artist": "",
+                "query_reason": "title_only_fallback",
+            }
+            return None
         if title_only_hit:
+            self.last_lookup_details = {
+                "status": "matched",
+                "source": "musicbrainz_title_only",
+                "query_title": lookup_title,
+                "query_artist": "",
+                "query_reason": "title_only_fallback",
+                "matched_artist": title_only_hit["artist"],
+                "matched_title": title_only_hit["title"],
+            }
             return TagCandidate(
                 artist=title_only_hit["artist"],
                 title=title_only_hit["title"],
@@ -90,6 +138,7 @@ class MusicBrainzEnricher:
                 notes=["musicbrainz found title-only match; left for manual review"],
             )
 
+        self.last_lookup_details = {"status": "no_match"}
         return None
 
     def _build_query_plan(
@@ -156,7 +205,7 @@ class MusicBrainzEnricher:
         artist: str,
         album: str,
         required_similarity: float,
-    ) -> dict[str, Any] | None:
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         kwargs = {"recording": title, "limit": 5}
         if artist:
             kwargs["artist"] = artist
@@ -167,8 +216,8 @@ class MusicBrainzEnricher:
             if self.request_delay > 0:
                 time.sleep(self.request_delay)
             result = client.search_recordings(**kwargs)
-        except Exception:
-            return None
+        except Exception as exc:
+            return None, self._describe_query_error(exc)
 
         recordings = result.get("recording-list", [])
         for rec in recordings:
@@ -187,8 +236,71 @@ class MusicBrainzEnricher:
                 "title": mb_title,
                 "album": mb_album,
                 "mb_score": mb_score,
-            }
-        return None
+            }, None
+        return None, None
+
+    def _configure_client_network_limits(self) -> None:
+        try:
+            mb_module = importlib.import_module("musicbrainzngs.musicbrainz")
+        except ImportError:
+            return
+
+        configured_key = (
+            float(self.request_timeout),
+            max(1, int(self.max_retries)),
+            max(0.0, float(self.retry_delay_delta)),
+        )
+        original_safe_read = getattr(mb_module, "_ytripper_original_safe_read", None)
+        if original_safe_read is None:
+            original_safe_read = getattr(mb_module, "_safe_read", None)
+            if not callable(original_safe_read):
+                return
+            setattr(mb_module, "_ytripper_original_safe_read", original_safe_read)
+
+        if getattr(mb_module, "_ytripper_safe_read_config", None) == configured_key:
+            return
+
+        def _safe_read_with_limits(opener, req, body=None, _original=original_safe_read):
+            with self._temporary_socket_timeout(self.request_timeout):
+                return _original(
+                    opener,
+                    req,
+                    body,
+                    max_retries=max(1, int(self.max_retries)),
+                    retry_delay_delta=max(0.0, float(self.retry_delay_delta)),
+                )
+
+        setattr(mb_module, "_safe_read", _safe_read_with_limits)
+        setattr(mb_module, "_ytripper_safe_read_config", configured_key)
+
+    @staticmethod
+    def _describe_query_error(exc: Exception) -> dict[str, Any]:
+        cause = getattr(exc, "cause", None)
+        timeout_like = isinstance(exc, (TimeoutError, socket.timeout)) or isinstance(
+            cause,
+            (TimeoutError, socket.timeout),
+        )
+        message = str(cause or exc).strip() or exc.__class__.__name__
+        return {
+            "status": "query_failed",
+            "error": "timeout" if timeout_like else exc.__class__.__name__,
+            "message": message,
+            "timed_out": timeout_like,
+        }
+
+    @staticmethod
+    @contextmanager
+    def _temporary_socket_timeout(timeout_seconds: float):
+        if timeout_seconds <= 0:
+            yield
+            return
+
+        previous_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(timeout_seconds)
+        try:
+            yield
+        finally:
+            socket.setdefaulttimeout(previous_timeout)
 
     @staticmethod
     def _load_client():

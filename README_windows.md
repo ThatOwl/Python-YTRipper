@@ -57,6 +57,18 @@ You need:
 - Python 3.9+
 - `git`
 - `ffmpeg`
+- optional winget 
+the following is a collection of powershell-commands for winget-installation in case ou do not want to manually download it in ms.store
+
+```popwershell
+$progressPreference = 'silentlyContinue'
+$latestWingetMsixBundleUri = $(Invoke-RestMethod https://api.github.com/repos/microsoft/winget-cli/releases/latest).assets.browser_download_url | Where-Object {$_.EndsWith(".msixbundle")}
+
+$latestWingetMsixBundle = $env:TEMP + "\Microsoft.DesktopAppInstaller.msixbundle"
+Invoke-WebRequest -Uri $latestWingetMsixBundleUri -OutFile $latestWingetMsixBundle
+
+Add-AppxPackage $latestWingetMsixBundle
+```
 
 ```powershell
 winget install python3

@@ -1,7 +1,7 @@
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from utility.logger import get_logger
 
@@ -37,6 +37,7 @@ class TaggingWorker:
         done_max_age_seconds: float | None = DEFAULT_DONE_MAX_AGE_SECONDS,
         failed_max_count: int | None = DEFAULT_FAILED_MAX_COUNT,
         failed_max_age_seconds: float | None = DEFAULT_FAILED_MAX_AGE_SECONDS,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
     ):
         self.queue_store = queue_store or TaggingQueueStore()
         self.title_normalizer = title_normalizer or TitleNormalizer()
@@ -50,6 +51,7 @@ class TaggingWorker:
         self.done_max_age_seconds = done_max_age_seconds
         self.failed_max_count = failed_max_count
         self.failed_max_age_seconds = failed_max_age_seconds
+        self.progress_callback = progress_callback
 
     def run_until_idle(self) -> int:
         processed_count = 0
@@ -98,6 +100,15 @@ class TaggingWorker:
         payload = self.queue_store.read_package(processing_path)
         payload = self.queue_store.update_state(payload, "processing")
         self.queue_store.write_package(processing_path, payload)
+        self._emit_progress(
+            event="package_started",
+            queue_from="pending",
+            queue_to="processing",
+            package_path=str(processing_path),
+            job_id=str(payload.get("job_id", "") or ""),
+            state=str(payload.get("state", "") or ""),
+            final_output_path=str(payload.get("final_output_path", "") or ""),
+        )
 
         try:
             payload = self._apply_title_normalization(payload)
@@ -121,6 +132,17 @@ class TaggingWorker:
             payload = self.queue_store.update_state(payload, final_state)
             self.queue_store.write_package(final_path, payload)
             self.results_report.update_from_package(payload)
+            self._emit_progress(
+                event="package_finished",
+                queue_from="pending",
+                queue_to=target_state_dir,
+                package_path=str(final_path),
+                job_id=str(payload.get("job_id", "") or ""),
+                state=str(payload.get("state", "") or ""),
+                write_status=str((payload.get("write_result", {}) or {}).get("status", "") or ""),
+                candidate_source=str((payload.get("resolved_tags", {}) or {}).get("source", "") or ""),
+                final_output_path=str(payload.get("final_output_path", "") or ""),
+            )
             logger.info("Processed tagging package: %s", final_path)
             return final_path
         except Exception as exc:
@@ -131,6 +153,17 @@ class TaggingWorker:
             failed_path = self.queue_store.move_package(processing_path, "failed")
             self.queue_store.write_package(failed_path, payload)
             self.results_report.update_from_package(payload)
+            self._emit_progress(
+                event="package_finished",
+                queue_from="pending",
+                queue_to="failed",
+                package_path=str(failed_path),
+                job_id=str(payload.get("job_id", "") or ""),
+                state="failed",
+                write_status=str(exc),
+                candidate_source=str((payload.get("resolved_tags", {}) or {}).get("source", "") or ""),
+                final_output_path=str(payload.get("final_output_path", "") or ""),
+            )
             logger.warning("Failed tagging package: %s (%s)", failed_path, exc)
             return failed_path
 
@@ -234,12 +267,18 @@ class TaggingWorker:
 
         current_candidate = self.candidate_resolver.resolve(payload)
         enriched_candidate = self.musicbrainz_enricher.enrich(payload, current_candidate)
+        raw_lookup_details = getattr(self.musicbrainz_enricher, "last_lookup_details", {})
+        lookup_details = dict(raw_lookup_details) if isinstance(raw_lookup_details, dict) else {}
         if enriched_candidate is None:
-            payload["enrichment_result"] = {"status": "no_match"}
+            payload["enrichment_result"] = self._build_enrichment_result(lookup_details)
+            event_type = "candidate_enrichment_missed"
+            if payload["enrichment_result"]["status"] in {"timeout", "error", "client_unavailable"}:
+                event_type = "candidate_enrichment_failed"
             self.queue_store.event_logger.emit_package_event(
-                "candidate_enrichment_missed",
+                event_type,
                 payload,
                 enrichment_backend="musicbrainz",
+                reason=payload["enrichment_result"].get("details", ""),
             )
             return payload, False
 
@@ -259,6 +298,19 @@ class TaggingWorker:
             candidate_write_allowed=enriched_candidate.write_allowed,
         )
         return payload, True
+
+    @staticmethod
+    def _build_enrichment_result(details: dict[str, Any]) -> dict[str, Any]:
+        status = str(details.get("status", "") or "")
+        if status == "query_failed":
+            result_status = "timeout" if details.get("timed_out") else "error"
+            return {
+                "status": result_status,
+                "details": str(details.get("message", "") or details.get("error", "") or "").strip(),
+            }
+        if status == "client_unavailable":
+            return {"status": "client_unavailable", "details": ""}
+        return {"status": "no_match"}
 
     def _maybe_write_tags(self, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
         requested_actions = set(payload.get("requested_actions", []) or [])
@@ -361,3 +413,11 @@ class TaggingWorker:
             return "".join(ch.lower() for ch in str(value) if ch.isalnum())
 
         return bool(left and right) and _norm(left) == _norm(right)
+
+    def _emit_progress(self, **payload: Any) -> None:
+        if self.progress_callback is None:
+            return
+        try:
+            self.progress_callback(payload)
+        except Exception:
+            return

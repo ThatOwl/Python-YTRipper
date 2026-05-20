@@ -91,6 +91,27 @@ class TestMusicBrainzEnricher(unittest.TestCase):
         )
         self.assertTrue(all(call.get("release") != "Best Fallout Songs" for call in client.calls))
 
+    def test_enricher_exposes_timeout_details_for_failed_lookup(self):
+        payload = {
+            "playlist_title": "",
+            "source": {"author": "Example Artist", "title": "Example Song", "keywords": [], "description": ""},
+            "normalization": {"title_analysis": {"lookup_title": "Example Song"}},
+        }
+        current_candidate = CandidateResolver().resolve(payload)
+
+        client = _StubMusicBrainzClient()
+        client.search_recordings = lambda **kwargs: (_ for _ in ()).throw(TimeoutError("timed out"))
+
+        enricher = MusicBrainzEnricher(request_delay=0.0)
+        enricher._load_client = lambda: client
+        enricher._configure_client_network_limits = lambda: None
+
+        enriched = enricher.enrich(payload, current_candidate)
+
+        self.assertIsNone(enriched)
+        self.assertEqual(enricher.last_lookup_details["status"], "query_failed")
+        self.assertTrue(enricher.last_lookup_details["timed_out"])
+
 
 if __name__ == "__main__":
     unittest.main()

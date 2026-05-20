@@ -3,7 +3,7 @@ import json
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -25,12 +25,14 @@ class TestRunTaggingWorker(unittest.TestCase):
             (root / "Rammstein - Sonne.m4a").write_text("audio", encoding="utf-8")
 
             output = io.StringIO()
-            with redirect_stdout(output):
+            err_output = io.StringIO()
+            with redirect_stdout(output), redirect_stderr(err_output):
                 exit_code = main(["scan-dir", "--directory", str(root), "--no-enrich"])
 
             text = output.getvalue()
             self.assertEqual(exit_code, 0)
             self.assertIn("report_csv=", text)
+            self.assertIn("[scan 1] scanning", err_output.getvalue())
             report_paths = list(root.glob("*_tag_suggestions.csv"))
             self.assertEqual(len(report_paths), 1)
             with open(report_paths[0], "r", encoding="utf-8") as handle:
@@ -483,6 +485,50 @@ class TestRunTaggingWorker(unittest.TestCase):
             self.assertEqual(len(done_files), 1)
             done_payload = json.loads(done_files[0].read_text(encoding="utf-8"))
             self.assertEqual(done_payload["state"], "skipped")
+
+    def test_run_command_emits_queue_progress_to_stderr(self):
+        class _Video:
+            title = "Caro Emerald - Tangled Up"
+            author = "Caro Emerald"
+            description = ""
+            thumbnail_url = ""
+            watch_url = "https://example.invalid/watch"
+            video_id = "vid-1"
+            channel_id = "channel-1"
+            publish_date = "2026-05-17"
+            keywords = ["Caro Emerald", "Tangled Up"]
+            metadata = {}
+            captions = []
+            chapters = []
+
+        builder = TaggingPackageBuilder()
+        options = DownloadOptions(autotag=True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            queue_dir = Path(tmpdir) / "runtime-tagging"
+            store = TaggingQueueStore(base_dir=queue_dir)
+            final_output = Path(tmpdir) / "Tangled Up.m4a"
+            final_output.write_text("audio", encoding="utf-8")
+
+            package = builder.build_package(
+                final_output_path=final_output,
+                download_directory=Path(tmpdir),
+                video_obj=_Video(),
+                options=options,
+                requested_actions=[],
+                playlist_title="Electro Swing",
+            )
+            store.write_pending_package(package)
+
+            output = io.StringIO()
+            err_output = io.StringIO()
+            with redirect_stdout(output), redirect_stderr(err_output):
+                exit_code = main(["run", "--queue-dir", str(queue_dir), "--idle-timeout", "0.01", "--poll-interval", "0.01"])
+
+            self.assertEqual(exit_code, 0)
+            stderr_text = err_output.getvalue()
+            self.assertIn("pending -> processing", stderr_text)
+            self.assertIn("pending -> done", stderr_text)
 
     def test_review_override_and_review_list_surface_saved_review_metadata(self):
         with tempfile.TemporaryDirectory() as tmpdir:

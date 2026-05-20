@@ -119,6 +119,36 @@ class TestLocalDirectoryTagger(unittest.TestCase):
             self.assertEqual(rows[0]["suggestion_source"], "musicbrainz_confirmed")
             self.assertEqual(rows[0]["apply_mode"], "write")
 
+    def test_scan_directory_counts_musicbrainz_timeouts_and_records_row_status(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "Rammstein"
+            root.mkdir(parents=True, exist_ok=True)
+            audio_path = root / "Sonne.m4a"
+            audio_path.write_text("audio", encoding="utf-8")
+
+            enricher = Mock()
+            enricher.enrich.return_value = None
+            enricher.last_lookup_details = {
+                "status": "query_failed",
+                "query_reason": "current candidate",
+                "error": "timeout",
+                "message": "timed out",
+                "timed_out": True,
+            }
+
+            tagger = LocalDirectoryTagger(musicbrainz_enricher=enricher)
+            summary = tagger.scan_directory(root, enrich=True)
+
+            self.assertEqual(summary["enrichment_timeouts"], 1)
+            self.assertEqual(summary["enrichment_failures"], 0)
+
+            report_path = Path(summary["report_csv"])
+            with open(report_path, "r", encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+
+            self.assertEqual(rows[0]["enrichment_status"], "timeout")
+            self.assertIn("timed out", rows[0]["enrichment_details"])
+
     def test_apply_csv_writes_in_place_and_updates_same_csv(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

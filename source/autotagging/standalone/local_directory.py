@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from autotagging.core.candidate_resolver import CandidateResolver, TagCandidate
 from autotagging.core.musicbrainz_enricher import MusicBrainzEnricher
@@ -24,6 +24,8 @@ DEFAULT_SCAN_FIELDS = [
     "suggestion_confidence",
     "suggestion_reason",
     "apply_mode",
+    "enrichment_status",
+    "enrichment_details",
     "write_status",
     "write_details",
     "written_artist",
@@ -78,6 +80,7 @@ class LocalDirectoryTagger:
         include_tagged: bool = False,
         enrich: bool = True,
         scan_scope: str = "missing-any",
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         root = Path(directory).expanduser().resolve(strict=False)
         if not root.is_dir():
@@ -92,6 +95,8 @@ class LocalDirectoryTagger:
             "review_rows": 0,
             "write_ready_rows": 0,
             "no_suggestion_rows": 0,
+            "enrichment_timeouts": 0,
+            "enrichment_failures": 0,
         }
 
         for path in sorted(root.rglob("*")):
@@ -103,6 +108,14 @@ class LocalDirectoryTagger:
                 counts["already_tagged_skipped"] += 1
                 continue
 
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "event": "scan_started",
+                        "files_seen": counts["files_seen"],
+                        "path": str(path),
+                    }
+                )
             row = self._build_scan_row(root=root, path=path, current_tags=current_tags, enrich=enrich)
             rows.append(row)
             counts["rows_written"] += 1
@@ -112,6 +125,18 @@ class LocalDirectoryTagger:
                 counts["review_rows"] += 1
             else:
                 counts["no_suggestion_rows"] += 1
+            if row["enrichment_status"] == "timeout":
+                counts["enrichment_timeouts"] += 1
+            elif row["enrichment_status"] in {"error", "client_unavailable"}:
+                counts["enrichment_failures"] += 1
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "event": "scan_completed",
+                        "files_seen": counts["files_seen"],
+                        **row,
+                    }
+                )
 
         self._write_rows(report_path, rows)
         return {
@@ -185,8 +210,13 @@ class LocalDirectoryTagger:
             filename_stem=filename_stem,
         )
         enriched_candidate: TagCandidate | None = None
+        enrichment_status = "disabled" if not enrich else "not_needed"
+        enrichment_details = ""
         if enrich and (candidate.artist or candidate.title) and not candidate.write_allowed:
             enriched_candidate = self.musicbrainz_enricher.enrich(payload, candidate)
+            enrichment_status, enrichment_details = self._describe_enrichment_attempt(
+                getattr(self.musicbrainz_enricher, "last_lookup_details", {}),
+            )
             if enriched_candidate is not None:
                 candidate = enriched_candidate
 
@@ -201,8 +231,16 @@ class LocalDirectoryTagger:
             "album_to_write": candidate.album or folder_context.album or current_tags["album"],
             "suggestion_source": candidate.source,
             "suggestion_confidence": self._format_confidence(candidate.confidence),
-            "suggestion_reason": self._suggestion_reason(candidate, enriched_candidate, current_tags),
+            "suggestion_reason": self._suggestion_reason(
+                candidate,
+                enriched_candidate,
+                current_tags,
+                enrichment_status=enrichment_status,
+                enrichment_details=enrichment_details,
+            ),
             "apply_mode": apply_mode,
+            "enrichment_status": enrichment_status,
+            "enrichment_details": enrichment_details,
             "write_status": "",
             "write_details": "",
             "written_artist": "",
@@ -592,18 +630,57 @@ class LocalDirectoryTagger:
         candidate: TagCandidate,
         enriched_candidate: TagCandidate | None,
         current_tags: dict[str, str],
+        *,
+        enrichment_status: str = "",
+        enrichment_details: str = "",
     ) -> str:
         if current_tags["artist"] and current_tags["title"]:
-            return "existing_tags_present"
-        if enriched_candidate is not None:
+            base = "existing_tags_present"
+        elif enriched_candidate is not None:
             if enriched_candidate.write_allowed:
-                return f"musicbrainz_confirmed:{enriched_candidate.source}"
-            return f"musicbrainz_review:{enriched_candidate.source}"
-        if candidate.artist or candidate.title:
+                base = f"musicbrainz_confirmed:{enriched_candidate.source}"
+            else:
+                base = f"musicbrainz_review:{enriched_candidate.source}"
+        elif candidate.artist or candidate.title:
             if candidate.write_allowed:
-                return f"local_safe:{candidate.source}"
-            return f"review_needed:{candidate.source}"
-        return "no_suggestion"
+                base = f"local_safe:{candidate.source}"
+            else:
+                base = f"review_needed:{candidate.source}"
+        else:
+            base = "no_suggestion"
+
+        if enrichment_status in {"timeout", "error", "client_unavailable"}:
+            suffix = enrichment_status
+            if enrichment_details:
+                suffix = f"{suffix}:{enrichment_details}"
+            return f"{base};enrichment={suffix}"
+        return base
+
+    @staticmethod
+    def _describe_enrichment_attempt(details: Any) -> tuple[str, str]:
+        if not isinstance(details, dict):
+            return "not_needed", ""
+        lookup = dict(details)
+        status = str(lookup.get("status", "") or "")
+        if status == "matched":
+            return "matched", str(lookup.get("source", "") or "")
+        if status == "no_match":
+            return "no_match", ""
+        if status == "query_failed":
+            if lookup.get("timed_out"):
+                return "timeout", LocalDirectoryTagger._compact_enrichment_detail(lookup)
+            return "error", LocalDirectoryTagger._compact_enrichment_detail(lookup)
+        if status in {"client_unavailable", "missing_lookup_title"}:
+            return status, ""
+        return "not_needed", ""
+
+    @staticmethod
+    def _compact_enrichment_detail(details: dict[str, Any]) -> str:
+        reason = str(details.get("query_reason", "") or "").strip()
+        error = str(details.get("error", "") or "").strip()
+        message = str(details.get("message", "") or "").strip()
+        combined = ":".join(part for part in (reason, error, message) if part)
+        return combined.replace("\n", " ").strip()[:160]
 
     @staticmethod
     def _format_confidence(value: float) -> str:
