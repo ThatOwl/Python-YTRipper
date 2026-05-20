@@ -610,10 +610,21 @@ class CommandCLI(CLIBase):
         for key, value in options.to_dict().items():
             print(f"  {key}: {value}")
 
-    def _download_single_url(self, url: str, options: DownloadOptions, start_time: datetime.datetime | None = None) -> int:
+    def _download_single_url(
+        self,
+        url: str,
+        options: DownloadOptions,
+        start_time: datetime.datetime | None = None,
+        allow_interactive_oauth: bool = True,
+    ) -> int:
         try:
             self._ensure_tagging_worker(options)
             is_playlist = self.media_info_service.is_playlist(url)
+            effective_allow_interactive_oauth = (
+                allow_interactive_oauth
+                and start_time is None
+                and not is_playlist
+            )
             report_path: Path | None = None
             playlist_name: str | None = None
             if options.save_results and (start_time is not None or is_playlist):
@@ -630,6 +641,7 @@ class CommandCLI(CLIBase):
                 url=url,
                 options=options,
                 results_report_path=report_path,
+                allow_interactive_oauth=effective_allow_interactive_oauth,
             )
             if not results:
                 logger.warning(f"No download results produced for {url}")
@@ -707,7 +719,10 @@ class CommandCLI(CLIBase):
         print("Fetching video/playlist info...")
 
         try:
-            lines = self.media_info_service.get_info_lines(url)
+            lines = self.media_info_service.get_info_lines(
+                url,
+                allow_interactive_oauth=not self.media_info_service.is_playlist(url),
+            )
             for line in lines:
                 print(line)
             return 0
@@ -782,7 +797,12 @@ class CommandCLI(CLIBase):
             for idx, url in enumerate(valid_urls, 1):
                 print(f"\n[{idx}/{len(valid_urls)}] Processing: {url}")
 
-                if self._download_single_url(url, effective_options, start_time=start_time) == 0:
+                if self._download_single_url(
+                    url,
+                    effective_options,
+                    start_time=start_time,
+                    allow_interactive_oauth=False,
+                ) == 0:
                     success_count += 1
                 else:
                     fail_count += 1
@@ -811,7 +831,11 @@ class CommandCLI(CLIBase):
             return self._run_info_mode(args.url)
 
         print("------ Starting Download ------")
-        return self._download_single_url(args.url, effective_options)
+        return self._download_single_url(
+            args.url,
+            effective_options,
+            allow_interactive_oauth=True,
+        )
 
     def run(self, command: str) -> int:
         args = self._parse_args(command)

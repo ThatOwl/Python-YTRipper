@@ -12,10 +12,10 @@ class MediaInfoService:
         self.urlh = url_handler or URLHandler()
         self.vid_fetcher = video_fetcher or VideoFetcher()
 
-    def get_info_lines(self, url: str) -> list[str]:
+    def get_info_lines(self, url: str, allow_interactive_oauth: bool = True) -> list[str]:
         if self.urlh.is_youtube_playlist(url):
             return self._playlist_info_lines(url)
-        return self._video_info_lines(url)
+        return self._video_info_lines(url, allow_interactive_oauth=allow_interactive_oauth)
 
     def _playlist_info_lines(self, url: str) -> list[str]:
         playlist: ptf.Playlist = self.vid_fetcher.get_playlist_obj(url)
@@ -28,9 +28,14 @@ class MediaInfoService:
             lines.append(f"{i + 1}. {video.title} ({video.length} seconds)")
         return lines
 
-    def _video_info_lines(self, url: str) -> list[str]:
-        video: ptf.YouTube = self.vid_fetcher.get_video_obj(url)
+    def _video_info_lines(self, url: str, allow_interactive_oauth: bool = True) -> list[str]:
+        return self._with_video(
+            url,
+            self._build_video_info_lines,
+            allow_interactive_oauth=allow_interactive_oauth,
+        )
 
+    def _build_video_info_lines(self, video: ptf.YouTube) -> list[str]:
         lines = [
             f"Video title: {video.title}",
             f"Video length: {video.length} seconds",
@@ -54,14 +59,20 @@ class MediaInfoService:
         lines.append(f"Best audio: {video.streams.filter(type='audio').order_by('abr').desc().first()}")
 
         return lines
+
+    def _with_video(self, url: str, action, allow_interactive_oauth: bool = True):
+        return self.vid_fetcher.run_with_age_restricted_oauth_fallback(
+            url,
+            action,
+            allow_interactive_oauth=allow_interactive_oauth,
+        )
     
     #TODO ? just a wrapper around video_fetcher methods ?
     def is_playlist(self, url: str) -> bool:
         return self.urlh.is_youtube_playlist(url)
     
-    def get_video_title(self, url: str) -> str:
-        video: ptf.YouTube = self.vid_fetcher.get_video_obj(url)
-        return video.title
+    def get_video_title(self, url: str, allow_interactive_oauth: bool = True) -> str:
+        return self._with_video(url, lambda video: video.title, allow_interactive_oauth=allow_interactive_oauth)
     
     def get_playlist_title(self, url: str) -> str:
         playlist: ptf.Playlist = self.vid_fetcher.get_playlist_obj(url)
@@ -75,20 +86,25 @@ class MediaInfoService:
         playlist: ptf.Playlist = self.vid_fetcher.get_playlist_obj(url)
         return [video.watch_url for video in playlist.videos]
     
-    def get_video_length_seconds(self, url: str) -> int:
-        video: ptf.YouTube = self.vid_fetcher.get_video_obj(url)
-        return video.length
+    def get_video_length_seconds(self, url: str, allow_interactive_oauth: bool = True) -> int:
+        return self._with_video(url, lambda video: video.length, allow_interactive_oauth=allow_interactive_oauth)
     
-    def get_video_length_formatted(self, url: str) -> str:
-        video: ptf.YouTube = self.vid_fetcher.get_video_obj(url)
+    def get_video_length_formatted(self, url: str, allow_interactive_oauth: bool = True) -> str:
+        video: ptf.YouTube = self._with_video(
+            url,
+            lambda current_video: current_video,
+            allow_interactive_oauth=allow_interactive_oauth,
+        )
         minutes: int
         seconds: int
         minutes, seconds = divmod(video.length, 60)
         return f"{minutes}:{seconds:02d}"
     
-    def get_video_size_mb(self, url: str) -> float:
-        video: ptf.YouTube = self.vid_fetcher.get_video_obj(url)
-        best_video_stream: ptf.Stream = video.streams.filter(type="video").order_by("resolution").desc().first()
-        best_audio_stream: ptf.Stream = video.streams.filter(type="audio").order_by("abr").desc().first()
-        total_size_bytes = best_video_stream.filesize + best_audio_stream.filesize
-        return total_size_bytes / (1024 * 1024)
+    def get_video_size_mb(self, url: str, allow_interactive_oauth: bool = True) -> float:
+        def _resolve_size(video: ptf.YouTube) -> float:
+            best_video_stream: ptf.Stream = video.streams.filter(type="video").order_by("resolution").desc().first()
+            best_audio_stream: ptf.Stream = video.streams.filter(type="audio").order_by("abr").desc().first()
+            total_size_bytes = best_video_stream.filesize + best_audio_stream.filesize
+            return total_size_bytes / (1024 * 1024)
+
+        return self._with_video(url, _resolve_size, allow_interactive_oauth=allow_interactive_oauth)

@@ -8,6 +8,7 @@ Testable without network
 """
 
 import pytubefix as ptf
+import pytubefix.exceptions as ptf_ex
 
 from utility.logger import get_logger
 from utility.utils import StreamSelectionError, DownloadOptions, QUALITY_ALIAS_MAP
@@ -16,6 +17,12 @@ from utility.utils import StreamSelectionError, DownloadOptions, QUALITY_ALIAS_M
 #TODO: => read methods -> might need improvement (currently not priority) 
 
 logger = get_logger(__name__, 'StreamSelector_debug.log')
+
+AGE_CHECK_EXCEPTIONS = (
+    ptf_ex.AgeRestrictedError,
+    ptf_ex.AgeCheckRequiredAccountError,
+    ptf_ex.AgeCheckRequiredError,
+)
 
 
 class StreamSelector:
@@ -57,6 +64,10 @@ class StreamSelector:
         
             return stream
             
+        except AGE_CHECK_EXCEPTIONS:
+            raise
+        except StreamSelectionError:
+            raise
         except Exception as e:
             raise StreamSelectionError(f"Stream selection failed: {e}") from e
     
@@ -128,5 +139,9 @@ class StreamSelector:
 
             return stream
     
+        except AGE_CHECK_EXCEPTIONS:
+            raise
+        except StreamSelectionError:
+            raise
         except Exception as e:
             raise StreamSelectionError(f"Stream selection failed: {e}") from e

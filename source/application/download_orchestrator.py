@@ -8,6 +8,7 @@ import pytubefix as ptf
 from utility.logger import get_logger
 from utility.utils import (
     PlaylistFetchError,
+    VideoFetchError,
     StreamDownloadError,
     StreamSelectionError,
     ConversionError,
@@ -64,6 +65,7 @@ class DownloadOrchestrator:
         base_download_dir: Path,
         options: DownloadOptions,
         results_report_path: Path | None = None,
+        allow_interactive_oauth: bool = False,
     ) -> List[DownloadResult]:
         results: List[DownloadResult] = []
 
@@ -77,17 +79,19 @@ class DownloadOrchestrator:
 
             # Existing pytubefix workaround retained.
             playlist_obj._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
-            logger.debug("Found %s videos in playlist %s", len(playlist_obj.video_urls), playlist_obj.title)
+            total_videos = len(playlist_obj.video_urls)
+            logger.debug("Found %s videos in playlist %s", total_videos, playlist_obj.title)
 
-            for i, video in enumerate(playlist_obj.videos):
-                logger.info("[%s/%s] Processing: %s", i + 1, len(playlist_obj.videos), video.title)
+            for i, video_url in enumerate(playlist_obj.video_urls):
+                logger.info("[%s/%s] Processing: %s", i + 1, total_videos, video_url)
                 results.append(
                     self.download_single(
                         download_dir=playlist_dir,
                         options=options,
-                        video_obj=video,
+                        url=video_url,
                         playlist_title=playlist_obj.title,
                         results_report_path=results_report_path,
+                        allow_interactive_oauth=allow_interactive_oauth,
                     )
                 )
 
@@ -187,9 +191,53 @@ class DownloadOrchestrator:
         url: str | None = None,
         playlist_title: str | None = None,
         results_report_path: Path | None = None,
+        allow_interactive_oauth: bool = True,
     ) -> DownloadResult:
-        video_obj: ptf.YouTube = video_obj or self.vid_fetcher.get_video_obj(url)
+        video_ref = video_obj or url
 
+        if video_ref is None:
+            raise ValueError("download_single requires either a video object or a URL")
+
+        try:
+            return self.vid_fetcher.run_with_age_restricted_oauth_fallback(
+                video_ref,
+                lambda resolved_video_obj: self._download_single_resolved_video(
+                    video_obj=resolved_video_obj,
+                    options=options,
+                    download_dir=download_dir,
+                    playlist_title=playlist_title,
+                    results_report_path=results_report_path,
+                ),
+                allow_interactive_oauth=allow_interactive_oauth,
+            )
+        except (VideoFetchError, StreamSelectionError, StreamDownloadError, ConversionError, CombineError) as e:
+            failed_video_url = str(getattr(video_obj, "watch_url", "") or url or "")
+            logger.error("✗ %s with %s: %s", type(e).__name__, failed_video_url or "video", e)
+            return DownloadResult(
+                success=False,
+                errors=[str(e)],
+                video_url=failed_video_url,
+                playlist_title=playlist_title or "",
+            )
+        except Exception as e:
+            failed_video_url = str(getattr(video_obj, "watch_url", "") or url or "")
+            logger.error("✗ Unexpected error with %s: %s", failed_video_url or "video", e)
+            return DownloadResult(
+                success=False,
+                errors=[str(e)],
+                video_url=failed_video_url,
+                playlist_title=playlist_title or "",
+            )
+
+    def _download_single_resolved_video(
+        self,
+        *,
+        video_obj: ptf.YouTube,
+        options: DownloadOptions,
+        download_dir: Path,
+        playlist_title: str | None,
+        results_report_path: Path | None,
+    ) -> DownloadResult:
         base_filename = sanitize_filename(video_obj.title)
         video_title = video_obj.title
         target_ext = self.media_assembler.expected_extension(options)
@@ -226,56 +274,34 @@ class DownloadOrchestrator:
 
         logger.info("Downloading %s: %s", "soundtrack" if options.audio_only else "video", video_title)
 
-        try:
-            if options.audio_only:
-                final_path = self._download_single_audio(video_obj, download_dir, target_file, options)
-            else:
-                final_path = self._download_single_video(video_obj, download_dir, target_file, options)
+        if options.audio_only:
+            final_path = self._download_single_audio(video_obj, download_dir, target_file, options)
+        else:
+            final_path = self._download_single_video(video_obj, download_dir, target_file, options)
 
-            tagging_info = self._prepare_tagging_package(
-                final_path=final_path,
-                download_dir=download_dir,
-                video_obj=video_obj,
-                options=options,
-                playlist_title=playlist_title,
-                results_report_path=results_report_path,
-            )
-            logger.info("✓ %s", video_title)
-            return DownloadResult(
-                success=True,
-                errors=[],
-                video_title=video_title,
-                video_url=video_obj.watch_url,
-                output_path=final_path,
-                source_author=str(getattr(video_obj, "author", "") or ""),
-                playlist_title=playlist_title or "",
-                tagging_job_id=str((tagging_info or {}).get("job_id", "") or ""),
-                tagging_session_id=str((tagging_info or {}).get("session_id", "") or ""),
-                tagging_sequence_no=int((tagging_info or {}).get("sequence_no", 0) or 0),
-                tagging_state="queue_failed" if options.autotag and tagging_info is None else "",
-                tagging_reason="tagging_package_not_created" if options.autotag and tagging_info is None else "",
-            )
-
-        except (StreamSelectionError, StreamDownloadError, ConversionError, CombineError) as e:
-            logger.error("✗ %s with %s: %s", type(e).__name__, video_title, e)
-            return DownloadResult(
-                success=False,
-                errors=[str(e)],
-                video_title=video_title,
-                video_url=video_obj.watch_url,
-                source_author=str(getattr(video_obj, "author", "") or ""),
-                playlist_title=playlist_title or "",
-            )
-        except Exception as e:
-            logger.error("✗ Unexpected error with %s: %s", video_title, e)
-            return DownloadResult(
-                success=False,
-                errors=[str(e)],
-                video_title=video_title,
-                video_url=video_obj.watch_url,
-                source_author=str(getattr(video_obj, "author", "") or ""),
-                playlist_title=playlist_title or "",
-            )
+        tagging_info = self._prepare_tagging_package(
+            final_path=final_path,
+            download_dir=download_dir,
+            video_obj=video_obj,
+            options=options,
+            playlist_title=playlist_title,
+            results_report_path=results_report_path,
+        )
+        logger.info("✓ %s", video_title)
+        return DownloadResult(
+            success=True,
+            errors=[],
+            video_title=video_title,
+            video_url=video_obj.watch_url,
+            output_path=final_path,
+            source_author=str(getattr(video_obj, "author", "") or ""),
+            playlist_title=playlist_title or "",
+            tagging_job_id=str((tagging_info or {}).get("job_id", "") or ""),
+            tagging_session_id=str((tagging_info or {}).get("session_id", "") or ""),
+            tagging_sequence_no=int((tagging_info or {}).get("sequence_no", 0) or 0),
+            tagging_state="queue_failed" if options.autotag and tagging_info is None else "",
+            tagging_reason="tagging_package_not_created" if options.autotag and tagging_info is None else "",
+        )
 
     def _prepare_tagging_package(
         self,
@@ -327,6 +353,7 @@ class DownloadOrchestrator:
         url: str,
         options: DownloadOptions,
         results_report_path: Path | None = None,
+        allow_interactive_oauth: bool = True,
     ) -> List[DownloadResult]:
         results: List[DownloadResult] = []
         base_download_dir = self.os_handler.expand_path(options.default_download_directory)
@@ -345,7 +372,13 @@ class DownloadOrchestrator:
                     url = cleaned
 
             if self.urlh.is_youtube_playlist(url):
-                return self.download_playlist(url, base_download_dir, options, results_report_path=results_report_path)
+                return self.download_playlist(
+                    url,
+                    base_download_dir,
+                    options,
+                    results_report_path=results_report_path,
+                    allow_interactive_oauth=False,
+                )
 
             cleaned_url = self.urlh.clean_video_link(url) or url
             results.append(
@@ -354,6 +387,7 @@ class DownloadOrchestrator:
                     options=options,
                     download_dir=base_download_dir,
                     results_report_path=results_report_path,
+                    allow_interactive_oauth=allow_interactive_oauth,
                 )
             )
             return results

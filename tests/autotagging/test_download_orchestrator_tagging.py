@@ -22,6 +22,7 @@ if "pytubefix" not in sys.modules:
         "RegexMatchError",
         "VideoPrivate",
         "VideoRegionBlocked",
+        "AgeRestrictedError",
         "AgeCheckRequiredAccountError",
         "AgeCheckRequiredError",
         "VideoUnavailable",
@@ -47,7 +48,7 @@ if "pytube" not in sys.modules:
     sys.modules["pytube"] = pytube_stub
 
 from application.download_orchestrator import DownloadOrchestrator
-from utility.utils import DownloadOptions
+from utility.utils import DownloadOptions, DownloadResult
 
 
 class _DummyVideo:
@@ -55,7 +56,87 @@ class _DummyVideo:
     watch_url = "https://www.youtube.com/watch?v=prepared123"
 
 
+class _DummyPlaylist:
+    title = "Prepared Playlist"
+    video_urls = [
+        "https://www.youtube.com/watch?v=prepared123",
+        "https://www.youtube.com/watch?v=prepared456",
+    ]
+
+
 class TestDownloadOrchestratorTagging(unittest.TestCase):
+    def test_download_playlist_uses_video_urls_and_disables_interactive_oauth(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os_handler = Mock()
+            os_handler.setup_playlist_dir.return_value = Path(tmpdir)
+
+            vid_fetcher = Mock()
+            vid_fetcher.get_playlist_obj.return_value = _DummyPlaylist()
+
+            orchestrator = DownloadOrchestrator(
+                os_handler=os_handler,
+                vid_fetcher=vid_fetcher,
+            )
+            orchestrator.download_single = Mock(
+                side_effect=[
+                    DownloadResult(success=True, errors=[], video_url=_DummyPlaylist.video_urls[0]),
+                    DownloadResult(success=False, errors=["auth needed"], video_url=_DummyPlaylist.video_urls[1]),
+                ]
+            )
+
+            results = orchestrator.download_playlist(
+                "https://www.youtube.com/playlist?list=PL123",
+                Path(tmpdir),
+                DownloadOptions(default_download_directory=tmpdir),
+            )
+
+            self.assertEqual(len(results), 2)
+            self.assertTrue(results[0].success)
+            self.assertFalse(results[1].success)
+            self.assertEqual(orchestrator.download_single.call_count, 2)
+            first_call = orchestrator.download_single.call_args_list[0].kwargs
+            second_call = orchestrator.download_single.call_args_list[1].kwargs
+            self.assertEqual(first_call["url"], _DummyPlaylist.video_urls[0])
+            self.assertEqual(second_call["url"], _DummyPlaylist.video_urls[1])
+            self.assertFalse(first_call["allow_interactive_oauth"])
+            self.assertFalse(second_call["allow_interactive_oauth"])
+
+    def test_download_single_routes_video_access_through_age_check_fallback(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            existing_file = Path(tmpdir) / "Prepared Video.m4a"
+            existing_file.write_text("audio", encoding="utf-8")
+
+            os_handler = Mock()
+            os_handler.find_existing_file_by_stem.return_value = existing_file
+
+            media_assembler = Mock()
+            media_assembler.expected_extension.return_value = ".m4a"
+
+            vid_fetcher = Mock()
+            vid_fetcher.run_with_age_restricted_oauth_fallback.side_effect = (
+                lambda video_ref, action, **kwargs: action(_DummyVideo())
+            )
+
+            orchestrator = DownloadOrchestrator(
+                os_handler=os_handler,
+                media_assembler=media_assembler,
+                vid_fetcher=vid_fetcher,
+            )
+
+            options = DownloadOptions(default_download_directory=tmpdir)
+            result = orchestrator.download_single(
+                options=options,
+                download_dir=Path(tmpdir),
+                url=_DummyVideo.watch_url,
+            )
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.output_path, existing_file)
+            vid_fetcher.run_with_age_restricted_oauth_fallback.assert_called_once()
+            video_ref, action = vid_fetcher.run_with_age_restricted_oauth_fallback.call_args.args
+            self.assertEqual(video_ref, _DummyVideo.watch_url)
+            self.assertTrue(callable(action))
+
     def test_prepare_tagging_emits_package_for_existing_file_skip(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             existing_file = Path(tmpdir) / "Prepared Video.m4a"

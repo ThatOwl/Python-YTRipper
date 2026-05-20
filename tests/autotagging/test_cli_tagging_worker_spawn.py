@@ -22,6 +22,7 @@ if "pytubefix" not in sys.modules:
         "RegexMatchError",
         "VideoPrivate",
         "VideoRegionBlocked",
+        "AgeRestrictedError",
         "AgeCheckRequiredAccountError",
         "AgeCheckRequiredError",
         "VideoUnavailable",

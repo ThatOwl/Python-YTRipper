@@ -22,6 +22,7 @@ if "pytubefix" not in sys.modules:
         "RegexMatchError",
         "VideoPrivate",
         "VideoRegionBlocked",
+        "AgeRestrictedError",
         "AgeCheckRequiredAccountError",
         "AgeCheckRequiredError",
         "VideoUnavailable",
@@ -94,6 +95,8 @@ class TestBatchSingleResultSaving(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         cli.media_info_service.is_playlist.assert_called_once_with("https://www.youtube.com/watch?v=WRfiUywCdZU")
         cli.media_info_service.get_playlist_title.assert_not_called()
+        _, download_kwargs = cli.ytd.download.call_args
+        self.assertFalse(download_kwargs["allow_interactive_oauth"])
         cli.os.save_download_results.assert_called_once()
         _, kwargs = cli.os.save_download_results.call_args
         self.assertIsNone(kwargs["playlist_name"])
@@ -130,6 +133,8 @@ class TestBatchSingleResultSaving(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         cli.media_info_service.is_playlist.assert_called_once()
         cli.media_info_service.get_playlist_title.assert_called_once()
+        _, download_kwargs = cli.ytd.download.call_args
+        self.assertFalse(download_kwargs["allow_interactive_oauth"])
         cli.os.save_download_results.assert_called_once()
         _, kwargs = cli.os.save_download_results.call_args
         self.assertEqual(kwargs["playlist_name"], "Playlist Title")
