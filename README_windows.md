@@ -85,25 +85,140 @@ You should also be comfortable with:
 
 ---
 
-## Manual Installation
+## Installation
 
-If you already have the repository, the Windows-native setup helper is:
+### Recommended Normal User Setup
+
+This project does not require an admin PowerShell for normal setup. The recommended
+Windows user setup is:
 
 ```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 .\microtools\install.ps1
 ```
 
-If PowerShell blocks local scripts, run:
+`CurrentUser RemoteSigned` is the practical Windows compromise for a user who wants
+local helper scripts to run outside an admin shell:
+
+- it changes policy only for your Windows user
+- it does not change machine-wide PowerShell policy
+- it allows local scripts you created or cloned normally
+- it still treats internet-downloaded scripts more cautiously
+
+PowerShell execution policy is a safety guardrail, not a complete security boundary.
+Avoid permanently setting `Unrestricted` or `Bypass`, especially at machine scope.
+
+To inspect current policy scopes:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\microtools\install.ps1
+Get-ExecutionPolicy -List
 ```
 
-Or set a user-scoped policy once:
+If the repo was downloaded as a browser ZIP and Windows marked the files as coming
+from the internet, review the files first, then unblock the repo scripts:
 
 ```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+Get-ChildItem -Recurse -Filter *.ps1 | Unblock-File
 ```
+
+### One-Shot Setup Without Changing Policy
+
+If you do not want to change `CurrentUser` execution policy, use a one-shot process
+bypass. This affects only that command:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\microtools\install.ps1
+```
+
+There is also a `.cmd` wrapper for users who cannot directly launch `.ps1` files:
+
+```powershell
+.\microtools\install.cmd
+```
+
+The wrapper runs:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\microtools\install.ps1
+```
+
+### Installer Options
+
+The installer supports:
+
+```powershell
+.\microtools\install.ps1 -NoAliases
+.\microtools\install.ps1 -SkipProfile
+.\microtools\install.ps1 -Yes
+```
+
+- `-NoAliases` skips alias config and PowerShell profile setup.
+- `-SkipProfile` creates/updates alias config, but does not edit your PowerShell profile.
+- `-Yes` skips the confirmation prompt before editing your PowerShell profile.
+
+If you use `install.cmd`, pass options the same way:
+
+```powershell
+.\microtools\install.cmd -SkipProfile
+```
+
+### Where Aliases Are Written
+
+The installer writes helper config here:
+
+```powershell
+config\shell_aliases.conf
+```
+
+If profile setup is enabled, it adds one dot-source line to your user PowerShell
+profile:
+
+```powershell
+. "C:\Path\To\Python-YTRipper\microtools\shell_aliases.ps1"
+```
+
+The profile path is normally:
+
+```powershell
+$PROFILE.CurrentUserCurrentHost
+```
+
+To see the exact path:
+
+```powershell
+$PROFILE.CurrentUserCurrentHost
+```
+
+The sourced file defines helper functions such as `ytl`, `ytf`, `ytp`, `tagLoop`,
+`tagStatus`, `tagDir`, `tagDirFast`, `tagDirAll`, `tagApply`, and `slf`.
+
+If you use `-SkipProfile`, load helpers manually in a shell:
+
+```powershell
+. "C:\Path\To\Python-YTRipper\microtools\shell_aliases.ps1"
+```
+
+### Running The Installer Multiple Times
+
+At the same repo location, the installer detects the existing checkout and asks:
+
+- `1` update by backing up the current repo and cloning fresh
+- `2` use the existing installation
+- `3` cancel
+
+Choose `2` for normal repeat setup. It reuses the repo, creates `.venv` only if
+missing, installs requirements, updates alias config, and updates the profile source
+line if aliases are enabled.
+
+Choose `1` only when you really want a fresh clone. It moves the current repo to a
+`_backup` directory and may remove an older backup with the same name.
+
+At a different location, if no checkout is found in the current directory or one
+immediate child directory, the installer clones a fresh `Python-YTRipper` directory
+there. If aliases are enabled, the profile source line is updated to point to that
+new location.
+
+### Manual Installation
 
 You can also install manually:
 
@@ -150,6 +265,14 @@ Example repository-root usage:
 ```powershell
 .\start_w_args.ps1 --help
 ```
+
+`start_w_args.ps1` is the preferred native Windows launcher for the main app. It:
+
+- changes to the repository root
+- creates `.venv` if missing
+- prefers `py -3`, then falls back to `python`
+- runs `.venv\Scripts\python.exe .\source\yt_ripper.py`
+- forwards all arguments after `start_w_args.ps1` to the Python CLI
 
 Example quoted Windows path:
 
@@ -289,7 +412,7 @@ Examples translated to Windows paths:
 .\start_autotagger_w_args.ps1 apply-csv --csv "D:\Music\Rammstein\2026-05-19_Rammstein_tag_suggestions.csv"
 ```
 
-If you use `.\microtools\install.ps1`, it also wires PowerShell helper functions into your profile via `microtools/shell_aliases.ps1`, including `ytl`, `ytf`, `ytp`, `tagLoop`, `tagStatus`, `tagDir`, `tagDirFast`, `tagDirAll`, `tagApply`, and `slf`.
+If you use `.\microtools\install.ps1` and approve profile setup, it wires PowerShell helper functions into your profile via `microtools/shell_aliases.ps1`, including `ytl`, `ytf`, `ytp`, `tagLoop`, `tagStatus`, `tagDir`, `tagDirFast`, `tagDirAll`, `tagApply`, and `slf`.
 
 The `slf` helper now also has a native Windows implementation through `scripts/show_large_files.ps1`.
 
@@ -428,6 +551,22 @@ ffmpeg -version
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe .\source\yt_ripper.py --help
+```
+
+**Issue: PowerShell blocks your profile or `shell_aliases.ps1`**
+
+If you see an error like "running scripts is disabled on this system" when opening
+PowerShell, use the recommended user-scoped policy:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+Then open a new PowerShell window. If you do not want profile-loaded aliases, rerun
+the installer with:
+
+```powershell
+.\microtools\install.ps1 -SkipProfile
 ```
 
 **Issue: Paths with spaces fail**

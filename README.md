@@ -44,16 +44,71 @@ Install system packages:
 sudo apt install python3-full python3-venv ffmpeg
 ```
 
-### "Installer"
+### Linux Installer
 
-- Fownload only [install.sh](./microtools/install.sh) and make it executable
-- Put it into a directory of your choosing for the application files to reside in
-  * e.g. ~/RipperApplication
-- run the script and it will:
-  *  pull the repo
-  * setup shell aliases
-  * install requirements
-  * setup virtual environment
+Download only [install.sh](./microtools/install.sh), make it executable, put it into
+the directory where the application should live, and run it:
+
+```bash
+mkdir -p ~/RipperApplication
+cd ~/RipperApplication
+chmod +x ./install.sh
+./install.sh
+```
+
+The installer will:
+
+- detect an existing checkout in the current directory or one immediate child directory
+- clone the repo if no checkout is found
+- create `.venv`
+- install Python requirements
+- create/update `config/shell_aliases.conf`
+- optionally source `microtools/shell_aliases.sh` from `~/.bashrc`
+
+Alias/profile options:
+
+```bash
+./install.sh --no-aliases
+./install.sh --skip-profile
+./install.sh --yes
+```
+
+- `--no-aliases` skips alias config and `~/.bashrc` changes.
+- `--skip-profile` creates/updates alias config, but does not edit `~/.bashrc`.
+- `--yes` skips the confirmation prompt before editing `~/.bashrc`.
+
+If you skip the profile update, helpers can be loaded manually in a shell:
+
+```bash
+source ~/RipperApplication/Python-YTRipper/microtools/shell_aliases.sh
+```
+
+When run again at the same location, the installer detects the existing repo and asks
+whether to update, use the existing installation, or cancel. "Use existing" is the
+safe repeat option: it reuses the checkout, creates `.venv` only if missing, installs
+requirements, and updates helper config/profile entries.
+
+When run from a different location where no checkout is found, it clones a fresh
+`Python-YTRipper` directory there. If aliases are enabled, the `~/.bashrc` source
+line is updated to point at that location.
+
+### Windows Installer
+
+Native Windows usage is documented in [README_windows.md](README_windows.md). In
+short: use normal, non-admin PowerShell with the user-scoped execution policy
+`CurrentUser RemoteSigned`, or use the one-shot wrapper:
+
+```powershell
+.\microtools\install.cmd
+```
+
+The Windows installer has matching options:
+
+```powershell
+.\microtools\install.ps1 -NoAliases
+.\microtools\install.ps1 -SkipProfile
+.\microtools\install.ps1 -Yes
+```
 
 ### Manual Installation
 
@@ -248,7 +303,10 @@ Python-YTRipper/
 │   ├── default_settings_<username>.json
 │   └── presets/
 ├── microtools/
+│   ├── install.cmd
+│   ├── install.ps1
 │   ├── install.sh
+│   ├── shell_aliases.ps1
 │   └── shell_aliases.sh
 ├── source/
 │   ├── yt_ripper.py

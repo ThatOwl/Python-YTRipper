@@ -1,11 +1,23 @@
 [CmdletBinding()]
-param()
+param(
+    [switch]$NoAliases,
+    [switch]$SkipProfile,
+    [switch]$Yes
+)
 
 $ErrorActionPreference = "Stop"
 
 $repoName = "Python-YTRipper"
 $repoMarker = "source\yt_ripper.py"
 $repoCloneUrl = "https://github.com/RF-at-FH-Joanneum/Python-YTRipper.git"
+
+function Show-PowerShellExecutionPolicyNote {
+    Write-Host "PowerShell script note:"
+    Write-Host "  Recommended non-admin setup: Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned"
+    Write-Host "  One-shot setup only:        powershell -ExecutionPolicy Bypass -File .\microtools\install.ps1"
+    Write-Host "  This installer only writes user/repo files; it does not require an admin PowerShell."
+    Write-Host ""
+}
 
 function Install-ShellAliasesConfig {
     param(
@@ -62,6 +74,11 @@ function Install-PowerShellAliases {
         [string]$RepoRoot
     )
 
+    if ($NoAliases) {
+        Write-Host "Skipping PowerShell alias setup because -NoAliases was supplied."
+        return
+    }
+
     $aliasesFile = Join-Path $RepoRoot "microtools\shell_aliases.ps1"
     $profilePath = $PROFILE.CurrentUserCurrentHost
     if (-not $profilePath) {
@@ -73,6 +90,29 @@ function Install-PowerShellAliases {
         return
     }
 
+    if ($SkipProfile) {
+        Write-Host "Skipping PowerShell profile update because -SkipProfile was supplied."
+        Write-Host "To load helpers manually in a shell, run:"
+        Write-Host "  . `"$aliasesFile`""
+        return
+    }
+
+    $sourceLine = ". `"$aliasesFile`""
+
+    if (-not $Yes) {
+        Write-Host ""
+        Write-Host "PowerShell helper functions are loaded by adding this dot-source line to your user profile:"
+        Write-Host "  $sourceLine"
+        Write-Host "Profile file:"
+        Write-Host "  $profilePath"
+        Write-Host "This affects only your user profile, not machine-wide PowerShell settings."
+        $answer = Read-Host "Add or update this profile entry? [y/N]"
+        if ($answer -notmatch '^(?i:y|yes)$') {
+            Write-Host "Skipped PowerShell profile update."
+            return
+        }
+    }
+
     $profileDir = Split-Path -Parent $profilePath
     if (-not (Test-Path $profileDir -PathType Container)) {
         New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
@@ -81,7 +121,6 @@ function Install-PowerShellAliases {
         New-Item -ItemType File -Path $profilePath -Force | Out-Null
     }
 
-    $sourceLine = ". `"$aliasesFile`""
     $lines = Get-Content -Path $profilePath
     $filteredLines = foreach ($line in $lines) {
         if ($line -match 'microtools[\\/]+shell_aliases\.ps1') {
@@ -127,6 +166,21 @@ function Print-PostInstallHelp {
     Write-Host ""
     Write-Host "Or use the virtual environment Python directly:"
     Write-Host "  .\.venv\Scripts\python.exe .\source\yt_ripper.py --help"
+}
+
+function Install-OptionalShellHelpers {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot
+    )
+
+    if ($NoAliases) {
+        Write-Host "Skipping alias config and profile setup because -NoAliases was supplied."
+        return
+    }
+
+    Install-ShellAliasesConfig -RepoRoot $RepoRoot
+    Install-PowerShellAliases -RepoRoot $RepoRoot
 }
 
 function Find-RepoRoot {
@@ -193,6 +247,8 @@ function Install-RepoDependencies {
     }
 }
 
+Show-PowerShellExecutionPolicyNote
+
 $repoRoot = Find-RepoRoot
 
 if ($repoRoot) {
@@ -223,8 +279,7 @@ if ($repoRoot) {
             Write-Host "Using existing installation at: $repoRoot"
             New-YtRipperVenv -RepoRoot $repoRoot
             Install-RepoDependencies -RepoRoot $repoRoot
-            Install-ShellAliasesConfig -RepoRoot $repoRoot
-            Install-PowerShellAliases -RepoRoot $repoRoot
+            Install-OptionalShellHelpers -RepoRoot $repoRoot
             Print-PostInstallHelp -RepoRoot $repoRoot
             exit 0
         }
@@ -255,6 +310,5 @@ Set-Location $clonedRepoRoot
 Write-Host "Setting up virtual environment..."
 New-YtRipperVenv -RepoRoot $clonedRepoRoot
 Install-RepoDependencies -RepoRoot $clonedRepoRoot
-Install-ShellAliasesConfig -RepoRoot $clonedRepoRoot
-Install-PowerShellAliases -RepoRoot $clonedRepoRoot
+Install-OptionalShellHelpers -RepoRoot $clonedRepoRoot
 Print-PostInstallHelp -RepoRoot $clonedRepoRoot

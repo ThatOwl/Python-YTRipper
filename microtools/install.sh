@@ -4,6 +4,45 @@ set -e
 
 REPO_NAME="Python-YTRipper"
 REPO_MARKER="source/yt_ripper.py"  # unique file to detect repo
+NO_ALIASES=0
+SKIP_PROFILE=0
+YES=0
+
+show_usage() {
+    cat <<'EOF'
+Usage: install.sh [options]
+
+Options:
+  --no-aliases     Do not create alias config and do not modify ~/.bashrc.
+  --skip-profile   Create/update alias config, but do not source aliases from ~/.bashrc.
+  -y, --yes        Do not prompt before updating ~/.bashrc.
+  -h, --help       Show this help.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --no-aliases)
+            NO_ALIASES=1
+            ;;
+        --skip-profile)
+            SKIP_PROFILE=1
+            ;;
+        -y|--yes)
+            YES=1
+            ;;
+        -h|--help)
+            show_usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            show_usage >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
 
 install_shell_aliases_config() {
     local repo_root="$1"
@@ -61,6 +100,31 @@ install_shell_aliases() {
         return 0
     fi
 
+    if [ "$SKIP_PROFILE" -eq 1 ]; then
+        echo "Skipping ~/.bashrc update because --skip-profile was supplied."
+        echo "To load helpers manually in a shell, run:"
+        echo "  source $aliases_file"
+        return 0
+    fi
+
+    if [ "$YES" -ne 1 ]; then
+        echo ""
+        echo "Shell helper aliases are loaded by adding this source line to your user shell profile:"
+        echo "  $source_line"
+        echo "Profile file:"
+        echo "  $bashrc"
+        echo "This affects only your user profile, not system-wide shell settings."
+        read -r -p "Add or update this profile entry? [y/N]: " answer
+        case "$answer" in
+            y|Y|yes|YES)
+                ;;
+            *)
+                echo "Skipped ~/.bashrc update."
+                return 0
+                ;;
+        esac
+    fi
+
     touch "$bashrc"
     # Keep only one shell_aliases source line and make sure it points to this repo.
     sed -i '/source .*\/scripts\/shell_aliases\.sh/d' "$bashrc"
@@ -92,6 +156,18 @@ print_post_install_help() {
     echo ""
     echo "Or activate the virtual environment manually:"
     echo "  source $repo_root/.venv/bin/activate"
+}
+
+install_optional_shell_helpers() {
+    local repo_root="$1"
+
+    if [ "$NO_ALIASES" -eq 1 ]; then
+        echo "Skipping alias config and ~/.bashrc setup because --no-aliases was supplied."
+        return 0
+    fi
+
+    install_shell_aliases_config "$repo_root"
+    install_shell_aliases "$repo_root"
 }
 
 # Function to find repo root
@@ -155,8 +231,7 @@ if [ -n "$REPO_ROOT" ]; then
                 echo "Virtual environment already active."
             fi
 
-            install_shell_aliases_config "$REPO_ROOT"
-            install_shell_aliases "$REPO_ROOT"
+            install_optional_shell_helpers "$REPO_ROOT"
 
             deactivate
             print_post_install_help "$REPO_ROOT"
@@ -190,7 +265,6 @@ pip install -r requirements.txt
 
 deactivate
 
-install_shell_aliases_config "$(pwd)"
-install_shell_aliases "$(pwd)"
+install_optional_shell_helpers "$(pwd)"
 
 print_post_install_help "$(pwd)"
