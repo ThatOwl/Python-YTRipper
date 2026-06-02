@@ -212,3 +212,10 @@ temp_*/
 /runtime-tagging/
 config/yt_tagger_history.txt
 config/yt_ripper_history.txt
+
+# Local-only docs and internal notes
+.private-docs/
+ai-workflow/
+notes_requirements/
+scripts/A_RETIRE-OR-MOVE.txt
+.vscode/settings.json
