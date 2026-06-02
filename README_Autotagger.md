@@ -137,6 +137,12 @@ Current launcher:
 ./start_autotagger_w_args.sh <command> [options]
 ```
 
+Windows PowerShell equivalent:
+
+```powershell
+.\start_autotagger_w_args.ps1 <command> [options]
+```
+
 Direct Python entrypoint:
 
 ```bash

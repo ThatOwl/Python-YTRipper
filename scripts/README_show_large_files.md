@@ -1,4 +1,10 @@
-# show_large_files.sh
+# show_large_files
+
+Windows PowerShell equivalent:
+
+```powershell
+.\scripts\show_large_files.ps1 [options] [rootdir]
+```
 
 Scan a directory tree for long media files and report them by duration/size/name.
 
@@ -9,6 +15,7 @@ Scan a directory tree for long media files and report them by duration/size/name
 - Keeps files longer than a threshold (default: 8 minutes)
 - Supports parallel probing (`xargs -P`)
 - Outputs to console, text file, and/or CSV
+- The PowerShell variant accepts `-p <jobs>` for CLI parity, but currently scans sequentially
 
 ## Usage
 

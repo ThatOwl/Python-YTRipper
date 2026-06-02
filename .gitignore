@@ -210,6 +210,5 @@ __marimo__/
 temp_*/
 .batch_fix/
 /runtime-tagging/
-scripts/
 config/yt_tagger_history.txt
 config/yt_ripper_history.txt

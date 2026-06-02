@@ -37,6 +37,7 @@ Most realistic Windows usage right now:
 - run from source
 - use Python in a virtual environment
 - use PowerShell
+- use the native PowerShell wrappers in this repo
 - install `ffmpeg` separately and make sure it is on `PATH`
 
 Recommended expectation level:
@@ -86,6 +87,26 @@ You should also be comfortable with:
 
 ## Manual Installation
 
+If you already have the repository, the Windows-native setup helper is:
+
+```powershell
+.\microtools\install.ps1
+```
+
+If PowerShell blocks local scripts, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\microtools\install.ps1
+```
+
+Or set a user-scoped policy once:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+You can also install manually:
+
 Open PowerShell and run:
 
 ```powershell
@@ -119,15 +140,15 @@ If that command fails, the downloader may still start, but media conversion / me
 ## Important Windows Rules
 
 - Run commands from the repository root.
-- Prefer PowerShell examples from this file, not the Linux `.sh` launchers.
-- Do not rely on `start_w_args.sh` or `start_autotagger_w_args.sh` on Windows.
+- Prefer the PowerShell launchers over the Linux `.sh` wrappers.
+- Use `.\start_w_args.ps1` and `.\start_autotagger_w_args.ps1` on Windows.
 - Use quoted Windows paths when they contain spaces.
 - Keep `ffmpeg` on `PATH`.
 
 Example repository-root usage:
 
 ```powershell
-.\.venv\Scripts\python.exe .\source\yt_ripper.py --help
+.\start_w_args.ps1 --help
 ```
 
 Example quoted Windows path:
@@ -145,7 +166,7 @@ Example quoted Windows path:
 From the project root:
 
 ```powershell
-.\.venv\Scripts\python.exe .\source\yt_ripper.py --loop
+.\start_w_args.ps1 --loop
 ```
 
 This starts the prompt-based loop. Each entered line is parsed like a normal one-shot CLI command.
@@ -162,20 +183,20 @@ When `prompt_toolkit` is installed and the CLI is running in a real terminal, lo
 Use one-shot commands like this:
 
 ```powershell
-.\.venv\Scripts\python.exe .\source\yt_ripper.py <URL> [options]
+.\start_w_args.ps1 <URL> [options]
 ```
 
 ### Examples
 
 ```powershell
 # Audio-only download
-.\.venv\Scripts\python.exe .\source\yt_ripper.py "https://www.youtube.com/watch?v=7S_cMrxjZFo" -a true
+.\start_w_args.ps1 "https://www.youtube.com/watch?v=7S_cMrxjZFo" -a true
 
 # Batch mode from file
-.\.venv\Scripts\python.exe .\source\yt_ripper.py -f .\tests\test_download.txt
+.\start_w_args.ps1 -f .\tests\test_download.txt
 
 # Show info without downloading
-.\.venv\Scripts\python.exe .\source\yt_ripper.py "https://www.youtube.com/watch?v=7S_cMrxjZFo" --info
+.\start_w_args.ps1 "https://www.youtube.com/watch?v=7S_cMrxjZFo" --info
 ```
 
 ---
@@ -204,7 +225,7 @@ Windows-specific caution:
 Example:
 
 ```powershell
-.\.venv\Scripts\python.exe .\source\yt_ripper.py "https://www.youtube.com/watch?v=7S_cMrxjZFo" -at true
+.\start_w_args.ps1 "https://www.youtube.com/watch?v=7S_cMrxjZFo" -at true
 ```
 
 ---
@@ -212,6 +233,12 @@ Example:
 ## Standalone Autotagger on Windows
 
 There is also a separate standalone autotagging CLI.
+
+The native Windows wrapper is:
+
+```powershell
+.\start_autotagger_w_args.ps1 --help
+```
 
 Direct Python entrypoint:
 
@@ -222,8 +249,8 @@ Direct Python entrypoint:
 Interactive loop:
 
 ```powershell
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py --loop
+.\start_autotagger_w_args.ps1
+.\start_autotagger_w_args.ps1 --loop
 ```
 
 Available commands include:
@@ -246,21 +273,25 @@ Available commands include:
 Examples translated to Windows paths:
 
 ```powershell
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py status
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py session --session-id <session-id>
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py events --event-type candidate_resolved --limit 20
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py review-list
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py review-override --job-id <job-id> --artist "Artist" --title "Title"
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py review-approve --job-id <job-id> --note "ready to retry"
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py review-reject --job-id <job-id> --reason "needs manual research"
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py plan-session --session-id <session-id>
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py plan-queue
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py retry --job-id <job-id>
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py retry --session-id <session-id> --source-state skipped
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py retry-run --job-id <job-id>
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py scan-dir --directory "D:\Music\Rammstein"
-.\.venv\Scripts\python.exe .\source\run_tagging_worker.py apply-csv --csv "D:\Music\Rammstein\2026-05-19_Rammstein_tag_suggestions.csv"
+.\start_autotagger_w_args.ps1 status
+.\start_autotagger_w_args.ps1 session --session-id <session-id>
+.\start_autotagger_w_args.ps1 events --event-type candidate_resolved --limit 20
+.\start_autotagger_w_args.ps1 review-list
+.\start_autotagger_w_args.ps1 review-override --job-id <job-id> --artist "Artist" --title "Title"
+.\start_autotagger_w_args.ps1 review-approve --job-id <job-id> --note "ready to retry"
+.\start_autotagger_w_args.ps1 review-reject --job-id <job-id> --reason "needs manual research"
+.\start_autotagger_w_args.ps1 plan-session --session-id <session-id>
+.\start_autotagger_w_args.ps1 plan-queue
+.\start_autotagger_w_args.ps1 retry --job-id <job-id>
+.\start_autotagger_w_args.ps1 retry --session-id <session-id> --source-state skipped
+.\start_autotagger_w_args.ps1 retry-run --job-id <job-id>
+.\start_autotagger_w_args.ps1 scan-dir --directory "D:\Music\Rammstein"
+.\start_autotagger_w_args.ps1 apply-csv --csv "D:\Music\Rammstein\2026-05-19_Rammstein_tag_suggestions.csv"
 ```
+
+If you use `.\microtools\install.ps1`, it also wires PowerShell helper functions into your profile via `microtools/shell_aliases.ps1`, including `ytl`, `ytf`, `ytp`, `tagLoop`, `tagStatus`, `tagDir`, `tagDirFast`, `tagDirAll`, `tagApply`, and `slf`.
+
+The `slf` helper now also has a native Windows implementation through `scripts/show_large_files.ps1`.
 
 ### Local Directory CSV Workflow
 

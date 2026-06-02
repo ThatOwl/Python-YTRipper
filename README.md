@@ -14,6 +14,7 @@ It is intended for private use, experimentation, and gradual extension, with a s
 - many features work
 - Some edge cases and YouTube-side breakage still exist
 - Linux is the primary target right now; WSL can work if paths and tools are set up carefully
+- native Windows PowerShell wrappers exist; see [README_windows.md](README_windows.md)
 
 ---
 

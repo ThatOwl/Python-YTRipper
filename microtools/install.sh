@@ -35,7 +35,7 @@ EOF
 
     cat > "$config_file" <<'EOF'
 # Python-YTRipper shell aliases configuration
-# This file is sourced by microtools/shell_aliases.sh.
+# This file is read by both microtools/shell_aliases.sh and microtools/shell_aliases.ps1.
 # Override these values for your environment.
 
 # Default file used by `ytp` (calls ytf <file>)
