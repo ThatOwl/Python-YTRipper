@@ -87,6 +87,10 @@ def render_index_html() -> str:
       color: white;
       border: none;
     }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.65;
+    }
     button.secondary {
       background: var(--accent-soft);
       color: var(--ink);
@@ -193,6 +197,49 @@ def render_index_html() -> str:
       font-size: 0.92rem;
       color: var(--muted);
     }
+    .pill {
+      display: inline-block;
+      width: auto;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 0.86rem;
+      border: 1px solid var(--border);
+      background: #fcf8f1;
+      color: var(--muted);
+    }
+    .pill.ok {
+      border-color: #badfd1;
+      background: #eef8f4;
+      color: #184d3b;
+    }
+    .pill.warn {
+      border-color: #d8c6a8;
+      background: #fbf3df;
+      color: #765c22;
+    }
+    .pill.fail {
+      border-color: #dfbaba;
+      background: #fbefef;
+      color: #7a3030;
+    }
+    .action-banner {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fcf8f1;
+      padding: 10px 12px;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .action-banner.ok {
+      border-color: #badfd1;
+      background: #eef8f4;
+      color: #184d3b;
+    }
+    .action-banner.fail {
+      border-color: #dfbaba;
+      background: #fbefef;
+      color: #7a3030;
+    }
   </style>
 </head>
 <body>
@@ -210,10 +257,12 @@ def render_index_html() -> str:
         <h2>Download</h2>
         <label for="url">YouTube URL</label>
         <input id="url" placeholder="https://www.youtube.com/watch?v=..." />
+        <div id="url-status" class="pill">Paste a URL to validate it locally.</div>
         <div class="row">
-          <button id="inspect-btn" class="secondary" type="button">Inspect URL</button>
-          <button id="download-btn" type="button">Start Job</button>
+          <button id="inspect-btn" class="secondary" type="button" disabled>Inspect URL</button>
+          <button id="download-btn" type="button" disabled>Start Job</button>
         </div>
+        <div id="action-output" class="action-banner">Ready. Start with a valid YouTube URL.</div>
         <p class="note">The current UI only supports one direct URL per job. Batch/file workflows can follow later.</p>
       </div>
 
@@ -272,6 +321,11 @@ def render_index_html() -> str:
   </main>
 
   <script>
+    const urlInput = document.getElementById("url");
+    const urlStatus = document.getElementById("url-status");
+    const inspectButton = document.getElementById("inspect-btn");
+    const downloadButton = document.getElementById("download-btn");
+    const actionOutput = document.getElementById("action-output");
     const healthSummary = document.getElementById("health-summary");
     const healthOutput = document.getElementById("health-output");
     const inspectOutput = document.getElementById("inspect-output");
@@ -279,6 +333,12 @@ def render_index_html() -> str:
     const jobDetailOutput = document.getElementById("job-detail-output");
     const presetSelect = document.getElementById("preset-select");
     let selectedJobId = "";
+    let validationTimer = null;
+    let currentUrlValidation = {
+      url: "",
+      valid: false,
+      isPlaylist: false,
+    };
 
     async function api(path, options = {}) {
       const response = await fetch(path, {
@@ -352,6 +412,79 @@ def render_index_html() -> str:
           </div>
         `;
       }).join("");
+    }
+
+    function setActionMessage(message, tone = "") {
+      actionOutput.className = tone ? `action-banner ${tone}` : "action-banner";
+      actionOutput.textContent = message;
+    }
+
+    function updateUrlControls() {
+      const hasUrl = !!urlInput.value.trim();
+      const sameUrl = currentUrlValidation.url === urlInput.value.trim();
+      const canUseUrl = hasUrl && sameUrl && currentUrlValidation.valid;
+      inspectButton.disabled = !hasUrl;
+      downloadButton.disabled = !canUseUrl;
+    }
+
+    function renderUrlValidation(result, pending = false) {
+      if (pending) {
+        urlStatus.className = "pill warn";
+        urlStatus.textContent = "Checking URL format...";
+        updateUrlControls();
+        return;
+      }
+
+      if (!result.url) {
+        urlStatus.className = "pill";
+        urlStatus.textContent = "Paste a URL to validate it locally.";
+        updateUrlControls();
+        return;
+      }
+
+      if (!result.looks_like_youtube_url) {
+        urlStatus.className = "pill fail";
+        urlStatus.textContent = "This does not look like a supported YouTube URL.";
+        updateUrlControls();
+        return;
+      }
+
+      urlStatus.className = "pill ok";
+      urlStatus.textContent = result.is_playlist
+        ? "Looks like a YouTube playlist URL."
+        : "Looks like a YouTube video URL.";
+      updateUrlControls();
+    }
+
+    async function validateUrlLocally() {
+      const url = urlInput.value.trim();
+      currentUrlValidation = {
+        url,
+        valid: false,
+        isPlaylist: false,
+      };
+
+      if (!url) {
+        renderUrlValidation({ url: "" });
+        return;
+      }
+
+      renderUrlValidation({ url }, true);
+      const result = await api("/api/url/inspect", {
+        method: "POST",
+        body: JSON.stringify({ url, remote_check: false, fetch_info: false })
+      });
+
+      if (urlInput.value.trim() !== url) {
+        return;
+      }
+
+      currentUrlValidation = {
+        url,
+        valid: !!result.looks_like_youtube_url,
+        isPlaylist: !!result.is_playlist,
+      };
+      renderUrlValidation(result);
     }
 
     async function loadPresets() {
@@ -471,22 +604,53 @@ def render_index_html() -> str:
       applySessionState(state);
     });
 
-    document.getElementById("inspect-btn").addEventListener("click", async () => {
-      const url = document.getElementById("url").value.trim();
+    urlInput.addEventListener("input", () => {
+      clearTimeout(validationTimer);
+      updateUrlControls();
+      validationTimer = setTimeout(() => {
+        validateUrlLocally().catch(error => {
+          renderUrlValidation({ url: urlInput.value.trim() });
+          setActionMessage(`URL validation failed: ${String(error)}`, "fail");
+        });
+      }, 600);
+    });
+
+    inspectButton.addEventListener("click", async () => {
+      const url = urlInput.value.trim();
       const payload = await api("/api/url/inspect", {
         method: "POST",
         body: JSON.stringify({ url, remote_check: true, fetch_info: true })
       });
+      currentUrlValidation = {
+        url,
+        valid: !!payload.looks_like_youtube_url,
+        isPlaylist: !!payload.is_playlist,
+      };
+      renderUrlValidation(payload);
+      setActionMessage(
+        payload.title
+          ? `Inspection loaded: ${payload.title}`
+          : "Inspection completed.",
+        payload.error ? "fail" : "ok"
+      );
       inspectOutput.textContent = JSON.stringify(payload, null, 2);
     });
 
-    document.getElementById("download-btn").addEventListener("click", async () => {
-      const url = document.getElementById("url").value.trim();
+    downloadButton.addEventListener("click", async () => {
+      const url = urlInput.value.trim();
+      if (!currentUrlValidation.valid || currentUrlValidation.url !== url) {
+        setActionMessage("Validate a supported YouTube URL before starting a job.", "fail");
+        return;
+      }
       const job = await api("/api/jobs/download", {
         method: "POST",
         body: JSON.stringify({ url })
       });
       selectedJobId = job.job_id;
+      setActionMessage(
+        `Started ${job.job_kind || "download"} job ${job.job_id} for ${job.source_label || url}.`,
+        "ok"
+      );
       await refreshJobs();
     });
 
@@ -494,6 +658,7 @@ def render_index_html() -> str:
       healthSummary.textContent = "Backend health could not be loaded.";
       healthOutput.innerHTML = `<div class="status">${escapeHtml(String(error))}</div>`;
     });
+    updateUrlControls();
     loadSessionState().catch(error => { inspectOutput.textContent = String(error); });
     loadPresets().catch(error => { inspectOutput.textContent = String(error); });
     refreshJobs().catch(error => { jobsOutput.textContent = String(error); });
