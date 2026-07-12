@@ -431,7 +431,11 @@ class CommandCLI(CLIBase):
                 results_report_path=report_path,
             )
             if not results:
-                logger.warning(f"No download results produced for {url}")
+                logger.error(
+                    "Download produced no structured results for %s. "
+                    "This indicates a downloader failure path that should be investigated.",
+                    url,
+                )
                 return 1
 
             success_count = sum(1 for result in results if result.success)

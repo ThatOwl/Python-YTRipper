@@ -138,6 +138,32 @@ class TestDownloadPlaylistReliability(unittest.TestCase):
             self.assertEqual(len(results), 2)
             self.assertEqual(orchestrator.download_single.call_count, 2)
 
+    def test_download_playlist_returns_failed_result_when_no_videos_resolve(self):
+        playlist = LazyPlaylist()
+        playlist.video_urls = []
+        video_fetcher = Mock()
+        video_fetcher.get_playlist_obj.return_value = playlist
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os_handler = Mock()
+            os_handler.setup_playlist_dir.return_value = Path(tmpdir) / "Lazy Playlist"
+
+            orchestrator = DownloadOrchestrator(
+                os_handler=os_handler,
+                vid_fetcher=video_fetcher,
+            )
+
+            results = orchestrator.download_playlist(
+                "https://www.youtube.com/playlist?list=PL123",
+                Path(tmpdir),
+                DownloadOptions(default_download_directory=tmpdir),
+            )
+
+            self.assertEqual(len(results), 1)
+            self.assertFalse(results[0].success)
+            self.assertEqual(results[0].playlist_title, "Lazy Playlist")
+            self.assertIn("resolved zero videos", results[0].errors[0])
+
 
 if __name__ == "__main__":
     unittest.main()

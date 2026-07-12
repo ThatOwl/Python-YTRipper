@@ -62,6 +62,22 @@ class DownloadOrchestrator:
         self.tagging_session_id = str(uuid.uuid4())
         self.tagging_sequence_no = 0
 
+    @staticmethod
+    def _failure_result(
+        *,
+        message: str,
+        url: str = "",
+        title: str = "",
+        playlist_title: str = "",
+    ) -> DownloadResult:
+        return DownloadResult(
+            success=False,
+            errors=[message],
+            video_title=title or playlist_title or url,
+            video_url=url,
+            playlist_title=playlist_title,
+        )
+
     def download_playlist(
         self,
         playlist_url: str,
@@ -80,6 +96,20 @@ class DownloadOrchestrator:
             )
             videos = self.media_info_service.get_playlist_videos(playlist_url, playlist=playlist_obj)
             logger.debug("Found %s videos in playlist %s", len(videos), playlist_obj.title)
+            if not videos:
+                message = (
+                    f"Playlist '{playlist_obj.title}' resolved zero videos. "
+                    "The playlist page may have changed or be temporarily inaccessible."
+                )
+                logger.error(message)
+                return [
+                    self._failure_result(
+                        message=message,
+                        url=playlist_url,
+                        title=playlist_obj.title,
+                        playlist_title=playlist_obj.title,
+                    )
+                ]
 
             for i, video in enumerate(videos):
                 logger.info("[%s/%s] Processing: %s", i + 1, len(videos), video.title)
@@ -95,10 +125,10 @@ class DownloadOrchestrator:
 
         except (IOError, PlaylistFetchError) as e:
             logger.error("Failed to process playlist: %s", e)
-            return results
+            return [self._failure_result(message=str(e), url=playlist_url)]
         except Exception as e:
             logger.error("Unexpected playlist error: %s", e)
-            return results
+            return [self._failure_result(message=str(e), url=playlist_url)]
 
         success_count = sum(1 for result in results if result.success)
         fail_count = len(results) - success_count
@@ -334,8 +364,9 @@ class DownloadOrchestrator:
         base_download_dir = self.os_handler.expand_path(options.default_download_directory)
 
         if not (self.urlh.is_youtube_url(url) and self.urlh.is_accessible(url)):
-            logger.error("The provided URL is not a valid YouTube URL or inaccessible.")
-            return results
+            message = "The provided URL is not a valid YouTube URL or inaccessible."
+            logger.error(message)
+            return [self._failure_result(message=message, url=url)]
 
         try:
             self.os_handler.create_directory(base_download_dir)
@@ -362,4 +393,4 @@ class DownloadOrchestrator:
 
         except Exception as e:
             logger.error("Download failed: %s", e)
-            return results
+            return [self._failure_result(message=str(e), url=url)]
