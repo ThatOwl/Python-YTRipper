@@ -162,6 +162,37 @@ def render_index_html() -> str:
     .detail-list li {
       margin-bottom: 6px;
     }
+    .health-list {
+      display: grid;
+      gap: 10px;
+    }
+    .health-item {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fcf8f1;
+      padding: 12px;
+    }
+    .health-item.ok {
+      border-color: #badfd1;
+      background: #eef8f4;
+    }
+    .health-item.fail {
+      border-color: #dfbaba;
+      background: #fbefef;
+    }
+    .health-item strong,
+    .health-item span {
+      display: block;
+    }
+    .health-item span {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-top: 4px;
+    }
+    .health-summary {
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
   </style>
 </head>
 <body>
@@ -213,6 +244,13 @@ def render_index_html() -> str:
 
     <section class="grid">
       <div class="panel stack">
+        <h2>Health & Status</h2>
+        <div id="health-summary" class="health-summary">Checking backend health...</div>
+        <div id="health-output" class="health-list">
+          <div class="status">Checking backend health...</div>
+        </div>
+      </div>
+      <div class="panel stack">
         <h2>Inspector</h2>
         <div id="inspect-output" class="status">No inspection yet.</div>
       </div>
@@ -234,6 +272,8 @@ def render_index_html() -> str:
   </main>
 
   <script>
+    const healthSummary = document.getElementById("health-summary");
+    const healthOutput = document.getElementById("health-output");
     const inspectOutput = document.getElementById("inspect-output");
     const jobsOutput = document.getElementById("jobs-output");
     const jobDetailOutput = document.getElementById("job-detail-output");
@@ -281,6 +321,37 @@ def render_index_html() -> str:
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;");
+    }
+
+    function formatHealthDetails(details) {
+      const entries = Object.entries(details || {});
+      if (!entries.length) {
+        return "";
+      }
+      return entries
+        .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : value}`)
+        .join(" | ");
+    }
+
+    async function refreshHealth() {
+      const payload = await api("/api/health");
+      const items = payload.items || [];
+
+      healthSummary.textContent = payload.ok
+        ? `Backend ready. ${items.length} checks passed.`
+        : `Backend needs attention. ${items.filter(item => item.ok).length}/${items.length} checks passed.`;
+
+      healthOutput.innerHTML = items.map(item => {
+        const itemClass = item.ok ? "ok" : "fail";
+        const details = formatHealthDetails(item.details);
+        return `
+          <div class="health-item ${itemClass}">
+            <strong>${item.ok ? "OK" : "Issue"} | ${escapeHtml(item.name || "")}</strong>
+            <span>${escapeHtml(item.message || "")}</span>
+            ${details ? `<span>${escapeHtml(details)}</span>` : ""}
+          </div>
+        `;
+      }).join("");
     }
 
     async function loadPresets() {
@@ -419,9 +490,14 @@ def render_index_html() -> str:
       await refreshJobs();
     });
 
+    refreshHealth().catch(error => {
+      healthSummary.textContent = "Backend health could not be loaded.";
+      healthOutput.innerHTML = `<div class="status">${escapeHtml(String(error))}</div>`;
+    });
     loadSessionState().catch(error => { inspectOutput.textContent = String(error); });
     loadPresets().catch(error => { inspectOutput.textContent = String(error); });
     refreshJobs().catch(error => { jobsOutput.textContent = String(error); });
+    setInterval(() => refreshHealth().catch(() => {}), 10000);
     setInterval(() => refreshJobs().catch(() => {}), 2000);
   </script>
 </body>

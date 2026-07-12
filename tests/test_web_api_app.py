@@ -166,6 +166,8 @@ class TestWebApiApp(unittest.TestCase):
         config_payload = self._call(app, "/api/session-config", "GET")
 
         self.assertIn("Python-YTRipper Web UI", index_response)
+        self.assertIn("Health & Status", index_response)
+        self.assertIn("Checking backend health...", index_response)
         self.assertIn("Job Detail", index_response)
         self.assertIn("No item results recorded yet.", index_response)
         self.assertNotIn('"<p class="note">', index_response)

@@ -39,6 +39,21 @@ The web UI is built around the same principles documented during the implementat
 The UI is not supposed to parse terminal output.
 It is supposed to consume structured application services and stored job state.
 
+## V1 Inspection Checklist
+
+Use this when reviewing the V1 checkpoint locally.
+
+1. Start the UI with `./start_web_ui.sh` or `.\start_web_ui.ps1`.
+2. Open `http://127.0.0.1:8000`.
+3. Confirm the `Health & Status` panel loads and shows whether the backend is ready.
+4. Confirm session settings load into the form without manual refresh.
+5. Inspect a known single-video URL and verify title/info appears.
+6. Start a single-video job and confirm it appears in the job list.
+7. Click the job and confirm summary, items, and events appear in `Job Detail`.
+8. If testing a playlist URL, confirm the job is recognized as a playlist and produces item-level results instead of an empty job.
+
+If these checks pass, the V1 slice is doing its current job even if the interface still feels intentionally basic.
+
 ## Current V1 Components
 
 ### Shared Services
