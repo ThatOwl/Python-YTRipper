@@ -161,9 +161,11 @@ class TestWebApiApp(unittest.TestCase):
     def test_health_and_session_config_endpoints(self):
         app, _, _, _ = self._build_app()
 
+        index_response = self._call(app, "/", "GET")
         health_payload = self._call(app, "/api/health", "GET")
         config_payload = self._call(app, "/api/session-config", "GET")
 
+        self.assertIn("Python-YTRipper Web UI", index_response)
         self.assertTrue(health_payload["ok"])
         self.assertIn("options", config_payload)
 
@@ -195,6 +197,7 @@ class TestWebApiApp(unittest.TestCase):
     def test_inspect_and_save_preset_endpoints(self):
         app, _, _, os_handler = self._build_app()
 
+        presets_payload = self._call(app, "/api/presets", "GET")
         inspect_payload = self._call(
             app,
             "/api/url/inspect",
@@ -205,6 +208,7 @@ class TestWebApiApp(unittest.TestCase):
                 "fetch_info": True,
             },
         )
+        self.assertGreaterEqual(len(presets_payload), 5)
         self.assertTrue(inspect_payload["info_fetched"])
 
         save_payload = self._call(

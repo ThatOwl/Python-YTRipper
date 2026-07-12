@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 
 from application.download_job_service import DownloadJobService
 from application.health_check_service import HealthCheckService
@@ -10,6 +11,7 @@ from application.session_config_service import SessionConfigService
 from application.session_runtime_service import SessionRuntimeService
 from application.url_inspection_service import UrlInspectionService
 from utility.logger import get_logger
+from web.html_shell import render_index_html
 
 logger = get_logger(__name__, "web_api_app_debug.log")
 
@@ -29,6 +31,10 @@ def create_app(
 
     app = FastAPI(title="Python-YTRipper Web API", version="0.1.0")
 
+    @app.get("/", response_class=HTMLResponse)
+    def get_index() -> str:
+        return render_index_html()
+
     @app.get("/api/health")
     def get_health() -> dict[str, Any]:
         return health.run_startup_checks().to_dict()
@@ -41,6 +47,10 @@ def create_app(
     def update_session_config(payload: dict[str, Any]) -> dict[str, Any]:
         updates = dict(payload.get("updates", {}) or {})
         return runtime_service.update_options(updates).to_dict()
+
+    @app.get("/api/presets")
+    def list_presets() -> list[dict[str, str]]:
+        return config_service.list_available_presets()
 
     @app.post("/api/presets/load")
     def load_preset(payload: dict[str, Any]) -> dict[str, Any]:

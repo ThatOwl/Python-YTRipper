@@ -59,6 +59,29 @@ class SessionConfigService:
         )
 
     @staticmethod
+    def list_available_presets() -> list[dict[str, str]]:
+        presets: list[dict[str, str]] = []
+        for preset_id, preset_path in enumerate(preferences.PATHS_TO_CUSTOM_PRESETS):
+            presets.append(
+                {
+                    "id": str(preset_id),
+                    "kind": "custom",
+                    "label": f"Custom {preset_id}",
+                    "path": str(preset_path),
+                }
+            )
+        for preset_id, preset_path in preferences.PATHS_TO_IMMUTABLE_PRESETS.items():
+            presets.append(
+                {
+                    "id": preset_id,
+                    "kind": "immutable",
+                    "label": preset_id,
+                    "path": str(preset_path),
+                }
+            )
+        return presets
+
+    @staticmethod
     def clone_options(options: DownloadOptions) -> DownloadOptions:
         return DownloadOptions.from_preferences(options.to_dict())
 
