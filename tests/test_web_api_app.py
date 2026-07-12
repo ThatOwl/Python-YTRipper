@@ -171,6 +171,7 @@ class TestWebApiApp(unittest.TestCase):
         self.assertIn("Paste a URL to validate it locally.", index_response)
         self.assertIn("Ready. Start with a valid YouTube URL.", index_response)
         self.assertIn("Job Detail", index_response)
+        self.assertIn("Results file:", index_response)
         self.assertIn("No item results recorded yet.", index_response)
         self.assertNotIn('"<p class="note">', index_response)
         self.assertNotIn('"<div class="status">', index_response)

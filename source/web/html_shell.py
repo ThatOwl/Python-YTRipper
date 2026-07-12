@@ -166,6 +166,11 @@ def render_index_html() -> str:
     .detail-list li {
       margin-bottom: 6px;
     }
+    .detail-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
     .health-list {
       display: grid;
       gap: 10px;
@@ -507,7 +512,12 @@ def render_index_html() -> str:
 
       const itemMarkup = items.length
         ? `<ol class="detail-list">${items.map(item =>
-            `<li><strong>${escapeHtml(item.label || item.source_url || item.item_id)}</strong> - ${escapeHtml(item.status)}${item.error ? ` (${escapeHtml(item.error)})` : ""}</li>`
+            `<li>
+              <strong>${item.success === true ? "OK" : item.success === false ? "Fail" : "Pending"} | ${escapeHtml(item.label || item.source_url || item.item_id)}</strong>
+              <div class="detail-meta">Status: ${escapeHtml(item.status)}</div>
+              ${item.output_path ? `<div class="detail-meta">Output: ${escapeHtml(item.output_path)}</div>` : ""}
+              ${item.error ? `<div class="detail-meta">Error: ${escapeHtml(item.error)}</div>` : ""}
+            </li>`
           ).join("")}</ol>`
         : '<p class="note">No item results recorded yet.</p>';
 
@@ -527,7 +537,10 @@ def render_index_html() -> str:
             <div><strong>Source:</strong> ${escapeHtml(summary.source_label || "")}</div>
             <div><strong>Items:</strong> ${escapeHtml(summary.items_done || 0)}/${escapeHtml(summary.items_total || 0)}</div>
             <div><strong>Failed:</strong> ${escapeHtml(summary.items_failed || 0)}</div>
+            <div><strong>Current item:</strong> ${escapeHtml(summary.current_item_label || "")}</div>
             <div><strong>Download dir:</strong> ${escapeHtml(summary.download_dir || "")}</div>
+            <div><strong>Playlist dir:</strong> ${escapeHtml(summary.playlist_dir || "")}</div>
+            <div><strong>Results file:</strong> ${escapeHtml(summary.results_path || "")}</div>
           </div>
           <div class="detail-block">
             <h3>Items</h3>
