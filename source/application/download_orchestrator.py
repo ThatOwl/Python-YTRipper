@@ -78,6 +78,20 @@ class DownloadOrchestrator:
             playlist_title=playlist_title,
         )
 
+    @staticmethod
+    def _safe_video_label(video_obj: ptf.YouTube | None, fallback_url: str = "") -> str:
+        if video_obj is None:
+            return fallback_url
+
+        try:
+            title = str(getattr(video_obj, "title", "") or "").strip()
+            if title:
+                return title
+        except Exception:
+            pass
+
+        return str(getattr(video_obj, "watch_url", "") or fallback_url or "")
+
     def download_playlist(
         self,
         playlist_url: str,
@@ -112,7 +126,8 @@ class DownloadOrchestrator:
                 ]
 
             for i, video in enumerate(videos):
-                logger.info("[%s/%s] Processing: %s", i + 1, len(videos), video.title)
+                item_label = self._safe_video_label(video)
+                logger.info("[%s/%s] Processing: %s", i + 1, len(videos), item_label)
                 results.append(
                     self.download_single(
                         download_dir=playlist_dir,
@@ -220,12 +235,24 @@ class DownloadOrchestrator:
         playlist_title: str | None = None,
         results_report_path: Path | None = None,
     ) -> DownloadResult:
-        video_obj: ptf.YouTube = video_obj or self.vid_fetcher.get_video_obj(url)
-
-        base_filename = sanitize_filename(video_obj.title)
-        video_title = video_obj.title
-        target_ext = self.media_assembler.expected_extension(options)
-        target_file = Path(download_dir) / f"{base_filename}{target_ext}"
+        try:
+            video_obj = video_obj or self.vid_fetcher.get_video_obj(url)
+            video_url = str(getattr(video_obj, "watch_url", "") or url or "")
+            video_title = self._safe_video_label(video_obj, video_url)
+            base_filename = sanitize_filename(video_title)
+            target_ext = self.media_assembler.expected_extension(options)
+            target_file = Path(download_dir) / f"{base_filename}{target_ext}"
+        except Exception as e:
+            fallback_url = str(getattr(video_obj, "watch_url", "") or url or "")
+            fallback_title = self._safe_video_label(video_obj, fallback_url)
+            logger.error("✗ Unexpected error preparing download for %s: %s", fallback_title or fallback_url, e)
+            return DownloadResult(
+                success=False,
+                errors=[str(e)],
+                video_title=fallback_title,
+                video_url=fallback_url,
+                playlist_title=playlist_title or "",
+            )
 
         #TODO could later be specified to look at ext (e.g. downloaded audio-only and video _> mussic video)
         # Side effect of this being here: _download_single_video can downlaod both streams separat without being blocked by find_existing_file_by_stem()

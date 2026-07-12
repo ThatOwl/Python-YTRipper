@@ -159,6 +159,42 @@ class TestMediaInfoPlaylistReliability(unittest.TestCase):
             ],
         )
 
+    def test_get_playlist_videos_falls_back_to_generic_video_ids_when_renderer_keys_are_missing(self):
+        playlist = LazyPlaylist()
+        playlist.video_urls = []
+        playlist.initial_data = {
+            "contents": {
+                "mysteryRenderer": {
+                    "items": [
+                        {"videoId": "one"},
+                        {"videoId": "one"},
+                        {"nested": {"videoId": "two"}},
+                        {"nested": {"videoId": "three"}},
+                    ]
+                }
+            }
+        }
+        playlist.length = 2
+        video_fetcher = Mock()
+        video_fetcher.get_playlist_obj.return_value = playlist
+        video_fetcher.get_video_obj.side_effect = [
+            FakeVideo("First", "https://www.youtube.com/watch?v=one"),
+            FakeVideo("Second", "https://www.youtube.com/watch?v=two"),
+        ]
+
+        service = MediaInfoService(video_fetcher=video_fetcher)
+
+        videos = service.get_playlist_videos("https://www.youtube.com/playlist?list=PL123")
+
+        self.assertEqual([video.title for video in videos], ["First", "Second"])
+        self.assertEqual(
+            [call.args[0] for call in video_fetcher.get_video_obj.call_args_list],
+            [
+                "https://www.youtube.com/watch?v=one",
+                "https://www.youtube.com/watch?v=two",
+            ],
+        )
+
 
 class TestDownloadPlaylistReliability(unittest.TestCase):
     def test_download_playlist_uses_fallback_resolved_videos(self):

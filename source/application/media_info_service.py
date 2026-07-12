@@ -152,6 +152,8 @@ class MediaInfoService:
 
         watch_urls: list[str] = []
         seen: set[str] = set()
+        generic_video_ids: list[str] = []
+        generic_seen: set[str] = set()
 
         def add_video_id(video_id: str | None) -> None:
             normalized = str(video_id or "").strip()
@@ -162,6 +164,13 @@ class MediaInfoService:
                 return
             seen.add(watch_url)
             watch_urls.append(watch_url)
+
+        def add_generic_video_id(video_id: str | None) -> None:
+            normalized = str(video_id or "").strip()
+            if not normalized or normalized in generic_seen:
+                return
+            generic_seen.add(normalized)
+            generic_video_ids.append(normalized)
 
         def visit(node) -> None:
             if isinstance(node, dict):
@@ -184,6 +193,8 @@ class MediaInfoService:
                 if isinstance(reel_renderer, dict):
                     add_video_id(reel_renderer.get("videoId"))
 
+                add_generic_video_id(node.get("videoId"))
+
                 for value in node.values():
                     visit(value)
             elif isinstance(node, list):
@@ -191,4 +202,23 @@ class MediaInfoService:
                     visit(item)
 
         visit(initial_data)
+
+        if watch_urls:
+            return self._limit_watch_urls_to_playlist_length(watch_urls, playlist_obj)
+
+        fallback_watch_urls = [f"https://www.youtube.com/watch?v={video_id}" for video_id in generic_video_ids]
+        return self._limit_watch_urls_to_playlist_length(fallback_watch_urls, playlist_obj)
+
+    @staticmethod
+    def _limit_watch_urls_to_playlist_length(
+        watch_urls: list[str],
+        playlist_obj: ptf.Playlist,
+    ) -> list[str]:
+        try:
+            playlist_length = int(getattr(playlist_obj, "length", 0) or 0)
+        except Exception:
+            playlist_length = 0
+
+        if playlist_length > 0:
+            return watch_urls[:playlist_length]
         return watch_urls
