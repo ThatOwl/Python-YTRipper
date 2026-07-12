@@ -7,12 +7,12 @@ That keeps the documentation useful without turning it into commit-by-commit noi
 
 ## Current Status
 
-The web UI is at the `V1 finalized for inspection` milestone.
+The web UI is in `V2 iteration 1` after the V1 inspection milestone.
 
 That means:
 
 - the backend exists
-- a minimal HTML shell exists
+- a more intentional shell redesign is underway on top of the V1 backend
 - session config, URL inspection, health checks, and job start/status flows are wired
 - the UI is usable for early local testing
 - inline URL validation exists
@@ -27,7 +27,18 @@ It does **not** mean:
 - multi-user support
 
 The current direction is intentionally conservative.
-This README now reflects the point where the first useful V1 implementation is ready for inspection before the next larger iteration begins.
+The backend/services proved themselves in V1, and the current work is focused on making the frontend layout and controls feel like a real operator UI.
+
+## V2 Focus
+
+The first post-V1 iteration is focused on:
+
+- replacing the proof-of-concept shell layout with a stronger operator layout
+- expanding session controls to cover more CLI options with sensible labels
+- improving readability before adding heavier local-only integrations
+
+This is intentionally not a ground-up rewrite of the backend.
+It is a frontend-first iteration on top of the V1 service layer.
 
 ## V1 Validation Notes
 

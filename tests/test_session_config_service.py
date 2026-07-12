@@ -105,6 +105,14 @@ class TestSessionConfigService(unittest.TestCase):
         self.assertTrue(state.options.audio_only)
         self.assertEqual(fake_os.read_calls[-1], preset_path)
 
+    def test_normalize_audio_bitrate_accepts_already_normalized_value(self):
+        service = SessionConfigService(os_handler=FakeOSInteractions())
+        options = DownloadOptions(preferred_abr="128kbps")
+
+        service.normalize_audio_bitrate(options)
+
+        self.assertEqual(options.preferred_abr, "128kbps")
+
 
 class TestStateModels(unittest.TestCase):
     def test_session_config_state_round_trip(self):

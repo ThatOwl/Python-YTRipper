@@ -312,6 +312,10 @@ class SessionConfigService:
             return
 
         raw_value = options.preferred_abr.strip().lower()
+        if raw_value in COMMON_AUDIO_ABR.values():
+            options.preferred_abr = raw_value
+            return
+
         mapped_abr = COMMON_AUDIO_ABR.get(raw_value)
         if mapped_abr:
             options.preferred_abr = mapped_abr

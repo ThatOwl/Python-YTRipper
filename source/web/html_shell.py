@@ -27,7 +27,7 @@ def render_index_html() -> str:
         linear-gradient(180deg, #f8f4ec 0%, var(--bg) 100%);
     }
     main {
-      max-width: 1100px;
+      max-width: 1380px;
       margin: 0 auto;
       padding: 24px;
       display: grid;
@@ -55,9 +55,30 @@ def render_index_html() -> str:
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
       gap: 18px;
+      min-width: 0;
+    }
+    .health-grid {
+      display: grid;
+      gap: 18px;
+    }
+    .control-grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.9fr) minmax(420px, 1.35fr);
+      gap: 18px;
+      align-items: start;
+      min-width: 0;
+    }
+    .workspace-grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.95fr) minmax(320px, 1.05fr);
+      gap: 18px;
+      align-items: start;
+      min-width: 0;
     }
     .panel {
       padding: 18px;
+      min-width: 0;
+      overflow: hidden;
     }
     .panel h2 {
       margin-top: 0;
@@ -105,6 +126,18 @@ def render_index_html() -> str:
       gap: 10px;
       grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     }
+    .toggles-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      align-items: start;
+    }
+    .field-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      align-items: start;
+    }
     .note {
       font-size: 0.88rem;
       color: var(--muted);
@@ -118,10 +151,14 @@ def render_index_html() -> str:
       border-radius: 12px;
       padding: 12px;
       min-height: 160px;
+      overflow: auto;
     }
     .jobs-list {
       display: grid;
       gap: 8px;
+      max-height: 560px;
+      overflow: auto;
+      padding-right: 4px;
     }
     .job-card {
       border: 1px solid var(--border);
@@ -147,12 +184,14 @@ def render_index_html() -> str:
     .detail-grid {
       display: grid;
       gap: 10px;
+      min-width: 0;
     }
     .detail-block {
       border: 1px solid var(--border);
       border-radius: 12px;
       background: #fcf8f1;
       padding: 12px;
+      min-width: 0;
     }
     .detail-block h3 {
       margin: 0 0 8px;
@@ -174,12 +213,15 @@ def render_index_html() -> str:
     .health-list {
       display: grid;
       gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      align-items: start;
     }
     .health-item {
       border: 1px solid var(--border);
       border-radius: 12px;
       background: #fcf8f1;
       padding: 12px;
+      min-width: 0;
     }
     .health-item.ok {
       border-color: #badfd1;
@@ -245,6 +287,41 @@ def render_index_html() -> str:
       background: #fbefef;
       color: #7a3030;
     }
+    .inspector-shell {
+      display: grid;
+      gap: 10px;
+    }
+    .inspector-summary {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fcf8f1;
+      padding: 12px;
+      font-size: 0.92rem;
+      min-width: 0;
+    }
+    .inspector-summary strong,
+    .inspector-summary span {
+      display: block;
+    }
+    .inspector-summary span {
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .raw-output {
+      max-height: 560px;
+      overflow: auto;
+    }
+    .field-note {
+      margin-top: 5px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    @media (max-width: 980px) {
+      .control-grid,
+      .workspace-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -257,7 +334,17 @@ def render_index_html() -> str:
       </p>
     </section>
 
-    <section class="grid">
+    <section class="panel health-grid">
+      <div>
+        <h2>Health & Status</h2>
+        <div id="health-summary" class="health-summary">Checking backend health...</div>
+      </div>
+      <div id="health-output" class="health-list">
+        <div class="status">Checking backend health...</div>
+      </div>
+    </section>
+
+    <section class="control-grid">
       <div class="panel stack">
         <h2>Download</h2>
         <label for="url">YouTube URL</label>
@@ -273,13 +360,14 @@ def render_index_html() -> str:
 
       <div class="panel stack">
         <h2>Session Config</h2>
-        <div class="row">
+        <div class="toggles-grid">
           <label><input id="audio-only" type="checkbox" /> Audio only</label>
           <label><input id="audio-mp3" type="checkbox" /> Convert to MP3</label>
           <label><input id="autotag" type="checkbox" /> Autotag</label>
           <label><input id="save-results" type="checkbox" /> Save results</label>
+          <label><input id="no-dir-date" type="checkbox" /> Do not prefix playlist folder with date</label>
         </div>
-        <div class="row">
+        <div class="field-grid">
           <div>
             <label for="download-dir">Download directory</label>
             <input id="download-dir" placeholder="~/Downloads/RipperDownloads" />
@@ -287,6 +375,53 @@ def render_index_html() -> str:
           <div>
             <label for="preset-select">Load preset</label>
             <select id="preset-select"></select>
+          </div>
+          <div>
+            <label for="quality-select">Quality</label>
+            <select id="quality-select">
+              <option value="">Best available</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div>
+            <label for="resolution-select">Max resolution</label>
+            <select id="resolution-select">
+              <option value="">Best available</option>
+              <option value="144p">144p</option>
+              <option value="240p">240p</option>
+              <option value="360p">360p</option>
+              <option value="480p">480p</option>
+              <option value="720p">720p</option>
+              <option value="1080p">1080p</option>
+              <option value="1440p">1440p</option>
+              <option value="2160p">2160p</option>
+            </select>
+          </div>
+          <div>
+            <label for="abr-select">Audio bitrate</label>
+            <select id="abr-select">
+              <option value="">Best available</option>
+              <option value="48k">48 kbps</option>
+              <option value="50k">50 kbps</option>
+              <option value="56k">56 kbps</option>
+              <option value="64k">64 kbps</option>
+              <option value="96k">96 kbps</option>
+              <option value="128k">128 kbps</option>
+              <option value="192k">192 kbps</option>
+              <option value="256k">256 kbps</option>
+              <option value="320k">320 kbps</option>
+            </select>
+          </div>
+          <div>
+            <label for="fps-select">Frame rate</label>
+            <select id="fps-select">
+              <option value="0">Any</option>
+              <option value="30">Prefer 30 fps</option>
+              <option value="60">Prefer 60 fps</option>
+            </select>
+            <div class="field-note">Applied only when video streams offer multiple frame-rate choices.</div>
           </div>
         </div>
         <div class="row">
@@ -296,17 +431,16 @@ def render_index_html() -> str:
       </div>
     </section>
 
-    <section class="grid">
-      <div class="panel stack">
-        <h2>Health & Status</h2>
-        <div id="health-summary" class="health-summary">Checking backend health...</div>
-        <div id="health-output" class="health-list">
-          <div class="status">Checking backend health...</div>
-        </div>
-      </div>
+    <section class="workspace-grid">
       <div class="panel stack">
         <h2>Inspector</h2>
-        <div id="inspect-output" class="status">No inspection yet.</div>
+        <div class="inspector-shell">
+          <div id="inspect-summary" class="inspector-summary">
+            <strong>No inspection yet.</strong>
+            <span>Inspect a URL to see a readable summary here before opening the raw payload.</span>
+          </div>
+          <div id="inspect-output" class="status raw-output">No inspection yet.</div>
+        </div>
       </div>
       <div class="panel stack">
         <h2>Jobs</h2>
@@ -331,6 +465,7 @@ def render_index_html() -> str:
     const inspectButton = document.getElementById("inspect-btn");
     const downloadButton = document.getElementById("download-btn");
     const actionOutput = document.getElementById("action-output");
+    const inspectSummary = document.getElementById("inspect-summary");
     const healthSummary = document.getElementById("health-summary");
     const healthOutput = document.getElementById("health-output");
     const inspectOutput = document.getElementById("inspect-output");
@@ -358,11 +493,18 @@ def render_index_html() -> str:
     }
 
     function collectSessionUpdates() {
+      const abrSelectValue = document.getElementById("abr-select").value;
       return {
         audio_only: document.getElementById("audio-only").checked,
         audio_mp3: document.getElementById("audio-mp3").checked,
         autotag: document.getElementById("autotag").checked,
         save_results: document.getElementById("save-results").checked,
+        no_dir_date: document.getElementById("no-dir-date").checked,
+        preferred_video_quality: document.getElementById("quality-select").value,
+        preferred_audio_quality: document.getElementById("quality-select").value,
+        preferred_resolution: document.getElementById("resolution-select").value,
+        preferred_abr: abrSelectValue ? abrSelectValue.replace("kbps", "k") : "",
+        preferred_fps: Number(document.getElementById("fps-select").value || 0),
         default_download_directory: document.getElementById("download-dir").value
       };
     }
@@ -373,7 +515,19 @@ def render_index_html() -> str:
       document.getElementById("audio-mp3").checked = !!options.audio_mp3;
       document.getElementById("autotag").checked = !!options.autotag;
       document.getElementById("save-results").checked = !!options.save_results;
+      document.getElementById("no-dir-date").checked = !!options.no_dir_date;
       document.getElementById("download-dir").value = options.default_download_directory || "";
+      document.getElementById("quality-select").value = options.preferred_video_quality || "";
+      document.getElementById("resolution-select").value = options.preferred_resolution || "";
+      if (options.preferred_abr) {
+        const normalizedAbr = String(options.preferred_abr);
+        document.getElementById("abr-select").value = normalizedAbr.endsWith("kbps")
+          ? normalizedAbr
+          : `${normalizedAbr.replace(/k$/, "")}kbps`;
+      } else {
+        document.getElementById("abr-select").value = "";
+      }
+      document.getElementById("fps-select").value = String(options.preferred_fps || 0);
     }
 
     async function loadSessionState() {
@@ -422,6 +576,20 @@ def render_index_html() -> str:
     function setActionMessage(message, tone = "") {
       actionOutput.className = tone ? `action-banner ${tone}` : "action-banner";
       actionOutput.textContent = message;
+    }
+
+    function renderInspectionSummary(payload) {
+      const typeLabel = payload.is_playlist ? "Playlist" : "Video";
+      const accessLabel = payload.remote_checked
+        ? (payload.remotely_accessible ? "Reachable" : "Not reachable")
+        : "Local-only check";
+      const itemCountLabel = payload.item_count == null ? "Unknown" : String(payload.item_count);
+
+      inspectSummary.innerHTML = `
+        <strong>${escapeHtml(payload.title || "Inspection ready")}</strong>
+        <span>${escapeHtml(typeLabel)} | ${escapeHtml(accessLabel)} | Items: ${escapeHtml(itemCountLabel)}</span>
+        <span>${escapeHtml(payload.cleaned_url || payload.normalized_url || payload.url || "")}</span>
+      `;
     }
 
     function updateUrlControls() {
@@ -646,6 +814,7 @@ def render_index_html() -> str:
           : "Inspection completed.",
         payload.error ? "fail" : "ok"
       );
+      renderInspectionSummary(payload);
       inspectOutput.textContent = JSON.stringify(payload, null, 2);
     });
 

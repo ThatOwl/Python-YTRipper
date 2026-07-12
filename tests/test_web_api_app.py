@@ -171,6 +171,10 @@ class TestWebApiApp(unittest.TestCase):
         self.assertIn("Paste a video or playlist URL to validate it locally.", index_response)
         self.assertIn("Ready. Start with a valid YouTube video or playlist URL.", index_response)
         self.assertIn("one top-level video or playlist URL per job", index_response)
+        self.assertIn("Max resolution", index_response)
+        self.assertIn("Audio bitrate", index_response)
+        self.assertIn("Frame rate", index_response)
+        self.assertIn("Do not prefix playlist folder with date", index_response)
         self.assertIn("Job Detail", index_response)
         self.assertIn("Results file:", index_response)
         self.assertIn("No item results recorded yet.", index_response)
@@ -186,9 +190,25 @@ class TestWebApiApp(unittest.TestCase):
             app,
             "/api/session-config",
             "POST",
-            {"updates": {"audio_only": True, "default_download_directory": "~/Music"}},
+            {
+                "updates": {
+                    "audio_only": True,
+                    "default_download_directory": "~/Music",
+                    "preferred_video_quality": "high",
+                    "preferred_audio_quality": "high",
+                    "preferred_resolution": "1080p",
+                    "preferred_abr": "128k",
+                    "preferred_fps": 60,
+                    "no_dir_date": True,
+                }
+            },
         )
         self.assertTrue(update_payload["options"]["audio_only"])
+        self.assertEqual(update_payload["options"]["preferred_video_quality"], "high")
+        self.assertEqual(update_payload["options"]["preferred_resolution"], "1080p")
+        self.assertEqual(update_payload["options"]["preferred_abr"], "128kbps")
+        self.assertEqual(update_payload["options"]["preferred_fps"], 60)
+        self.assertTrue(update_payload["options"]["no_dir_date"])
 
         job_payload = self._call(
             app,
