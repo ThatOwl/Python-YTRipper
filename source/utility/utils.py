@@ -5,8 +5,6 @@ import time
 import random
 import re
 
-# TODO currently has no logging; consider adding if needed
-
 QUALITY_ALIAS_MAP = {
     # high / best
     "high": "high", "h": "high", "best": "high", "b": "high",

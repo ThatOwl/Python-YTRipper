@@ -3,10 +3,6 @@ import requests
 from utility.logger import get_logger
 from utility.utils import retry_call
 
-#TODO Improve logging
-#TODO Add error handling for invalid URLs, etc.
-#TODO Reinforce URL validation in other parts of the code using this class
-
 logger = get_logger(__name__, 'url_handler_debug.log')
 
 
