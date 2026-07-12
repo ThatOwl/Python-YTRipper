@@ -92,4 +92,4 @@ class JobEventStore:
 
     @staticmethod
     def _utc_now_iso() -> str:
-        return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        return datetime.now(timezone.utc).isoformat()
