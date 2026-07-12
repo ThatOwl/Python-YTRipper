@@ -29,7 +29,7 @@ def render_index_html() -> str:
     main {
       max-width: 1380px;
       margin: 0 auto;
-      padding: 24px;
+      padding: clamp(14px, 2vw, 24px);
       display: grid;
       gap: 18px;
     }
@@ -60,25 +60,35 @@ def render_index_html() -> str:
     .health-grid {
       display: grid;
       gap: 18px;
+      min-width: 0;
     }
     .control-grid {
       display: grid;
-      grid-template-columns: minmax(280px, 0.9fr) minmax(420px, 1.35fr);
+      grid-template-columns: minmax(300px, 0.88fr) minmax(420px, 1.12fr);
       gap: 18px;
       align-items: start;
       min-width: 0;
     }
     .workspace-grid {
       display: grid;
-      grid-template-columns: minmax(280px, 0.95fr) minmax(320px, 1.05fr);
+      grid-template-columns: minmax(300px, 0.92fr) minmax(340px, 1.08fr);
       gap: 18px;
-      align-items: start;
+      align-items: stretch;
       min-width: 0;
     }
     .panel {
       padding: 18px;
       min-width: 0;
       overflow: hidden;
+    }
+    .workspace-panel {
+      min-height: 620px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      align-self: stretch;
+    }
+    .detail-panel {
+      min-width: 0;
     }
     .panel h2 {
       margin-top: 0;
@@ -156,9 +166,11 @@ def render_index_html() -> str:
     .jobs-list {
       display: grid;
       gap: 8px;
-      max-height: 560px;
+      min-height: 0;
+      height: 100%;
       overflow: auto;
       padding-right: 4px;
+      align-content: start;
     }
     .job-card {
       border: 1px solid var(--border);
@@ -167,6 +179,7 @@ def render_index_html() -> str:
       padding: 10px 12px;
       text-align: left;
       color: var(--ink);
+      min-width: 0;
     }
     .job-card.active {
       border-color: var(--accent);
@@ -278,7 +291,7 @@ def render_index_html() -> str:
     .health-list {
       display: grid;
       gap: 10px;
-      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
       align-items: start;
     }
     .health-item {
@@ -341,6 +354,7 @@ def render_index_html() -> str:
       padding: 10px 12px;
       font-size: 0.9rem;
       color: var(--muted);
+      overflow-wrap: anywhere;
     }
     .action-banner.ok {
       border-color: #badfd1;
@@ -361,6 +375,8 @@ def render_index_html() -> str:
     .inspector-shell {
       display: grid;
       gap: 10px;
+      min-height: 0;
+      grid-template-rows: auto minmax(120px, 1fr) auto;
     }
     .inspector-summary {
       border: 1px solid var(--border);
@@ -384,7 +400,7 @@ def render_index_html() -> str:
       background: #fcf8f1;
       padding: 12px;
       font-size: 0.9rem;
-      max-height: 260px;
+      min-height: 0;
       overflow: auto;
     }
     .inspector-readable ul {
@@ -399,13 +415,15 @@ def render_index_html() -> str:
       border-radius: 12px;
       padding: 10px 12px;
       background: #fcf8f1;
+      max-height: 300px;
+      overflow: auto;
     }
     .inspector-raw summary {
       cursor: pointer;
       font-weight: 700;
     }
     .raw-output {
-      max-height: 420px;
+      max-height: 240px;
       overflow: auto;
     }
     .field-note {
@@ -413,10 +431,67 @@ def render_index_html() -> str:
       font-size: 0.82rem;
       color: var(--muted);
     }
+    #job-detail-output {
+      min-height: 0;
+      max-height: 720px;
+      overflow: auto;
+    }
+    #job-detail-output .detail-grid {
+      min-width: 0;
+    }
+    #job-detail-output .detail-block {
+      overflow: hidden;
+    }
+    #job-detail-output .detail-list,
+    #job-detail-output .summary-list,
+    .health-item span,
+    .health-summary,
+    .job-card-subtitle {
+      overflow-wrap: anywhere;
+    }
+    @media (max-width: 1240px) {
+      .control-grid {
+        grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
+      }
+      .workspace-grid {
+        grid-template-columns: minmax(260px, 0.9fr) minmax(300px, 1.1fr);
+      }
+    }
     @media (max-width: 980px) {
       .control-grid,
       .workspace-grid {
         grid-template-columns: 1fr;
+      }
+      .workspace-panel {
+        min-height: 0;
+      }
+      .jobs-list,
+      #job-detail-output {
+        max-height: none;
+      }
+    }
+    @media (max-width: 760px) {
+      .hero {
+        padding: 18px;
+      }
+      .hero h1 {
+        font-size: 1.55rem;
+      }
+      .row,
+      .field-grid,
+      .toggles-grid,
+      .health-list {
+        grid-template-columns: 1fr;
+      }
+      .summary-row {
+        grid-template-columns: 1fr;
+      }
+      .job-card-head {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .inspector-shell {
+        grid-template-rows: auto minmax(100px, 1fr) auto;
       }
     }
   </style>
@@ -532,7 +607,7 @@ def render_index_html() -> str:
     </section>
 
     <section class="workspace-grid">
-      <div class="panel stack">
+      <div class="panel stack workspace-panel">
         <h2>Inspector</h2>
         <div class="inspector-shell">
           <div id="inspect-summary" class="inspector-summary">
@@ -548,7 +623,7 @@ def render_index_html() -> str:
           </div>
         </div>
       </div>
-      <div class="panel stack">
+      <div class="panel stack workspace-panel">
         <h2>Jobs</h2>
         <div id="jobs-output" class="jobs-list">
           <div class="status">No jobs yet.</div>
@@ -556,7 +631,7 @@ def render_index_html() -> str:
       </div>
     </section>
 
-    <section class="panel stack">
+    <section class="panel stack detail-panel">
       <h2>Job Detail</h2>
       <div id="job-detail-output" class="status">Select a job to inspect its items and events.</div>
       <div class="note">
