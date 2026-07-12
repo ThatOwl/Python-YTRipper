@@ -115,6 +115,53 @@ def render_index_html() -> str:
       padding: 12px;
       min-height: 160px;
     }
+    .jobs-list {
+      display: grid;
+      gap: 8px;
+    }
+    .job-card {
+      border: 1px solid var(--border);
+      background: #fcf8f1;
+      border-radius: 12px;
+      padding: 10px 12px;
+      text-align: left;
+      color: var(--ink);
+    }
+    .job-card.active {
+      border-color: var(--accent);
+      background: #eef8f4;
+    }
+    .job-card strong,
+    .job-card span {
+      display: block;
+    }
+    .job-card span {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-top: 2px;
+    }
+    .detail-grid {
+      display: grid;
+      gap: 10px;
+    }
+    .detail-block {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fcf8f1;
+      padding: 12px;
+    }
+    .detail-block h3 {
+      margin: 0 0 8px;
+      font-size: 0.98rem;
+    }
+    .detail-list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--ink);
+    }
+    .detail-list li {
+      margin-bottom: 6px;
+    }
   </style>
 </head>
 <body>
@@ -171,7 +218,17 @@ def render_index_html() -> str:
       </div>
       <div class="panel stack">
         <h2>Jobs</h2>
-        <div id="jobs-output" class="status">No jobs yet.</div>
+        <div id="jobs-output" class="jobs-list">
+          <div class="status">No jobs yet.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel stack">
+      <h2>Job Detail</h2>
+      <div id="job-detail-output" class="status">Select a job to inspect its items and events.</div>
+      <div class="note">
+        V1 note: this detail view is intentionally simple and summary-focused. It is here to make playlist and failed-job inspection useful before the larger next iteration.
       </div>
     </section>
   </main>
@@ -179,7 +236,9 @@ def render_index_html() -> str:
   <script>
     const inspectOutput = document.getElementById("inspect-output");
     const jobsOutput = document.getElementById("jobs-output");
+    const jobDetailOutput = document.getElementById("job-detail-output");
     const presetSelect = document.getElementById("preset-select");
+    let selectedJobId = "";
 
     async function api(path, options = {}) {
       const response = await fetch(path, {
@@ -217,6 +276,13 @@ def render_index_html() -> str:
       applySessionState(state);
     }
 
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
     async function loadPresets() {
       const presets = await api("/api/presets");
       presetSelect.innerHTML = "";
@@ -228,15 +294,87 @@ def render_index_html() -> str:
       }
     }
 
+    async function renderJobDetail(jobId) {
+      selectedJobId = jobId;
+      const detail = await api(`/api/jobs/${jobId}`);
+      const summary = detail.summary || {};
+      const items = detail.items || [];
+      const events = detail.events || [];
+
+      const itemMarkup = items.length
+        ? `<ol class="detail-list">${items.map(item =>
+            `<li><strong>${escapeHtml(item.label || item.source_url || item.item_id)}</strong> - ${escapeHtml(item.status)}${item.error ? ` (${escapeHtml(item.error)})` : ""}</li>`
+          ).join("")}</ol>`
+        : "<p class=\"note\">No item results recorded yet.</p>";
+
+      const eventMarkup = events.length
+        ? `<ol class="detail-list">${events.map(event =>
+            `<li><strong>${escapeHtml(event.event_type)}</strong> - ${escapeHtml(event.message || "")}</li>`
+          ).join("")}</ol>`
+        : "<p class=\"note\">No lifecycle events recorded yet.</p>";
+
+      jobDetailOutput.className = "";
+      jobDetailOutput.innerHTML = `
+        <div class="detail-grid">
+          <div class="detail-block">
+            <h3>Summary</h3>
+            <div><strong>Status:</strong> ${escapeHtml(summary.status || "")}</div>
+            <div><strong>Kind:</strong> ${escapeHtml(summary.job_kind || "")}</div>
+            <div><strong>Source:</strong> ${escapeHtml(summary.source_label || "")}</div>
+            <div><strong>Items:</strong> ${escapeHtml(summary.items_done || 0)}/${escapeHtml(summary.items_total || 0)}</div>
+            <div><strong>Failed:</strong> ${escapeHtml(summary.items_failed || 0)}</div>
+            <div><strong>Download dir:</strong> ${escapeHtml(summary.download_dir || "")}</div>
+          </div>
+          <div class="detail-block">
+            <h3>Items</h3>
+            ${itemMarkup}
+          </div>
+          <div class="detail-block">
+            <h3>Events</h3>
+            ${eventMarkup}
+          </div>
+        </div>
+      `;
+    }
+
     async function refreshJobs() {
       const jobs = await api("/api/jobs");
       if (!jobs.length) {
-        jobsOutput.textContent = "No jobs yet.";
+        jobsOutput.innerHTML = "<div class=\"status\">No jobs yet.</div>";
+        jobDetailOutput.className = "status";
+        jobDetailOutput.textContent = "Select a job to inspect its items and events.";
+        selectedJobId = "";
         return;
       }
-      jobsOutput.textContent = jobs.map(job =>
-        `${job.status} | ${job.job_kind} | ${job.items_done}/${job.items_total} | ${job.source_label}`
-      ).join("\\n");
+
+      jobsOutput.innerHTML = jobs.map(job => {
+        const isActive = selectedJobId && selectedJobId === job.job_id ? " active" : "";
+        return `
+          <button class="job-card${isActive}" type="button" data-job-id="${escapeHtml(job.job_id)}">
+            <strong>${escapeHtml(job.status)} | ${escapeHtml(job.job_kind)}</strong>
+            <span>${escapeHtml(job.items_done || 0)}/${escapeHtml(job.items_total || 0)} complete</span>
+            <span>${escapeHtml(job.source_label || "")}</span>
+          </button>
+        `;
+      }).join("");
+
+      for (const button of jobsOutput.querySelectorAll("[data-job-id]")) {
+        button.addEventListener("click", async () => {
+          const jobId = button.getAttribute("data-job-id");
+          await renderJobDetail(jobId);
+          await refreshJobs();
+        });
+      }
+
+      if (!selectedJobId && jobs.length) {
+        await renderJobDetail(jobs[0].job_id);
+        await refreshJobs();
+        return;
+      }
+
+      if (selectedJobId && jobs.some(job => job.job_id === selectedJobId)) {
+        await renderJobDetail(selectedJobId);
+      }
     }
 
     document.getElementById("apply-session-btn").addEventListener("click", async () => {
@@ -273,10 +411,11 @@ def render_index_html() -> str:
 
     document.getElementById("download-btn").addEventListener("click", async () => {
       const url = document.getElementById("url").value.trim();
-      await api("/api/jobs/download", {
+      const job = await api("/api/jobs/download", {
         method: "POST",
         body: JSON.stringify({ url })
       });
+      selectedJobId = job.job_id;
       await refreshJobs();
     });
 

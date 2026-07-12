@@ -166,6 +166,7 @@ class TestWebApiApp(unittest.TestCase):
         config_payload = self._call(app, "/api/session-config", "GET")
 
         self.assertIn("Python-YTRipper Web UI", index_response)
+        self.assertIn("Job Detail", index_response)
         self.assertTrue(health_payload["ok"])
         self.assertIn("options", config_payload)
 
@@ -193,6 +194,8 @@ class TestWebApiApp(unittest.TestCase):
 
         detail_payload = self._call(app, "/api/jobs/{job_id}", "GET", job_id)
         self.assertTrue(detail_payload["summary"]["option_snapshot"]["audio_only"])
+        self.assertIn("events", detail_payload)
+        self.assertIn("job_completed", [event["event_type"] for event in detail_payload["events"]])
 
     def test_inspect_and_save_preset_endpoints(self):
         app, _, _, os_handler = self._build_app()

@@ -78,6 +78,7 @@ class TestDownloadJobService(unittest.TestCase):
             self.assertEqual(detail.summary.status, "completed")
             self.assertFalse(detail.summary.option_snapshot["audio_only"])
             self.assertEqual(detail.items[0].label, "Frozen Snapshot Video")
+            self.assertIn("job_completed", [event.event_type for event in detail.events])
 
     def test_failed_results_persist_failed_status_and_items(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -114,6 +115,7 @@ class TestDownloadJobService(unittest.TestCase):
             self.assertEqual(detail.summary.items_failed, 1)
             self.assertEqual(detail.items[0].error, "network issue")
             self.assertIn("job_failed", [event.event_type for event in events])
+            self.assertIn("job_failed", [event.event_type for event in detail.events])
 
 
 if __name__ == "__main__":

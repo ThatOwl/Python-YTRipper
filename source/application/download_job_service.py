@@ -78,7 +78,11 @@ class DownloadJobService:
 
     def get_job_detail(self, job_id: str) -> JobDetail | None:
         with self._lock:
-            return self.job_store.get_detail(job_id)
+            detail = self.job_store.get_detail(job_id)
+            if detail is None:
+                return None
+            detail.events = self.event_store.read_events(job_id=job_id)
+            return detail
 
     def get_job_summary(self, job_id: str) -> JobSummary | None:
         with self._lock:
