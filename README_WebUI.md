@@ -7,7 +7,7 @@ That keeps the documentation useful without turning it into commit-by-commit noi
 
 ## Current Status
 
-The web UI is at the `V1 checkpoint complete` milestone.
+The web UI is at the `V1 finalized for inspection` milestone.
 
 That means:
 
@@ -17,6 +17,7 @@ That means:
 - the UI is usable for early local testing
 - inline URL validation exists
 - job detail visibility is good enough for V1 inspection
+- shared playlist handling was live-validated through the CLI on July 12, 2026
 
 It does **not** mean:
 
@@ -26,7 +27,20 @@ It does **not** mean:
 - multi-user support
 
 The current direction is intentionally conservative.
-This README now reflects the point where the first useful V1 checkpoint is ready for inspection before the next larger iteration begins.
+This README now reflects the point where the first useful V1 implementation is ready for inspection before the next larger iteration begins.
+
+## V1 Validation Notes
+
+As of July 12, 2026, the shared backend/services used by the web UI were validated through the CLI against live playlist URLs.
+
+That validation confirmed:
+
+- single-video and playlist top-level jobs are both part of the intended V1 scope
+- the earlier zero-item playlist regression was fixed in the shared service layer
+- playlist jobs now produce item-level results instead of collapsing into an empty job
+
+This does not mean every YouTube-side edge case is solved.
+It does mean the web UI is now sitting on a materially more trustworthy V1 backend than it was at the original checkpoint.
 
 ## Design Intent
 
@@ -52,7 +66,7 @@ Use this when reviewing the V1 checkpoint locally.
 5. Inspect a known single-video URL and verify title/info appears.
 6. Start a single-video job and confirm it appears in the job list.
 7. Click the job and confirm summary, items, and events appear in `Job Detail`.
-8. If testing a playlist URL, confirm the job is recognized as a playlist and produces item-level results instead of an empty job.
+8. Test a playlist URL and confirm the job is recognized as a playlist and produces item-level results instead of an empty job.
 
 If these checks pass, the V1 slice is doing its current job even if the interface still feels intentionally basic.
 
@@ -66,6 +80,7 @@ At this checkpoint, the web UI covers the core local operator loop:
 - validate a URL before acting on it
 - inspect a URL for richer metadata
 - start background jobs
+- run either a single-video job or a playlist job from one pasted URL
 - review top-level job status and per-job item/event detail
 
 That is enough for a meaningful V1 review, even though it is not yet the final UX direction.
@@ -157,7 +172,7 @@ $env:YTRIPPER_WEB_RELOAD = "true"
 
 1. Open the web UI.
 2. Adjust the current session settings if needed.
-3. Paste a YouTube URL.
+3. Paste a YouTube video or playlist URL.
 4. Inspect the URL first if you want metadata/validation feedback.
 5. Start the download job.
 6. Watch the job list update.

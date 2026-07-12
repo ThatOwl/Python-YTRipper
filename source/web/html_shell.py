@@ -253,7 +253,7 @@ def render_index_html() -> str:
       <h1>Python-YTRipper Web UI</h1>
       <p>
         This is the first working web shell for the downloader. It is intentionally simple:
-        inspect a URL, tweak session settings, start a job, and watch the job list grow.
+        inspect a video or playlist URL, tweak session settings, start a job, and watch the job list grow.
       </p>
     </section>
 
@@ -262,13 +262,13 @@ def render_index_html() -> str:
         <h2>Download</h2>
         <label for="url">YouTube URL</label>
         <input id="url" placeholder="https://www.youtube.com/watch?v=..." />
-        <div id="url-status" class="pill">Paste a URL to validate it locally.</div>
+        <div id="url-status" class="pill">Paste a video or playlist URL to validate it locally.</div>
         <div class="row">
           <button id="inspect-btn" class="secondary" type="button" disabled>Inspect URL</button>
           <button id="download-btn" type="button" disabled>Start Job</button>
         </div>
-        <div id="action-output" class="action-banner">Ready. Start with a valid YouTube URL.</div>
-        <p class="note">The current UI only supports one direct URL per job. Batch/file workflows can follow later.</p>
+        <div id="action-output" class="action-banner">Ready. Start with a valid YouTube video or playlist URL.</div>
+        <p class="note">The current UI supports one top-level video or playlist URL per job. Batch/file workflows can follow later.</p>
       </div>
 
       <div class="panel stack">
@@ -442,7 +442,7 @@ def render_index_html() -> str:
 
       if (!result.url) {
         urlStatus.className = "pill";
-        urlStatus.textContent = "Paste a URL to validate it locally.";
+        urlStatus.textContent = "Paste a video or playlist URL to validate it locally.";
         updateUrlControls();
         return;
       }
