@@ -7,7 +7,7 @@ That keeps the documentation useful without turning it into commit-by-commit noi
 
 ## Current Status
 
-The web UI is in `V1 foundation` state.
+The web UI is at the `V1 checkpoint complete` milestone.
 
 That means:
 
@@ -15,6 +15,8 @@ That means:
 - a minimal HTML shell exists
 - session config, URL inspection, health checks, and job start/status flows are wired
 - the UI is usable for early local testing
+- inline URL validation exists
+- job detail visibility is good enough for V1 inspection
 
 It does **not** mean:
 
@@ -24,7 +26,7 @@ It does **not** mean:
 - multi-user support
 
 The current direction is intentionally conservative.
-The goal is to finish a useful V1 checkpoint, inspect it, and only then start the next larger iteration.
+This README now reflects the point where the first useful V1 checkpoint is ready for inspection before the next larger iteration begins.
 
 ## Design Intent
 
@@ -53,6 +55,20 @@ Use this when reviewing the V1 checkpoint locally.
 8. If testing a playlist URL, confirm the job is recognized as a playlist and produces item-level results instead of an empty job.
 
 If these checks pass, the V1 slice is doing its current job even if the interface still feels intentionally basic.
+
+## What V1 Now Includes
+
+At this checkpoint, the web UI covers the core local operator loop:
+
+- launch the backend with the provided scripts
+- see backend dependency/runtime health on the page
+- load and adjust session settings
+- validate a URL before acting on it
+- inspect a URL for richer metadata
+- start background jobs
+- review top-level job status and per-job item/event detail
+
+That is enough for a meaningful V1 review, even though it is not yet the final UX direction.
 
 ## Current V1 Components
 
@@ -201,8 +217,7 @@ The shared service layer is what keeps both paths aligned.
 
 This README will be updated at meaningful web-UI milestones, especially:
 
-- when V1 is declared complete
-- when the first larger post-V1 iteration begins
+- when the next larger post-V1 iteration begins
 - when the runtime/launch flow changes materially
 - when the route surface or user workflow changes enough to matter
 
