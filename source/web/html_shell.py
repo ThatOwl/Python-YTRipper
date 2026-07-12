@@ -498,6 +498,14 @@ def render_index_html() -> str:
       color: var(--muted);
       overflow-wrap: anywhere;
     }
+    .subtle-card.ok {
+      border-color: #badfd1;
+      background: #eef8f4;
+    }
+    .subtle-card.warn {
+      border-color: #d8c6a8;
+      background: #fbf3df;
+    }
     .field-note.ok {
       color: #184d3b;
     }
@@ -703,6 +711,7 @@ def render_index_html() -> str:
           <div>
             <label for="preset-select">Load preset</label>
             <select id="preset-select"></select>
+            <div class="field-note">Loading a preset replaces the in-memory session immediately. Save Config controls what gets written back to disk.</div>
           </div>
           <div>
             <label for="quality-select">Quality</label>
@@ -755,6 +764,18 @@ def render_index_html() -> str:
         <div class="row">
           <button id="save-config-btn" class="secondary" type="button">Save Config</button>
           <button id="apply-session-btn" type="button">Apply Session Settings</button>
+        </div>
+        <div id="preset-guidance" class="subtle-card">
+          <div class="subtle-card-head">
+            <div class="subtle-card-title">Preset Guidance</div>
+            <span id="preset-guidance-pill" class="job-badge queued">Loading</span>
+          </div>
+          <div id="preset-guidance-body" class="subtle-card-body">
+            Loading preset ownership and save behavior...
+          </div>
+          <div id="preset-guidance-meta" class="subtle-card-meta">
+            Default, custom, and immutable presets will be explained here.
+          </div>
         </div>
         <div id="config-form-note" class="field-note">Loading session config...</div>
       </div>
@@ -814,6 +835,10 @@ def render_index_html() -> str:
     const inspectStateBody = document.getElementById("inspect-state-body");
     const inspectStateMeta = document.getElementById("inspect-state-meta");
     const presetSelect = document.getElementById("preset-select");
+    const presetGuidance = document.getElementById("preset-guidance");
+    const presetGuidancePill = document.getElementById("preset-guidance-pill");
+    const presetGuidanceBody = document.getElementById("preset-guidance-body");
+    const presetGuidanceMeta = document.getElementById("preset-guidance-meta");
     const configSourceBanner = document.getElementById("config-source-banner");
     const configSyncBanner = document.getElementById("config-sync-banner");
     const configFormNote = document.getElementById("config-form-note");
@@ -834,6 +859,7 @@ def render_index_html() -> str:
     let selectedJobId = "";
     let validationTimer = null;
     let currentSessionState = null;
+    let presetCatalog = [];
     let lastInspection = null;
     let currentUrlValidation = {
       url: "",
@@ -902,12 +928,96 @@ def render_index_html() -> str:
       element.textContent = message;
     }
 
+    function findPresetById(presetId) {
+      return presetCatalog.find(preset => preset.id === presetId) || null;
+    }
+
+    function formatPresetOptionLabel(preset) {
+      if (!preset) {
+        return "Unknown preset";
+      }
+      if (preset.kind === "default") {
+        return "Session default profile";
+      }
+      if (preset.kind === "custom") {
+        return `${preset.label} (editable slot)`;
+      }
+      if (preset.kind === "immutable") {
+        return `${preset.label} (read-only starter)`;
+      }
+      return `${preset.label} (${preset.kind})`;
+    }
+
+    function setPresetGuidanceCard(tone, label, body, meta) {
+      presetGuidance.className = tone ? `subtle-card ${tone}` : "subtle-card";
+      presetGuidancePill.className = `job-badge ${tone || "queued"}`;
+      presetGuidancePill.textContent = label;
+      presetGuidanceBody.textContent = body;
+      presetGuidanceMeta.textContent = meta;
+    }
+
+    function renderPresetGuidance() {
+      if (!currentSessionState) {
+        setPresetGuidanceCard(
+          "",
+          "Loading",
+          "Loading preset ownership and save behavior...",
+          "Default, custom, and immutable presets will be explained here."
+        );
+        return;
+      }
+
+      const selectedPreset = findPresetById(presetSelect.value || "default");
+      const loadedDetails = currentSessionState.preset_details || {};
+      const loadedLabel = loadedDetails.loaded_label || "Default profile";
+      const loadedKind = loadedDetails.loaded_kind || "default";
+      const saveTargetLabel = loadedDetails.save_target_label || "Default profile";
+
+      if (!selectedPreset || selectedPreset.kind === "default") {
+        setPresetGuidanceCard(
+          "ok",
+          "Default",
+          "The default profile is your normal working config on this machine. Loading it restores your standard saved settings.",
+          `Current source: ${loadedLabel}. Save Config currently writes to ${saveTargetLabel}.`
+        );
+        return;
+      }
+
+      if (selectedPreset.kind === "custom") {
+        setPresetGuidanceCard(
+          "ok",
+          "Custom",
+          `${selectedPreset.label} is an editable user slot. Loading it replaces the session immediately, and Save Config writes back to that same slot when it stays the active source.`,
+          `Current source: ${loadedLabel}. Selected load target: ${selectedPreset.label}.`
+        );
+        return;
+      }
+
+      if (selectedPreset.kind === "immutable") {
+        setPresetGuidanceCard(
+          "warn",
+          "Read-only starter",
+          `${selectedPreset.label} is an immutable starter preset. It is useful for one-shot setups, but Save Config will write your later edits to ${saveTargetLabel} instead of overwriting the preset itself.`,
+          `Current source: ${loadedLabel}. Selected load target: ${selectedPreset.label}.`
+        );
+        return;
+      }
+
+      setPresetGuidanceCard(
+        "",
+        "Preset",
+        `${selectedPreset.label} can be loaded into the current session.`,
+        `Current source: ${loadedLabel}. Save target: ${saveTargetLabel}.`
+      );
+    }
+
     function syncPresetSelection() {
       if (!currentSessionState) {
         return;
       }
       const loadedId = currentSessionState.preset_details?.loaded_id || "default";
       presetSelect.value = loadedId;
+      renderPresetGuidance();
     }
 
     function refreshConfigFormState() {
@@ -936,12 +1046,14 @@ def render_index_html() -> str:
       const loadedKind = presetDetails.loaded_kind || "default";
       const saveTargetLabel = presetDetails.save_target_label || "Default profile";
       const sourceMessage = loadedKind === "immutable"
-        ? `Loaded source: ${loadedLabel} preset. Save Config will not overwrite immutable presets.`
-        : `Loaded source: ${loadedLabel}.`;
+        ? `Loaded source: ${loadedLabel} preset. Immutable presets are read-only starters, so Save Config writes later edits to ${saveTargetLabel}.`
+        : loadedKind === "custom"
+          ? `Loaded source: ${loadedLabel}. Save Config writes back to this custom slot while it remains active.`
+          : `Loaded source: ${loadedLabel}. Save Config writes to this default working profile.`;
       const saveTone = configSync.has_unsaved_changes ? "warn" : "ok";
       const savePath = presetDetails.save_target_path || "";
 
-      setBanner(configSourceBanner, sourceMessage, "ok");
+      setBanner(configSourceBanner, sourceMessage, loadedKind === "immutable" ? "warn" : "ok");
       setBanner(
         configSyncBanner,
         `${configSync.status_label || `Save Config writes to ${saveTargetLabel}.`}${savePath ? ` Target: ${savePath}` : ""}`,
@@ -950,6 +1062,7 @@ def render_index_html() -> str:
       saveConfigButton.disabled = false;
       syncPresetSelection();
       refreshConfigFormState();
+      renderPresetGuidance();
     }
 
     function applySessionState(state) {
@@ -1284,18 +1397,27 @@ def render_index_html() -> str:
 
     async function loadPresets() {
       const presets = await api("/api/presets");
+      presetCatalog = [
+        {
+          id: "default",
+          kind: "default",
+          label: "Default profile",
+        },
+        ...presets,
+      ];
       presetSelect.innerHTML = "";
       const defaultOption = document.createElement("option");
       defaultOption.value = "default";
-      defaultOption.textContent = "default: Default profile";
+      defaultOption.textContent = "default: Session default profile";
       presetSelect.appendChild(defaultOption);
       for (const preset of presets) {
         const option = document.createElement("option");
         option.value = preset.id;
-        option.textContent = `${preset.kind}: ${preset.label}`;
+        option.textContent = `${preset.kind}: ${formatPresetOptionLabel(preset)}`;
         presetSelect.appendChild(option);
       }
       syncPresetSelection();
+      renderPresetGuidance();
     }
 
     async function renderJobDetail(jobId) {
@@ -1425,6 +1547,7 @@ def render_index_html() -> str:
     });
 
     presetSelect.addEventListener("change", async () => {
+      renderPresetGuidance();
       const state = await api("/api/presets/load", {
         method: "POST",
         body: JSON.stringify({ preset_id: presetSelect.value })
