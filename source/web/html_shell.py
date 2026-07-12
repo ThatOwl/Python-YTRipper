@@ -467,6 +467,37 @@ def render_index_html() -> str:
       background: #fbefef;
       color: #7a3030;
     }
+    .action-banner.warn {
+      border-color: #d8c6a8;
+      background: #fbf3df;
+      color: #765c22;
+    }
+    .subtle-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fcf8f1;
+      padding: 10px 12px;
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+    .subtle-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .subtle-card-title {
+      font-weight: 700;
+      font-size: 0.92rem;
+    }
+    .subtle-card-body,
+    .subtle-card-meta {
+      font-size: 0.86rem;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
     .field-note.ok {
       color: #184d3b;
     }
@@ -637,6 +668,18 @@ def render_index_html() -> str:
           <button id="inspect-btn" class="secondary" type="button" disabled>Inspect URL</button>
           <button id="download-btn" type="button" disabled>Start Job</button>
         </div>
+        <div id="inspect-state" class="subtle-card">
+          <div class="subtle-card-head">
+            <div class="subtle-card-title">Inspection Guidance</div>
+            <span id="inspect-state-pill" class="job-badge queued">Waiting</span>
+          </div>
+          <div id="inspect-state-body" class="subtle-card-body">
+            Local validation runs automatically after a short pause. Inspect URL performs the deeper preview step.
+          </div>
+          <div id="inspect-state-meta" class="subtle-card-meta">
+            Start Job needs a supported locally validated URL. Inspection is recommended, not required.
+          </div>
+        </div>
         <div id="action-output" class="action-banner">Ready. Start with a valid YouTube video or playlist URL.</div>
         <p class="note">The current UI supports one top-level video or playlist URL per job. Batch/file workflows can follow later.</p>
       </div>
@@ -766,6 +809,10 @@ def render_index_html() -> str:
     const inspectOutput = document.getElementById("inspect-output");
     const jobsOutput = document.getElementById("jobs-output");
     const jobDetailOutput = document.getElementById("job-detail-output");
+    const inspectState = document.getElementById("inspect-state");
+    const inspectStatePill = document.getElementById("inspect-state-pill");
+    const inspectStateBody = document.getElementById("inspect-state-body");
+    const inspectStateMeta = document.getElementById("inspect-state-meta");
     const presetSelect = document.getElementById("preset-select");
     const configSourceBanner = document.getElementById("config-source-banner");
     const configSyncBanner = document.getElementById("config-sync-banner");
@@ -787,6 +834,7 @@ def render_index_html() -> str:
     let selectedJobId = "";
     let validationTimer = null;
     let currentSessionState = null;
+    let lastInspection = null;
     let currentUrlValidation = {
       url: "",
       valid: false,
@@ -1090,12 +1138,88 @@ def render_index_html() -> str:
       `;
     }
 
+    function setInspectionGuidance(statusClass, label, body, meta) {
+      inspectState.className = `subtle-card ${statusClass || ""}`.trim();
+      inspectStatePill.className = `job-badge ${statusClass || "queued"}`;
+      inspectStatePill.textContent = label;
+      inspectStateBody.textContent = body;
+      inspectStateMeta.textContent = meta;
+    }
+
+    function refreshInspectionGuidance() {
+      const currentUrl = urlInput.value.trim();
+      if (!currentUrl) {
+        setInspectionGuidance(
+          "queued",
+          "Waiting",
+          "Local validation runs automatically after a short pause. Inspect URL performs the deeper preview step.",
+          "Start Job needs a supported locally validated URL. Inspection is recommended, not required."
+        );
+        return;
+      }
+
+      if (!currentUrlValidation.valid || currentUrlValidation.url !== currentUrl) {
+        setInspectionGuidance(
+          "validating",
+          "Validate",
+          "Wait for the local URL check to finish before inspecting or starting a job.",
+          "The checkmark-style validation happens automatically after a short pause in typing."
+        );
+        return;
+      }
+
+      if (!lastInspection) {
+        setInspectionGuidance(
+          "partial",
+          "Preview recommended",
+          currentUrlValidation.isPlaylist
+            ? "This playlist URL is locally valid. Inspect URL can fetch a title and rough item preview before download."
+            : "This video URL is locally valid. Inspect URL can fetch a title and accessibility preview before download.",
+          "Start Job is already available because local validation passed."
+        );
+        return;
+      }
+
+      if (lastInspection.url !== currentUrl) {
+        setInspectionGuidance(
+          "partial",
+          "Stale preview",
+          "The current input differs from the last inspected URL. Re-run Inspect URL if you want the Inspector panel to match this input.",
+          `Last inspected at ${lastInspection.checkedAtLabel}. Start Job still uses the URL currently in the input field.`
+        );
+        return;
+      }
+
+      if (lastInspection.error) {
+        setInspectionGuidance(
+          "failed",
+          "Inspection issue",
+          "The current URL matches the last inspected input, but the remote inspection reported a problem.",
+          `Last inspected at ${lastInspection.checkedAtLabel}. You can retry Inspect URL or start anyway if local validation is enough for this run.`
+        );
+        return;
+      }
+
+      const itemLabel = lastInspection.itemCount == null
+        ? "item count unknown"
+        : `${lastInspection.itemCount} ${lastInspection.isPlaylist ? "items" : "item"}`;
+      setInspectionGuidance(
+        "completed",
+        "Preview ready",
+        lastInspection.title
+          ? `Inspection matches the current URL: ${lastInspection.title}.`
+          : "Inspection matches the current URL.",
+        `Checked at ${lastInspection.checkedAtLabel}. ${lastInspection.isPlaylist ? "Playlist" : "Video"} preview loaded with ${itemLabel}.`
+      );
+    }
+
     function updateUrlControls() {
       const hasUrl = !!urlInput.value.trim();
       const sameUrl = currentUrlValidation.url === urlInput.value.trim();
       const canUseUrl = hasUrl && sameUrl && currentUrlValidation.valid;
       inspectButton.disabled = !hasUrl;
       downloadButton.disabled = !canUseUrl;
+      refreshInspectionGuidance();
     }
 
     function renderUrlValidation(result, pending = false) {
@@ -1337,6 +1461,14 @@ def render_index_html() -> str:
         isPlaylist: !!payload.is_playlist,
       };
       renderUrlValidation(payload);
+      lastInspection = {
+        url,
+        title: payload.title || "",
+        error: payload.error || "",
+        isPlaylist: !!payload.is_playlist,
+        itemCount: payload.item_count == null ? null : payload.item_count,
+        checkedAtLabel: new Date().toLocaleTimeString(),
+      };
       setActionMessage(
         payload.title
           ? `Inspection loaded: ${payload.title}`
@@ -1346,6 +1478,7 @@ def render_index_html() -> str:
       renderInspectionSummary(payload);
       renderReadableInspection(payload);
       inspectOutput.textContent = JSON.stringify(payload, null, 2);
+      refreshInspectionGuidance();
     });
 
     downloadButton.addEventListener("click", async () => {
@@ -1360,7 +1493,9 @@ def render_index_html() -> str:
       });
       selectedJobId = job.job_id;
       setActionMessage(
-        `Started ${job.job_kind || "download"} job ${job.job_id} for ${job.source_label || url}.`,
+        lastInspection && lastInspection.url === url
+          ? `Started ${job.job_kind || "download"} job ${job.job_id} for ${job.source_label || url}.`
+          : `Started ${job.job_kind || "download"} job ${job.job_id} for ${job.source_label || url}. No fresh inspection preview was loaded for this exact URL.`,
         "ok"
       );
       await refreshJobs();
