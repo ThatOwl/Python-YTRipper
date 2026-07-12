@@ -183,3 +183,56 @@ class JobDetail:
                 for event in list(payload.get("events", []) or [])
             ],
         )
+
+
+@dataclass
+class UrlInspectionResult:
+    url: str = ""
+    normalized_url: str = ""
+    cleaned_url: str = ""
+    looks_like_youtube_url: bool = False
+    is_playlist: bool = False
+    remote_checked: bool = False
+    remotely_accessible: bool | None = None
+    info_fetched: bool = False
+    title: str = ""
+    item_count: int | None = None
+    info_lines: list[str] = field(default_factory=list)
+    error: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "url": self.url,
+            "normalized_url": self.normalized_url,
+            "cleaned_url": self.cleaned_url,
+            "looks_like_youtube_url": self.looks_like_youtube_url,
+            "is_playlist": self.is_playlist,
+            "remote_checked": self.remote_checked,
+            "remotely_accessible": self.remotely_accessible,
+            "info_fetched": self.info_fetched,
+            "title": self.title,
+            "item_count": self.item_count,
+            "info_lines": list(self.info_lines),
+            "error": self.error,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "UrlInspectionResult":
+        return cls(
+            url=str(payload.get("url", "") or ""),
+            normalized_url=str(payload.get("normalized_url", "") or ""),
+            cleaned_url=str(payload.get("cleaned_url", "") or ""),
+            looks_like_youtube_url=bool(payload.get("looks_like_youtube_url", False)),
+            is_playlist=bool(payload.get("is_playlist", False)),
+            remote_checked=bool(payload.get("remote_checked", False)),
+            remotely_accessible=payload.get("remotely_accessible", None),
+            info_fetched=bool(payload.get("info_fetched", False)),
+            title=str(payload.get("title", "") or ""),
+            item_count=(
+                None
+                if payload.get("item_count", None) is None
+                else int(payload.get("item_count", 0) or 0)
+            ),
+            info_lines=[str(item) for item in list(payload.get("info_lines", []) or [])],
+            error=str(payload.get("error", "") or ""),
+        )
