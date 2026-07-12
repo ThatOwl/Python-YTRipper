@@ -181,6 +181,51 @@ def render_index_html() -> str:
       font-size: 0.88rem;
       margin-top: 2px;
     }
+    .job-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .job-card-title {
+      font-weight: 700;
+      text-align: left;
+    }
+    .job-card-subtitle {
+      font-size: 0.86rem;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .job-card-metrics {
+      display: grid;
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .job-badge {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 0.78rem;
+      background: #efe7d8;
+      color: var(--ink);
+      white-space: nowrap;
+    }
+    .job-badge.completed,
+    .job-badge.success {
+      background: #dff2eb;
+      color: #184d3b;
+    }
+    .job-badge.failed {
+      background: #f6dddd;
+      color: #7a3030;
+    }
+    .job-badge.partial,
+    .job-badge.running,
+    .job-badge.validating,
+    .job-badge.queued {
+      background: #f4ecd8;
+      color: #765c22;
+    }
     .detail-grid {
       display: grid;
       gap: 10px;
@@ -209,6 +254,26 @@ def render_index_html() -> str:
       margin-top: 4px;
       color: var(--muted);
       font-size: 0.86rem;
+    }
+    .summary-list {
+      display: grid;
+      gap: 8px;
+    }
+    .summary-row {
+      display: grid;
+      grid-template-columns: minmax(130px, 170px) 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+    .summary-row strong {
+      display: block;
+    }
+    .summary-value {
+      overflow-wrap: anywhere;
+    }
+    .summary-value.empty {
+      color: var(--muted);
+      font-style: italic;
     }
     .health-list {
       display: grid;
@@ -307,8 +372,34 @@ def render_index_html() -> str:
       color: var(--muted);
       margin-top: 4px;
     }
+    .inspector-readable {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fcf8f1;
+      padding: 12px;
+      font-size: 0.9rem;
+      max-height: 260px;
+      overflow: auto;
+    }
+    .inspector-readable ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    .inspector-readable li {
+      margin-bottom: 6px;
+    }
+    .inspector-raw details {
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: #fcf8f1;
+    }
+    .inspector-raw summary {
+      cursor: pointer;
+      font-weight: 700;
+    }
     .raw-output {
-      max-height: 560px;
+      max-height: 420px;
       overflow: auto;
     }
     .field-note {
@@ -439,7 +530,13 @@ def render_index_html() -> str:
             <strong>No inspection yet.</strong>
             <span>Inspect a URL to see a readable summary here before opening the raw payload.</span>
           </div>
-          <div id="inspect-output" class="status raw-output">No inspection yet.</div>
+          <div id="inspect-readable" class="inspector-readable">No inspection yet.</div>
+          <div class="inspector-raw">
+            <details>
+              <summary>Raw inspection payload</summary>
+              <div id="inspect-output" class="status raw-output">No inspection yet.</div>
+            </details>
+          </div>
         </div>
       </div>
       <div class="panel stack">
@@ -466,6 +563,7 @@ def render_index_html() -> str:
     const downloadButton = document.getElementById("download-btn");
     const actionOutput = document.getElementById("action-output");
     const inspectSummary = document.getElementById("inspect-summary");
+    const inspectReadable = document.getElementById("inspect-readable");
     const healthSummary = document.getElementById("health-summary");
     const healthOutput = document.getElementById("health-output");
     const inspectOutput = document.getElementById("inspect-output");
@@ -578,6 +676,21 @@ def render_index_html() -> str:
       actionOutput.textContent = message;
     }
 
+    function formatPathValue(value, fallback = "Not recorded for this job.") {
+      return value
+        ? `<span class="summary-value">${escapeHtml(value)}</span>`
+        : `<span class="summary-value empty">${escapeHtml(fallback)}</span>`;
+    }
+
+    function formatSummaryRow(label, value, fallback = "Not recorded for this job.") {
+      return `
+        <div class="summary-row">
+          <strong>${escapeHtml(label)}</strong>
+          ${formatPathValue(value, fallback)}
+        </div>
+      `;
+    }
+
     function renderInspectionSummary(payload) {
       const typeLabel = payload.is_playlist ? "Playlist" : "Video";
       const accessLabel = payload.remote_checked
@@ -589,6 +702,20 @@ def render_index_html() -> str:
         <strong>${escapeHtml(payload.title || "Inspection ready")}</strong>
         <span>${escapeHtml(typeLabel)} | ${escapeHtml(accessLabel)} | Items: ${escapeHtml(itemCountLabel)}</span>
         <span>${escapeHtml(payload.cleaned_url || payload.normalized_url || payload.url || "")}</span>
+      `;
+    }
+
+    function renderReadableInspection(payload) {
+      const infoLines = payload.info_lines || [];
+      if (!infoLines.length) {
+        inspectReadable.innerHTML = "<div class=\\"note\\">No additional media info lines were returned yet.</div>";
+        return;
+      }
+
+      inspectReadable.innerHTML = `
+        <ul>
+          ${infoLines.map(line => `<li>${escapeHtml(line)}</li>`).join("")}
+        </ul>
       `;
     }
 
@@ -700,15 +827,17 @@ def render_index_html() -> str:
         <div class="detail-grid">
           <div class="detail-block">
             <h3>Summary</h3>
-            <div><strong>Status:</strong> ${escapeHtml(summary.status || "")}</div>
-            <div><strong>Kind:</strong> ${escapeHtml(summary.job_kind || "")}</div>
-            <div><strong>Source:</strong> ${escapeHtml(summary.source_label || "")}</div>
-            <div><strong>Items:</strong> ${escapeHtml(summary.items_done || 0)}/${escapeHtml(summary.items_total || 0)}</div>
-            <div><strong>Failed:</strong> ${escapeHtml(summary.items_failed || 0)}</div>
-            <div><strong>Current item:</strong> ${escapeHtml(summary.current_item_label || "")}</div>
-            <div><strong>Download dir:</strong> ${escapeHtml(summary.download_dir || "")}</div>
-            <div><strong>Playlist dir:</strong> ${escapeHtml(summary.playlist_dir || "")}</div>
-            <div><strong>Results file:</strong> ${escapeHtml(summary.results_path || "")}</div>
+            <div class="summary-list">
+              ${formatSummaryRow("Status", summary.status || "", "Unknown")}
+              ${formatSummaryRow("Kind", summary.job_kind || "", "Unknown")}
+              ${formatSummaryRow("Source", summary.source_label || "", "Unknown")}
+              ${formatSummaryRow("Items", `${summary.items_done || 0}/${summary.items_total || 0}`, "0/0")}
+              ${formatSummaryRow("Failed", String(summary.items_failed || 0), "0")}
+              ${formatSummaryRow("Current item", summary.current_item_label || "", "No active item right now.")}
+              ${formatSummaryRow("Download dir", summary.download_dir || "")}
+              ${formatSummaryRow("Playlist dir", summary.playlist_dir || "")}
+              ${formatSummaryRow("Results file", summary.results_path || "")}
+            </div>
           </div>
           <div class="detail-block">
             <h3>Items</h3>
@@ -734,11 +863,19 @@ def render_index_html() -> str:
 
       jobsOutput.innerHTML = jobs.map(job => {
         const isActive = selectedJobId && selectedJobId === job.job_id ? " active" : "";
+        const statusClass = escapeHtml(job.status || "queued");
         return `
           <button class="job-card${isActive}" type="button" data-job-id="${escapeHtml(job.job_id)}">
-            <strong>${escapeHtml(job.status)} | ${escapeHtml(job.job_kind)}</strong>
-            <span>${escapeHtml(job.items_done || 0)}/${escapeHtml(job.items_total || 0)} complete</span>
-            <span>${escapeHtml(job.source_label || "")}</span>
+            <div class="job-card-head">
+              <span class="job-card-title">${escapeHtml(job.job_kind || "download")} job</span>
+              <span class="job-badge ${statusClass}">${escapeHtml(job.status || "queued")}</span>
+            </div>
+            <span class="job-card-subtitle">${escapeHtml(job.source_label || "")}</span>
+            <div class="job-card-metrics">
+              <span>${escapeHtml(job.items_done || 0)}/${escapeHtml(job.items_total || 0)} complete</span>
+              <span>${escapeHtml(job.items_failed || 0)} failed</span>
+              ${job.current_item_label ? `<span>Current: ${escapeHtml(job.current_item_label)}</span>` : ""}
+            </div>
           </button>
         `;
       }).join("");
@@ -815,6 +952,7 @@ def render_index_html() -> str:
         payload.error ? "fail" : "ok"
       );
       renderInspectionSummary(payload);
+      renderReadableInspection(payload);
       inspectOutput.textContent = JSON.stringify(payload, null, 2);
     });
 
