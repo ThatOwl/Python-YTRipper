@@ -411,7 +411,6 @@ class CommandCLI(CLIBase):
 
     def _download_single_url(self, url: str, options: DownloadOptions, start_time: datetime.datetime | None = None) -> int:
         try:
-            self._ensure_tagging_worker(options)
             is_playlist = self.media_info_service.is_playlist(url)
             report_path: Path | None = None
             playlist_name: str | None = None
@@ -426,10 +425,12 @@ class CommandCLI(CLIBase):
                 )
 
             results: List[DownloadResult] = self.ytd.download(
-                url=url,
-                options=options,
-                results_report_path=report_path,
+                    url=url,
+                    options=options,
+                    results_report_path=report_path,
             )
+            if options.autotag and any(result.success for result in results):
+                self._ensure_tagging_worker(options)
             if not results:
                 logger.error(
                     "Download produced no structured results for %s. "

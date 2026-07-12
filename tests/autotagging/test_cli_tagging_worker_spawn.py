@@ -76,6 +76,28 @@ class TestCliTaggingWorkerSpawn(unittest.TestCase):
         self.assertEqual(exit_code_second, 0)
         mock_popen.assert_called_once()
 
+    @patch("cli.cli_command.subprocess.Popen")
+    def test_autotag_does_not_spawn_worker_when_download_fails(self, mock_popen):
+        cli = CommandCLI()
+        cli.ytd.download = Mock(
+            return_value=[
+                DownloadResult(
+                    success=False,
+                    errors=["broken"],
+                    video_title="Broken",
+                    video_url="https://www.youtube.com/watch?v=broken",
+                )
+            ]
+        )
+        cli.media_info_service.is_playlist = Mock(return_value=False)
+
+        options = DownloadOptions(default_download_directory="/tmp/ripper-test", autotag=True)
+
+        exit_code = cli._download_single_url("https://www.youtube.com/watch?v=broken", options)
+
+        self.assertEqual(exit_code, 1)
+        mock_popen.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
