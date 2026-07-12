@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from typing import List
 
+from application.session_config_service import SessionConfigService
 from cli.cli_base import CLIBase
 
 from application.download_orchestrator import DownloadOrchestrator as YTD
@@ -15,16 +16,12 @@ from domain.video_fetcher import VideoFetcher
 from infrastructure.os_interactions import OSInteractions
 from infrastructure.url_handler import URLHandler
 
-from utility.logger import get_logger, set_visible_log_level
+from utility.logger import get_logger
 from utility.utils import (
     DownloadOptions,
     QUALITY_ALIAS_MAP,
     COMMON_AUDIO_ABR,
     COMMON_VIDEO_RESOLUTIONS,
-    LOGLEVEL_ALIAS_MAP,
-    BOOLEAN_TRUE_VALUES,
-    BOOLEAN_FALSE_VALUES,
-    parse_bool_string,
     DownloadResult,
 )
 
@@ -45,16 +42,14 @@ class CommandCLI(CLIBase):
         self.os = OSInteractions()
         self.url_handler = URLHandler()
         self.video_fetcher = VideoFetcher()
+        self.config_service = SessionConfigService(os_handler=self.os)
 
-        self.preferences = self.os.read_preferences()
-        self.options = DownloadOptions.from_preferences(self.preferences)
-        self.loaded_preset_path: Path | None = None
+        config_state = self.config_service.read_state(apply_runtime=True)
+        self.preferences = config_state.preferences
+        self.options = config_state.options
+        self.loaded_preset_path: Path | None = config_state.loaded_preset_path
         self._last_parse_exit_code = 0
         self._tagging_worker_process: subprocess.Popen | None = None
-        
-        # Normalize persisted config once on startup and apply runtime-only effects
-        # such as visible log level to already-created visible handlers.
-        self._normalize_options(self.options, apply_runtime=True)
 
         self.ytd = YTD(
             os_handler=self.os,
@@ -77,7 +72,7 @@ class CommandCLI(CLIBase):
 
     def _clone_options(self, options: DownloadOptions | None = None) -> DownloadOptions:
         source_options = self.options if options is None else options
-        return DownloadOptions.from_preferences(source_options.to_dict())
+        return self.config_service.clone_options(source_options)
 
     def build_parser(self) -> argparse.ArgumentParser:
         """ #TODO still accurate?
@@ -317,63 +312,16 @@ class CommandCLI(CLIBase):
         options: DownloadOptions | None = None,
     ) -> int:
         current_options = self.options if options is None else options
-
-        if value is None:
-            return current_options.preferred_fps
-
-        normalized = str(value).strip().lower()
-
-        if normalized in ("", "0", "any", "none"):
-            return 0
-
-        if parse_bool_string(normalized):
-            return 60
-
-        return 30
+        return self.config_service.parse_fps_preference(value, current_options)
 
     def _normalize_load_preset(self, value: str | None) -> Path | None:
-        if value is None:
-            return None
-
-        normalized = value.strip().lower()
-        if not normalized:
-            return None
-
-        if normalized.isdigit() and len(normalized) == 1:
-            return preferences.PATHS_TO_CUSTOM_PRESETS[int(normalized)]
-
-        preset_path = preferences.PATHS_TO_IMMUTABLE_PRESETS.get(normalized) # no "DAU- / 1d10t-protection" wrong user input is ignored => files are clearly named
-        if preset_path is not None:
-            return preset_path
-        
-        #FIXME default case: behaviour? raise error or ignore unknown preset and return None ? => raise error to avoid silent config issues
-        raise ValueError("Unknown preset identifier. Use custom ids 0-9 or immutable presets ah/vh/vl/t.")
+        return self.config_service.resolve_load_preset(value)
 
     def _normalize_save_config_path(self, value: str | None) -> Path | None:
-        if value is None:
-            return None
-
-        normalized = value.strip().lower()
-        if not normalized or normalized in BOOLEAN_FALSE_VALUES:
-            return None
-
-        if normalized in BOOLEAN_TRUE_VALUES:
-            if self.loaded_preset_path in preferences.PATHS_TO_CUSTOM_PRESETS:
-                return self.loaded_preset_path
-
-            if self.loaded_preset_path in preferences.PATHS_TO_IMMUTABLE_PRESETS.values():
-                logger.warning(
-                    "Loaded preset is immutable; -sc true will save the current "
-                    "session options to the default config instead. Use -sc 0..9 "
-                    "to save to a custom preset."
-                )
-
-            return preferences.PATH_TO_DEFAULT_PREFERENCES
-
-        if normalized.isdigit() and len(normalized) == 1:
-            return preferences.PATHS_TO_CUSTOM_PRESETS[int(normalized)]
-
-        raise ValueError("Unknown save-config value. Use true/false or a custom preset id 0-9.")
+        return self.config_service.resolve_save_config_path(
+            value,
+            loaded_preset_path=self.loaded_preset_path,
+        )
 
     def _apply_options(
         self,
@@ -381,186 +329,35 @@ class CommandCLI(CLIBase):
         options: DownloadOptions | None = None,
     ) -> DownloadOptions:
         target_options = self.options if options is None else options
-        updates = {}
-
-        if args.audio_only is not None:
-            updates["audio_only"] = parse_bool_string(args.audio_only)
-
-        if args.audio_mp3 is not None:
-            updates["audio_mp3"] = parse_bool_string(args.audio_mp3)
-
-        if args.preferred_quality is not None:
-            updates["preferred_video_quality"] = args.preferred_quality
-            updates["preferred_audio_quality"] = args.preferred_quality
-
-        if args.preferred_resolution is not None:
-            updates["preferred_resolution"] = args.preferred_resolution
-
-        if args.preferred_abr is not None:
-            updates["preferred_abr"] = args.preferred_abr
-
-        if args.high_fps is not None:
-            updates["preferred_fps"] = self._parse_fps_preference(args.high_fps, target_options)
-
-        if args.download_directory is not None:
-            updates["default_download_directory"] = self.os.expand_path(args.download_directory)
-
-        if args.show_preset is not None:
-            updates["show_preset"] = parse_bool_string(args.show_preset)
-
-        if args.no_dir_date is not None:
-            updates["no_dir_date"] = parse_bool_string(args.no_dir_date)
-
-        if args.visible_loglevel is not None:
-            updates["visible_loglevel"] = args.visible_loglevel
-
-        if args.autotag is not None:
-            updates["autotag"] = parse_bool_string(args.autotag)
-
-        if args.prepare_tagging is not None:
-            updates["prepare_tagging"] = parse_bool_string(args.prepare_tagging)
-
-        if args.save_results is not None:
-            updates["save_results"] = parse_bool_string(args.save_results)
-
-        target_options.update_from_dict(updates)
-        self._normalize_options(target_options, apply_runtime=options is None)
-        return target_options
+        return self.config_service.apply_args(
+            args,
+            target_options,
+            apply_runtime=options is None,
+        )
 
     def _normalize_options(self, options: DownloadOptions, apply_runtime: bool = False) -> None:
-        self._normalize_boolean_options(options)
-        if options.autotag:
-            options.save_results = True
-        self._normalize_quality_options(options)
-        self._normalize_audio_bitrate(options)
-        self._normalize_resolution(options)
-        self._normalize_visible_loglevel(options)
-        self._normalize_download_directory(options)
-
-        if apply_runtime:
-            self._apply_runtime_options(options)
+        self.config_service.normalize_options(options, apply_runtime=apply_runtime)
 
     def _normalize_boolean_options(self, options: DownloadOptions) -> None:
-        boolean_fields = (
-            "audio_only",
-            "audio_mp3",
-            "show_preset",
-            "donotconvert",
-            "no_dir_date",
-            "autotag",
-            "prepare_tagging",
-            "save_results",
-        )
-
-        for field_name in boolean_fields:
-            raw_value = getattr(options, field_name)
-
-            if isinstance(raw_value, bool):
-                continue
-
-            normalized_value = None
-
-            if isinstance(raw_value, str):
-                normalized = raw_value.strip().lower()
-                if normalized in BOOLEAN_TRUE_VALUES:
-                    normalized_value = True
-                elif normalized in BOOLEAN_FALSE_VALUES:
-                    normalized_value = False
-            elif raw_value in (0, 1):
-                normalized_value = bool(raw_value)
-
-            if normalized_value is None:
-                fallback_value = preferences.DEFAULT_PREFS[field_name]
-                logger.warning(
-                    f"Invalid boolean config for '{field_name}': {raw_value!r}. "
-                    f"Falling back to default {fallback_value!r}."
-                )
-                normalized_value = fallback_value
-
-            setattr(options, field_name, normalized_value)
+        self.config_service.normalize_boolean_options(options)
 
     def _normalize_download_directory(self, options: DownloadOptions) -> None:
-        if not options.default_download_directory:
-            options.default_download_directory = str(
-                self.os.expand_path("~/Downloads/RipperDownloads")
-            )
-            return
-
-        options.default_download_directory = str(
-            self.os.expand_path(options.default_download_directory)
-        )
+        self.config_service.normalize_download_directory(options)
 
     def _normalize_quality_options(self, options: DownloadOptions) -> None:
-        if options.preferred_video_quality:
-            raw_value = options.preferred_video_quality.strip().lower()
-            mapped_quality = QUALITY_ALIAS_MAP.get(raw_value)
-
-            if mapped_quality:
-                options.preferred_video_quality = mapped_quality
-            else:
-                logger.warning(
-                    f"Unknown video quality alias '{options.preferred_video_quality}'; ignoring."
-                )
-                options.preferred_video_quality = ""
-
-        if options.preferred_audio_quality:
-            raw_value = options.preferred_audio_quality.strip().lower()
-            mapped_quality = QUALITY_ALIAS_MAP.get(raw_value)
-
-            if mapped_quality:
-                options.preferred_audio_quality = mapped_quality
-            else:
-                logger.warning(
-                    f"Unknown audio quality alias '{options.preferred_audio_quality}'; ignoring."
-                )
-                options.preferred_audio_quality = ""
+        self.config_service.normalize_quality_options(options)
 
     def _normalize_audio_bitrate(self, options: DownloadOptions) -> None:
-        if not options.preferred_abr:
-            return
-
-        raw_value = options.preferred_abr.strip().lower()
-        mapped_abr = COMMON_AUDIO_ABR.get(raw_value)
-
-        if mapped_abr:
-            options.preferred_abr = mapped_abr
-        else:
-            logger.warning(f"Unknown audio bitrate '{options.preferred_abr}'; ignoring.")
-            options.preferred_abr = ""
+        self.config_service.normalize_audio_bitrate(options)
 
     def _normalize_resolution(self, options: DownloadOptions) -> None:
-        if not options.preferred_resolution:
-            return
-
-        raw_value = options.preferred_resolution.strip().lower()
-        mapped_resolution = COMMON_VIDEO_RESOLUTIONS.get(raw_value)
-
-        if mapped_resolution:
-            options.preferred_resolution = mapped_resolution
-        else:
-            logger.warning(f"Unknown resolution '{options.preferred_resolution}'; ignoring.")
-            options.preferred_resolution = ""
+        self.config_service.normalize_resolution(options)
 
     def _normalize_visible_loglevel(self, options: DownloadOptions) -> None:
-        raw_level = options.visible_loglevel or "WARNING"
-        level_key = str(raw_level).strip().upper()
-
-        mapped_level = LOGLEVEL_ALIAS_MAP.get(level_key)
-
-        if mapped_level is None:
-            logger.warning(
-                f"Unknown visible log level '{raw_level}'; falling back to WARNING."
-            )
-            mapped_level = "WARNING"
-
-        options.visible_loglevel = mapped_level
+        self.config_service.normalize_visible_loglevel(options)
 
     def _apply_runtime_options(self, options: DownloadOptions) -> None:
-        """Apply runtime side effects for an already-normalized options object."""
-        try:
-            set_visible_log_level(options.visible_loglevel)
-        except ValueError as exc:
-            logger.error(f"Failed to set visible log level '{options.visible_loglevel}': {exc}")
+        self.config_service.apply_runtime_options(options)
 
     def _save_config_if_requested(self, args: argparse.Namespace) -> None:
         if args.save_config is None:
@@ -590,15 +387,17 @@ class CommandCLI(CLIBase):
             return True
 
         try:
-            preset_path = self._normalize_load_preset(args.load_preset)
+            config_state = self.config_service.load_preset(
+                args.load_preset,
+                apply_runtime=True,
+            )
         except ValueError as exc:
             logger.error(str(exc))
             return False
 
-        self.loaded_preset_path = preset_path
-        self.preferences = self.os.read_preferences(prefs_path=preset_path)
-        self.options = DownloadOptions.from_preferences(self.preferences)
-        self._normalize_options(self.options, apply_runtime=True)
+        self.loaded_preset_path = config_state.loaded_preset_path
+        self.preferences = config_state.preferences
+        self.options = config_state.options
         self._refresh_parser()
         return True
 
