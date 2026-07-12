@@ -61,6 +61,7 @@ class LazyPlaylist:
             "https://www.youtube.com/watch?v=two",
         ]
         self._video_regex = None
+        self.initial_data = {}
 
     @property
     def videos(self):
@@ -102,6 +103,61 @@ class TestMediaInfoPlaylistReliability(unittest.TestCase):
 
         self.assertIn("Playlist Title: Lazy Playlist", lines)
         self.assertIn("Number of Videos: 2", lines)
+
+    def test_get_playlist_videos_falls_back_to_initial_data_when_video_urls_are_empty(self):
+        playlist = LazyPlaylist()
+        playlist.video_urls = []
+        playlist.initial_data = {
+            "contents": {
+                "twoColumnBrowseResultsRenderer": {
+                    "tabs": [
+                        {
+                            "tabRenderer": {
+                                "content": {
+                                    "sectionListRenderer": {
+                                        "contents": [
+                                            {
+                                                "itemSectionRenderer": {
+                                                    "contents": [
+                                                        {
+                                                            "playlistVideoListRenderer": {
+                                                                "contents": [
+                                                                    {"playlistVideoRenderer": {"videoId": "one"}},
+                                                                    {"playlistVideoRenderer": {"videoId": "two"}},
+                                                                ]
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+        video_fetcher = Mock()
+        video_fetcher.get_playlist_obj.return_value = playlist
+        video_fetcher.get_video_obj.side_effect = [
+            FakeVideo("First", "https://www.youtube.com/watch?v=one"),
+            FakeVideo("Second", "https://www.youtube.com/watch?v=two"),
+        ]
+
+        service = MediaInfoService(video_fetcher=video_fetcher)
+
+        videos = service.get_playlist_videos("https://www.youtube.com/playlist?list=PL123")
+
+        self.assertEqual([video.title for video in videos], ["First", "Second"])
+        self.assertEqual(
+            [call.args[0] for call in video_fetcher.get_video_obj.call_args_list],
+            [
+                "https://www.youtube.com/watch?v=one",
+                "https://www.youtube.com/watch?v=two",
+            ],
+        )
 
 
 class TestDownloadPlaylistReliability(unittest.TestCase):

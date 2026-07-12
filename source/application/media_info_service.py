@@ -1,6 +1,6 @@
+import re
 
 import pytubefix as ptf
-import re
 
 from domain.video_fetcher import VideoFetcher
 from infrastructure.url_handler import URLHandler
@@ -94,7 +94,7 @@ class MediaInfoService:
         if videos:
             return videos
 
-        fallback_urls = list(getattr(playlist_obj, "video_urls", []) or [])
+        fallback_urls = self._fallback_playlist_video_urls(playlist_obj)
         resolved_videos: list[ptf.YouTube] = []
         for video_url in fallback_urls:
             try:
@@ -125,3 +125,70 @@ class MediaInfoService:
     def _prepare_playlist_obj(playlist_obj: ptf.Playlist) -> ptf.Playlist:
         playlist_obj._video_regex = PLAYLIST_VIDEO_REGEX
         return playlist_obj
+
+    def _fallback_playlist_video_urls(self, playlist_obj: ptf.Playlist) -> list[str]:
+        fallback_urls = list(getattr(playlist_obj, "video_urls", []) or [])
+        if fallback_urls:
+            return fallback_urls
+
+        extracted_urls = self._extract_watch_urls_from_initial_data(playlist_obj)
+        if extracted_urls:
+            logger.info(
+                "Recovered %s playlist video URLs from ytInitialData fallback for %s",
+                len(extracted_urls),
+                getattr(playlist_obj, "title", "<unknown playlist>"),
+            )
+        return extracted_urls
+
+    def _extract_watch_urls_from_initial_data(self, playlist_obj: ptf.Playlist) -> list[str]:
+        try:
+            initial_data = getattr(playlist_obj, "initial_data", None)
+        except Exception as exc:
+            logger.warning("Failed to access playlist initial_data: %s", exc)
+            return []
+
+        if not isinstance(initial_data, dict):
+            return []
+
+        watch_urls: list[str] = []
+        seen: set[str] = set()
+
+        def add_video_id(video_id: str | None) -> None:
+            normalized = str(video_id or "").strip()
+            if not normalized:
+                return
+            watch_url = f"https://www.youtube.com/watch?v={normalized}"
+            if watch_url in seen:
+                return
+            seen.add(watch_url)
+            watch_urls.append(watch_url)
+
+        def visit(node) -> None:
+            if isinstance(node, dict):
+                playlist_renderer = node.get("playlistVideoRenderer")
+                if isinstance(playlist_renderer, dict):
+                    add_video_id(playlist_renderer.get("videoId"))
+
+                panel_renderer = node.get("playlistPanelVideoRenderer")
+                if isinstance(panel_renderer, dict):
+                    add_video_id(panel_renderer.get("videoId"))
+
+                lockup_view_model = node.get("shortsLockupViewModel")
+                if isinstance(lockup_view_model, dict):
+                    on_tap = lockup_view_model.get("onTap", {})
+                    command = on_tap.get("innertubeCommand", {})
+                    reel = command.get("reelWatchEndpoint", {})
+                    add_video_id(reel.get("videoId"))
+
+                reel_renderer = node.get("reelItemRenderer")
+                if isinstance(reel_renderer, dict):
+                    add_video_id(reel_renderer.get("videoId"))
+
+                for value in node.values():
+                    visit(value)
+            elif isinstance(node, list):
+                for item in node:
+                    visit(item)
+
+        visit(initial_data)
+        return watch_urls
