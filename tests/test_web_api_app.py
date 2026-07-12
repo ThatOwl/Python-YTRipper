@@ -167,6 +167,9 @@ class TestWebApiApp(unittest.TestCase):
 
         self.assertIn("Python-YTRipper Web UI", index_response)
         self.assertIn("Job Detail", index_response)
+        self.assertIn("No item results recorded yet.", index_response)
+        self.assertNotIn('"<p class="note">', index_response)
+        self.assertNotIn('"<div class="status">', index_response)
         self.assertTrue(health_payload["ok"])
         self.assertIn("options", config_payload)
 

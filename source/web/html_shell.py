@@ -305,13 +305,13 @@ def render_index_html() -> str:
         ? `<ol class="detail-list">${items.map(item =>
             `<li><strong>${escapeHtml(item.label || item.source_url || item.item_id)}</strong> - ${escapeHtml(item.status)}${item.error ? ` (${escapeHtml(item.error)})` : ""}</li>`
           ).join("")}</ol>`
-        : "<p class=\"note\">No item results recorded yet.</p>";
+        : '<p class="note">No item results recorded yet.</p>';
 
       const eventMarkup = events.length
         ? `<ol class="detail-list">${events.map(event =>
             `<li><strong>${escapeHtml(event.event_type)}</strong> - ${escapeHtml(event.message || "")}</li>`
           ).join("")}</ol>`
-        : "<p class=\"note\">No lifecycle events recorded yet.</p>";
+        : '<p class="note">No lifecycle events recorded yet.</p>';
 
       jobDetailOutput.className = "";
       jobDetailOutput.innerHTML = `
@@ -340,7 +340,7 @@ def render_index_html() -> str:
     async function refreshJobs() {
       const jobs = await api("/api/jobs");
       if (!jobs.length) {
-        jobsOutput.innerHTML = "<div class=\"status\">No jobs yet.</div>";
+        jobsOutput.innerHTML = '<div class="status">No jobs yet.</div>';
         jobDetailOutput.className = "status";
         jobDetailOutput.textContent = "Select a job to inspect its items and events.";
         selectedJobId = "";
