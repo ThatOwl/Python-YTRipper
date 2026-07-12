@@ -175,6 +175,19 @@ class SessionConfigService:
         if getattr(args, "save_results", None) is not None:
             updates["save_results"] = parse_bool_string(args.save_results)
 
+        return self.apply_updates(
+            options,
+            updates,
+            apply_runtime=apply_runtime,
+        )
+
+    def apply_updates(
+        self,
+        options: DownloadOptions,
+        updates: dict[str, object],
+        *,
+        apply_runtime: bool = False,
+    ) -> DownloadOptions:
         options.update_from_dict(updates)
         self.normalize_options(options, apply_runtime=apply_runtime)
         return options

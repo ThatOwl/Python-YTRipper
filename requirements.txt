@@ -7,6 +7,8 @@ ffmpeg-python
 urllib3 
 argcomplete
 prompt_toolkit
+fastapi
+uvicorn
 # (Additional) for scripts for music metadata retrieval and processing
 musicbrainzngs
 mutagen
