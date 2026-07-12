@@ -10,11 +10,15 @@ SOURCE_DIR: Path = CURRENT_DIR.parent                 # → Python-YTRipper/sour
 PROJECT_ROOT: Path = SOURCE_DIR.parent                # → Python-YTRipper
 CONFIG_DIR: Path = PROJECT_ROOT / "config"
 LOGS_DIR: Path = PROJECT_ROOT / "logs"
+RUNTIME_DIR: Path = PROJECT_ROOT / "runtime"
 
 PATH_TO_LOGS: Path = LOGS_DIR
 PRESETS_DIR: Path = CONFIG_DIR / "presets"
 IMMUTABLE_PRESETS_DIR: Path = PRESETS_DIR / "immutable"
 CUSTOM_PRESETS_DIR: Path = PRESETS_DIR / "custom" # IMPORTANT: 9__custom_preset.json is full of garbage and should be ignored (used for testing edge cases in read/write prefs)
+WEB_GUI_RUNTIME_DIR: Path = RUNTIME_DIR / "web-gui"
+WEB_GUI_JOBS_DIR: Path = WEB_GUI_RUNTIME_DIR / "jobs"
+WEB_GUI_EVENTS_PATH: Path = WEB_GUI_RUNTIME_DIR / "events.jsonl"
 
 DEFAULT_PREFS: Dict = {
     "current_preset": "default",
