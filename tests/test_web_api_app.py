@@ -166,6 +166,7 @@ class TestWebApiApp(unittest.TestCase):
         config_payload = self._call(app, "/api/session-config", "GET")
 
         self.assertIn("Python-YTRipper Web UI", index_response)
+        self.assertIn("Dark Mode", index_response)
         self.assertIn("Health & Status", index_response)
         self.assertIn("Checking backend health...", index_response)
         self.assertIn("Refresh Health", index_response)
@@ -190,7 +191,7 @@ class TestWebApiApp(unittest.TestCase):
         self.assertIn("Loading session config...", index_response)
         self.assertIn("Job Detail", index_response)
         self.assertIn("Raw inspection payload", index_response)
-        self.assertIn("No additional media info lines were returned yet.", index_response)
+        self.assertIn("Quick facts and preview items will appear here after inspection.", index_response)
         self.assertIn("Select a job to inspect its items and events.", index_response)
         self.assertIn("No item results recorded yet.", index_response)
         self.assertNotIn('"<p class="note">', index_response)

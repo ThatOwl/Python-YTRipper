@@ -10,21 +10,72 @@ def render_index_html() -> str:
   <title>Python-YTRipper Web UI</title>
   <style>
     :root {
+      color-scheme: light;
       --bg: #f6f1e8;
       --panel: #fffaf2;
+      --panel-soft: #fcf8f1;
+      --panel-input: #fffdf9;
+      --panel-active: #eef8f4;
+      --ink-soft: #efe7d8;
       --ink: #20201c;
       --muted: #6d675e;
       --accent: #0e6b50;
       --accent-soft: #d7efe7;
       --border: #d5ccbd;
+      --page-top: #f8f4ec;
+      --page-glow: #f3dcc4;
+      --shadow: rgba(32, 32, 28, 0.06);
+      --success-surface: #dff2eb;
+      --success-surface-soft: #eef8f4;
+      --success-border: #badfd1;
+      --success-ink: #184d3b;
+      --warning-surface: #f4ecd8;
+      --warning-surface-soft: #fbf3df;
+      --warning-border: #d8c6a8;
+      --warning-ink: #765c22;
+      --danger-surface: #f6dddd;
+      --danger-surface-soft: #fbefef;
+      --danger-border: #dfbaba;
+      --danger-ink: #7a3030;
+      --path-surface: rgba(255, 253, 249, 0.75);
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #171a20;
+      --panel: #1f242c;
+      --panel-soft: #252b34;
+      --panel-input: #2a313b;
+      --panel-active: #22372f;
+      --ink-soft: #36404b;
+      --ink: #ece7dd;
+      --muted: #b7b0a4;
+      --accent: #57ba96;
+      --accent-soft: #2a4c42;
+      --border: #3e4650;
+      --page-top: #1b1f26;
+      --page-glow: #2c3e37;
+      --shadow: rgba(0, 0, 0, 0.28);
+      --success-surface: #204438;
+      --success-surface-soft: #1f3b33;
+      --success-border: #3f7d69;
+      --success-ink: #d6f1e6;
+      --warning-surface: #4a4028;
+      --warning-surface-soft: #3f3828;
+      --warning-border: #7f7048;
+      --warning-ink: #f2dfb1;
+      --danger-surface: #4a2b31;
+      --danger-surface-soft: #41282e;
+      --danger-border: #7d555d;
+      --danger-ink: #f0d6da;
+      --path-surface: rgba(28, 34, 42, 0.78);
     }
     body {
       margin: 0;
       font-family: Georgia, "Times New Roman", serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at top right, #f3dcc4 0, transparent 32%),
-        linear-gradient(180deg, #f8f4ec 0%, var(--bg) 100%);
+        radial-gradient(circle at top right, var(--page-glow) 0, transparent 32%),
+        linear-gradient(180deg, var(--page-top) 0%, var(--bg) 100%);
     }
     main {
       max-width: 1380px;
@@ -37,10 +88,21 @@ def render_index_html() -> str:
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 16px;
-      box-shadow: 0 8px 30px rgba(32, 32, 28, 0.06);
+      box-shadow: 0 8px 30px var(--shadow);
     }
     .hero {
       padding: 24px;
+    }
+    .hero-topbar {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .hero-copy {
+      min-width: 0;
     }
     .hero h1 {
       margin: 0 0 8px;
@@ -124,7 +186,8 @@ def render_index_html() -> str:
       border: 1px solid var(--border);
       padding: 10px 12px;
       font: inherit;
-      background: #fffdf9;
+      background: var(--panel-input);
+      color: var(--ink);
     }
     textarea {
       min-height: 130px;
@@ -143,7 +206,7 @@ def render_index_html() -> str:
     button.secondary {
       background: var(--accent-soft);
       color: var(--ink);
-      border: 1px solid #badfd1;
+      border: 1px solid var(--success-border);
     }
     button.inline-button {
       width: auto;
@@ -179,7 +242,7 @@ def render_index_html() -> str:
       white-space: pre-wrap;
       font-family: "Courier New", monospace;
       font-size: 0.9rem;
-      background: #fcf8f1;
+      background: var(--panel-soft);
       border: 1px dashed var(--border);
       border-radius: 12px;
       padding: 12px;
@@ -197,7 +260,7 @@ def render_index_html() -> str:
     }
     .job-card {
       border: 1px solid var(--border);
-      background: #fcf8f1;
+      background: var(--panel-soft);
       border-radius: 12px;
       padding: 10px 12px;
       text-align: left;
@@ -206,7 +269,7 @@ def render_index_html() -> str:
     }
     .job-card.active {
       border-color: var(--accent);
-      background: #eef8f4;
+      background: var(--panel-active);
     }
     .job-card strong,
     .job-card span {
@@ -242,25 +305,25 @@ def render_index_html() -> str:
       border-radius: 999px;
       padding: 4px 8px;
       font-size: 0.78rem;
-      background: #efe7d8;
+      background: var(--ink-soft);
       color: var(--ink);
       white-space: nowrap;
     }
     .job-badge.completed,
     .job-badge.success {
-      background: #dff2eb;
-      color: #184d3b;
+      background: var(--success-surface);
+      color: var(--success-ink);
     }
     .job-badge.failed {
-      background: #f6dddd;
-      color: #7a3030;
+      background: var(--danger-surface);
+      color: var(--danger-ink);
     }
     .job-badge.partial,
     .job-badge.running,
     .job-badge.validating,
     .job-badge.queued {
-      background: #f4ecd8;
-      color: #765c22;
+      background: var(--warning-surface);
+      color: var(--warning-ink);
     }
     .detail-grid {
       display: grid;
@@ -270,7 +333,7 @@ def render_index_html() -> str:
     .detail-block {
       border: 1px solid var(--border);
       border-radius: 12px;
-      background: #fcf8f1;
+      background: var(--panel-soft);
       padding: 12px;
       min-width: 0;
     }
@@ -328,37 +391,37 @@ def render_index_html() -> str:
       gap: 6px;
       border-radius: 999px;
       border: 1px solid var(--border);
-      background: #fcf8f1;
+      background: var(--panel-soft);
       color: var(--muted);
       padding: 6px 10px;
       font-size: 0.84rem;
     }
     .health-summary-pill.ok {
-      border-color: #badfd1;
-      background: #eef8f4;
-      color: #184d3b;
+      border-color: var(--success-border);
+      background: var(--success-surface-soft);
+      color: var(--success-ink);
     }
     .health-summary-pill.fail {
-      border-color: #dfbaba;
-      background: #fbefef;
-      color: #7a3030;
+      border-color: var(--danger-border);
+      background: var(--danger-surface-soft);
+      color: var(--danger-ink);
     }
     .health-item {
       border: 1px solid var(--border);
       border-radius: 12px;
-      background: #fcf8f1;
+      background: var(--panel-soft);
       padding: 12px;
       min-width: 0;
       display: grid;
       gap: 8px;
     }
     .health-item.ok {
-      border-color: #badfd1;
-      background: #eef8f4;
+      border-color: var(--success-border);
+      background: var(--success-surface-soft);
     }
     .health-item.fail {
-      border-color: #dfbaba;
-      background: #fbefef;
+      border-color: var(--danger-border);
+      background: var(--danger-surface-soft);
     }
     .health-item strong,
     .health-item span {
@@ -402,7 +465,7 @@ def render_index_html() -> str:
       white-space: nowrap;
       border: 1px dashed var(--border);
       border-radius: 10px;
-      background: rgba(255, 253, 249, 0.75);
+      background: var(--path-surface);
       padding: 8px 10px;
       font-family: "Courier New", monospace;
       font-size: 0.82rem;
@@ -430,52 +493,52 @@ def render_index_html() -> str:
       padding: 6px 10px;
       font-size: 0.86rem;
       border: 1px solid var(--border);
-      background: #fcf8f1;
+      background: var(--panel-soft);
       color: var(--muted);
     }
     .pill.ok {
-      border-color: #badfd1;
-      background: #eef8f4;
-      color: #184d3b;
+      border-color: var(--success-border);
+      background: var(--success-surface-soft);
+      color: var(--success-ink);
     }
     .pill.warn {
-      border-color: #d8c6a8;
-      background: #fbf3df;
-      color: #765c22;
+      border-color: var(--warning-border);
+      background: var(--warning-surface-soft);
+      color: var(--warning-ink);
     }
     .pill.fail {
-      border-color: #dfbaba;
-      background: #fbefef;
-      color: #7a3030;
+      border-color: var(--danger-border);
+      background: var(--danger-surface-soft);
+      color: var(--danger-ink);
     }
     .action-banner {
       border: 1px solid var(--border);
       border-radius: 12px;
-      background: #fcf8f1;
+      background: var(--panel-soft);
       padding: 10px 12px;
       font-size: 0.9rem;
       color: var(--muted);
       overflow-wrap: anywhere;
     }
     .action-banner.ok {
-      border-color: #badfd1;
-      background: #eef8f4;
-      color: #184d3b;
+      border-color: var(--success-border);
+      background: var(--success-surface-soft);
+      color: var(--success-ink);
     }
     .action-banner.fail {
-      border-color: #dfbaba;
-      background: #fbefef;
-      color: #7a3030;
+      border-color: var(--danger-border);
+      background: var(--danger-surface-soft);
+      color: var(--danger-ink);
     }
     .action-banner.warn {
-      border-color: #d8c6a8;
-      background: #fbf3df;
-      color: #765c22;
+      border-color: var(--warning-border);
+      background: var(--warning-surface-soft);
+      color: var(--warning-ink);
     }
     .subtle-card {
       border: 1px solid var(--border);
       border-radius: 12px;
-      background: #fcf8f1;
+      background: var(--panel-soft);
       padding: 10px 12px;
       display: grid;
       gap: 6px;
@@ -499,18 +562,18 @@ def render_index_html() -> str:
       overflow-wrap: anywhere;
     }
     .subtle-card.ok {
-      border-color: #badfd1;
-      background: #eef8f4;
+      border-color: var(--success-border);
+      background: var(--success-surface-soft);
     }
     .subtle-card.warn {
-      border-color: #d8c6a8;
-      background: #fbf3df;
+      border-color: var(--warning-border);
+      background: var(--warning-surface-soft);
     }
     .field-note.ok {
-      color: #184d3b;
+      color: var(--success-ink);
     }
     .field-note.warn {
-      color: #765c22;
+      color: var(--warning-ink);
     }
     .inspector-shell {
       display: grid;
@@ -521,7 +584,7 @@ def render_index_html() -> str:
     .inspector-summary {
       border: 1px solid var(--border);
       border-radius: 12px;
-      background: #fcf8f1;
+      background: var(--panel-soft);
       padding: 12px;
       font-size: 0.92rem;
       min-width: 0;
@@ -537,11 +600,57 @@ def render_index_html() -> str:
     .inspector-readable {
       border: 1px solid var(--border);
       border-radius: 12px;
-      background: #fcf8f1;
+      background: var(--panel-soft);
       padding: 12px;
       font-size: 0.9rem;
       min-height: 0;
       overflow: auto;
+    }
+    .inspector-section {
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+    }
+    .inspector-caption {
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    .inspect-fact-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    }
+    .inspect-fact {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+      padding: 10px;
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .inspect-fact-label {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    .inspect-fact-value {
+      font-size: 0.9rem;
+      color: var(--ink);
+      overflow-wrap: anywhere;
+    }
+    .inspect-preview-list {
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 6px;
+    }
+    .inspect-preview-note {
+      font-size: 0.84rem;
+      color: var(--muted);
     }
     .inspector-readable ul {
       margin: 0;
@@ -554,7 +663,7 @@ def render_index_html() -> str:
       border: 1px dashed var(--border);
       border-radius: 12px;
       padding: 10px 12px;
-      background: #fcf8f1;
+      background: var(--panel-soft);
       max-height: 300px;
       overflow: auto;
     }
@@ -642,11 +751,16 @@ def render_index_html() -> str:
 <body>
   <main>
     <section class="hero">
-      <h1>Python-YTRipper Web UI</h1>
-      <p>
-        This is the first working web shell for the downloader. It is intentionally simple:
-        inspect a video or playlist URL, tweak session settings, start a job, and watch the job list grow.
-      </p>
+      <div class="hero-topbar">
+        <div class="hero-copy">
+          <h1>Python-YTRipper Web UI</h1>
+          <p>
+            This is the first working web shell for the downloader. It is intentionally simple:
+            inspect a video or playlist URL, tweak session settings, start a job, and watch the job list grow.
+          </p>
+        </div>
+        <button id="theme-toggle-btn" class="secondary inline-button" type="button" aria-pressed="false">Dark Mode</button>
+      </div>
     </section>
 
     <section class="panel health-grid">
@@ -789,7 +903,7 @@ def render_index_html() -> str:
             <strong>No inspection yet.</strong>
             <span>Inspect a URL to see a readable summary here before opening the raw payload.</span>
           </div>
-          <div id="inspect-readable" class="inspector-readable">No inspection yet.</div>
+          <div id="inspect-readable" class="inspector-readable">Quick facts and preview items will appear here after inspection.</div>
           <div class="inspector-raw">
             <details>
               <summary>Raw inspection payload</summary>
@@ -820,6 +934,7 @@ def render_index_html() -> str:
     const urlStatus = document.getElementById("url-status");
     const inspectButton = document.getElementById("inspect-btn");
     const downloadButton = document.getElementById("download-btn");
+    const themeToggleButton = document.getElementById("theme-toggle-btn");
     const actionOutput = document.getElementById("action-output");
     const inspectSummary = document.getElementById("inspect-summary");
     const inspectReadable = document.getElementById("inspect-readable");
@@ -861,6 +976,7 @@ def render_index_html() -> str:
     let currentSessionState = null;
     let presetCatalog = [];
     let lastInspection = null;
+    const THEME_STORAGE_KEY = "python-ytripper-web-theme";
     let currentUrlValidation = {
       url: "",
       valid: false,
@@ -894,6 +1010,35 @@ def render_index_html() -> str:
         preferred_fps: Number(document.getElementById("fps-select").value || 0),
         default_download_directory: document.getElementById("download-dir").value
       };
+    }
+
+    function loadStoredTheme() {
+      try {
+        const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+        if (stored === "dark" || stored === "light") {
+          return stored;
+        }
+      } catch (error) {
+        // Ignore localStorage failures and fall back to system preference.
+      }
+      return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
+    }
+
+    function applyTheme(theme) {
+      const resolved = theme === "dark" ? "dark" : "light";
+      document.documentElement.dataset.theme = resolved;
+      themeToggleButton.textContent = resolved === "dark" ? "Light Mode" : "Dark Mode";
+      themeToggleButton.setAttribute("aria-pressed", resolved === "dark" ? "true" : "false");
+    }
+
+    function saveTheme(theme) {
+      try {
+        window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+      } catch (error) {
+        // Ignore localStorage failures and keep the in-memory theme only.
+      }
     }
 
     function normalizeAbrSelectValue(value) {
@@ -1229,25 +1374,126 @@ def render_index_html() -> str:
         ? (payload.remotely_accessible ? "Reachable" : "Not reachable")
         : "Local-only check";
       const itemCountLabel = payload.item_count == null ? "Unknown" : String(payload.item_count);
+      const summaryUrl = payload.url || payload.cleaned_url || payload.normalized_url || "";
+      const checkedAtLabel = lastInspection?.url === summaryUrl
+        ? lastInspection.checkedAtLabel
+        : "";
 
       inspectSummary.innerHTML = `
         <strong>${escapeHtml(payload.title || "Inspection ready")}</strong>
         <span>${escapeHtml(typeLabel)} | ${escapeHtml(accessLabel)} | Items: ${escapeHtml(itemCountLabel)}</span>
         <span>${escapeHtml(payload.cleaned_url || payload.normalized_url || payload.url || "")}</span>
+        ${checkedAtLabel ? `<span>Inspected at ${escapeHtml(checkedAtLabel)}</span>` : ""}
       `;
     }
 
+    function cleanInspectionLine(line) {
+      return String(line || "")
+        .trim()
+        .replace(/,$/, "")
+        .replace(/^["']|["']$/g, "")
+        .trim();
+    }
+
+    function buildInspectionPreview(payload) {
+      const cleanedLines = (payload.info_lines || [])
+        .map(cleanInspectionLine)
+        .filter(Boolean);
+      const previewItems = [];
+      const extraLines = [];
+
+      for (const line of cleanedLines) {
+        if (/^videos:$/i.test(line)) {
+          continue;
+        }
+
+        if (/^\\d+\\.\\s+/.test(line)) {
+          previewItems.push(line.replace(/^\\d+\\.\\s+/, ""));
+          continue;
+        }
+
+        if (/^(playlist title|number of videos):/i.test(line)) {
+          continue;
+        }
+
+        extraLines.push(line);
+      }
+
+      return {
+        previewItems,
+        extraLines,
+      };
+    }
+
     function renderReadableInspection(payload) {
-      const infoLines = payload.info_lines || [];
-      if (!infoLines.length) {
-        inspectReadable.innerHTML = "<div class=\\"note\\">No additional media info lines were returned yet.</div>";
+      const preview = buildInspectionPreview(payload);
+      const checkedAtLabel = lastInspection?.url === (payload.url || payload.cleaned_url || payload.normalized_url || "")
+        ? lastInspection.checkedAtLabel
+        : "Just now";
+      const facts = [
+        { label: "Type", value: payload.is_playlist ? "Playlist" : "Video" },
+        { label: "Access", value: payload.remote_checked ? (payload.remotely_accessible ? "Reachable" : "Not reachable") : "Local only" },
+        { label: "Items", value: payload.item_count == null ? "Unknown" : String(payload.item_count) },
+        { label: "Checked", value: checkedAtLabel },
+      ];
+
+      const previewMarkup = preview.previewItems.length
+        ? `
+          <div class="inspector-section">
+            <div class="inspector-caption">${payload.is_playlist ? "Preview items" : "Preview details"}</div>
+            <ol class="inspect-preview-list">
+              ${preview.previewItems.slice(0, 6).map(item => `<li>${escapeHtml(item)}</li>`).join("")}
+            </ol>
+            ${payload.is_playlist && payload.item_count && payload.item_count > preview.previewItems.length
+              ? `<div class="inspect-preview-note">Showing ${escapeHtml(String(Math.min(6, preview.previewItems.length)))} of ${escapeHtml(String(payload.item_count))} discovered entries in the preview.</div>`
+              : ""}
+          </div>
+        `
+        : "";
+
+      const extraMarkup = preview.extraLines.length
+        ? `
+          <div class="inspector-section">
+            <div class="inspector-caption">Additional info</div>
+            <ul>
+              ${preview.extraLines.map(line => `<li>${escapeHtml(line)}</li>`).join("")}
+            </ul>
+          </div>
+        `
+        : "";
+
+      if (!previewMarkup && !extraMarkup) {
+        inspectReadable.innerHTML = `
+          <div class="inspector-section">
+            <div class="inspector-caption">Quick scan</div>
+            <div class="inspect-fact-grid">
+              ${facts.map(fact => `
+                <div class="inspect-fact">
+                  <div class="inspect-fact-label">${escapeHtml(fact.label)}</div>
+                  <div class="inspect-fact-value">${escapeHtml(fact.value)}</div>
+                </div>
+              `).join("")}
+            </div>
+            <div class="inspect-preview-note">No additional media info lines were returned yet.</div>
+          </div>
+        `;
         return;
       }
 
       inspectReadable.innerHTML = `
-        <ul>
-          ${infoLines.map(line => `<li>${escapeHtml(line)}</li>`).join("")}
-        </ul>
+        <div class="inspector-section">
+          <div class="inspector-caption">Quick scan</div>
+          <div class="inspect-fact-grid">
+            ${facts.map(fact => `
+              <div class="inspect-fact">
+                <div class="inspect-fact-label">${escapeHtml(fact.label)}</div>
+                <div class="inspect-fact-value">${escapeHtml(fact.value)}</div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+        ${previewMarkup}
+        ${extraMarkup}
       `;
     }
 
@@ -1561,6 +1807,12 @@ def render_index_html() -> str:
       document.getElementById(fieldId).addEventListener("change", refreshConfigFormState);
     }
 
+    themeToggleButton.addEventListener("click", () => {
+      const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      applyTheme(nextTheme);
+      saveTheme(nextTheme);
+    });
+
     urlInput.addEventListener("input", () => {
       clearTimeout(validationTimer);
       updateUrlControls();
@@ -1638,6 +1890,7 @@ def render_index_html() -> str:
         healthRefreshButton.disabled = false;
       });
     });
+    applyTheme(loadStoredTheme());
     updateUrlControls();
     loadSessionState().catch(error => { inspectOutput.textContent = String(error); });
     loadPresets().catch(error => { inspectOutput.textContent = String(error); });
