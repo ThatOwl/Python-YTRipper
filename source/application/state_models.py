@@ -236,3 +236,50 @@ class UrlInspectionResult:
             info_lines=[str(item) for item in list(payload.get("info_lines", []) or [])],
             error=str(payload.get("error", "") or ""),
         )
+
+
+@dataclass
+class HealthCheckItem:
+    name: str = ""
+    ok: bool = False
+    message: str = ""
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "ok": self.ok,
+            "message": self.message,
+            "details": dict(self.details),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "HealthCheckItem":
+        return cls(
+            name=str(payload.get("name", "") or ""),
+            ok=bool(payload.get("ok", False)),
+            message=str(payload.get("message", "") or ""),
+            details=dict(payload.get("details", {}) or {}),
+        )
+
+
+@dataclass
+class HealthCheckReport:
+    ok: bool = False
+    items: list[HealthCheckItem] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "items": [item.to_dict() for item in self.items],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "HealthCheckReport":
+        return cls(
+            ok=bool(payload.get("ok", False)),
+            items=[
+                HealthCheckItem.from_dict(dict(item or {}))
+                for item in list(payload.get("items", []) or [])
+            ],
+        )
