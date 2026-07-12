@@ -62,6 +62,24 @@ def render_index_html() -> str:
       gap: 18px;
       min-width: 0;
     }
+    .health-topbar {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .health-summary-stack {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+    .health-controls {
+      display: grid;
+      gap: 8px;
+      justify-items: end;
+      min-width: 0;
+    }
     .control-grid {
       display: grid;
       grid-template-columns: minmax(300px, 0.88fr) minmax(420px, 1.12fr);
@@ -126,6 +144,11 @@ def render_index_html() -> str:
       background: var(--accent-soft);
       color: var(--ink);
       border: 1px solid #badfd1;
+    }
+    button.inline-button {
+      width: auto;
+      min-width: 0;
+      padding-inline: 14px;
     }
     .stack {
       display: grid;
@@ -294,12 +317,40 @@ def render_index_html() -> str:
       grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
       align-items: start;
     }
+    .health-summary-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .health-summary-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #fcf8f1;
+      color: var(--muted);
+      padding: 6px 10px;
+      font-size: 0.84rem;
+    }
+    .health-summary-pill.ok {
+      border-color: #badfd1;
+      background: #eef8f4;
+      color: #184d3b;
+    }
+    .health-summary-pill.fail {
+      border-color: #dfbaba;
+      background: #fbefef;
+      color: #7a3030;
+    }
     .health-item {
       border: 1px solid var(--border);
       border-radius: 12px;
       background: #fcf8f1;
       padding: 12px;
       min-width: 0;
+      display: grid;
+      gap: 8px;
     }
     .health-item.ok {
       border-color: #badfd1;
@@ -318,8 +369,58 @@ def render_index_html() -> str:
       font-size: 0.88rem;
       margin-top: 4px;
     }
+    .health-item-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .health-item-title {
+      font-weight: 700;
+      font-size: 0.94rem;
+      color: var(--ink);
+    }
+    .health-item-body {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+    .health-item-detail {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+    .health-detail-label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    .health-path {
+      display: block;
+      overflow: auto hidden;
+      white-space: nowrap;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      background: rgba(255, 253, 249, 0.75);
+      padding: 8px 10px;
+      font-family: "Courier New", monospace;
+      font-size: 0.82rem;
+      color: var(--ink);
+    }
+    .health-detail-list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
     .health-summary {
       font-size: 0.92rem;
+      color: var(--muted);
+    }
+    .health-reference,
+    .health-meta {
+      font-size: 0.84rem;
       color: var(--muted);
     }
     .pill {
@@ -483,6 +584,9 @@ def render_index_html() -> str:
       .health-list {
         grid-template-columns: 1fr;
       }
+      .health-controls {
+        justify-items: start;
+      }
       .summary-row {
         grid-template-columns: 1fr;
       }
@@ -507,10 +611,17 @@ def render_index_html() -> str:
     </section>
 
     <section class="panel health-grid">
-      <div>
-        <h2>Health & Status</h2>
-        <div id="health-summary" class="health-summary">Checking backend health...</div>
+      <div class="health-topbar">
+        <div class="health-summary-stack">
+          <h2>Health & Status</h2>
+          <div id="health-summary" class="health-summary">Checking backend health...</div>
+        </div>
+        <div class="health-controls">
+          <button id="health-refresh-btn" class="secondary inline-button" type="button">Refresh Health</button>
+          <div id="health-checked-at" class="health-meta">No health check completed yet.</div>
+        </div>
       </div>
+      <div class="health-reference">Paths are shown for reference only. Browser-side folder opening stays deferred for now.</div>
       <div id="health-output" class="health-list">
         <div class="status">Checking backend health...</div>
       </div>
@@ -650,6 +761,8 @@ def render_index_html() -> str:
     const inspectReadable = document.getElementById("inspect-readable");
     const healthSummary = document.getElementById("health-summary");
     const healthOutput = document.getElementById("health-output");
+    const healthRefreshButton = document.getElementById("health-refresh-btn");
+    const healthCheckedAt = document.getElementById("health-checked-at");
     const inspectOutput = document.getElementById("inspect-output");
     const jobsOutput = document.getElementById("jobs-output");
     const jobDetailOutput = document.getElementById("job-detail-output");
@@ -829,25 +942,104 @@ def render_index_html() -> str:
         .join(" | ");
     }
 
+    function formatHealthName(name) {
+      const names = {
+        ffmpeg_binary: "FFmpeg binary",
+        config_directory: "Config directory",
+        web_runtime_directory: "Web runtime directory",
+        default_download_directory: "Default download directory",
+        python_dependencies: "Python dependencies",
+      };
+      return names[name] || String(name || "Health check").replaceAll("_", " ");
+    }
+
+    function renderHealthItemDetails(item) {
+      const details = item.details || {};
+      const blocks = [];
+      const path = details.path ? `
+        <div class="health-item-detail">
+          <div class="health-detail-label">Path</div>
+          <code class="health-path">${escapeHtml(details.path)}</code>
+        </div>
+      ` : "";
+      if (path) {
+        blocks.push(path);
+      }
+
+      if (Array.isArray(details.checked) && details.checked.length) {
+        blocks.push(`
+          <div class="health-item-detail">
+            <div class="health-detail-label">Checked</div>
+            <ul class="health-detail-list">
+              ${details.checked.map(entry => `<li>${escapeHtml(entry)}</li>`).join("")}
+            </ul>
+          </div>
+        `);
+      }
+
+      if (Array.isArray(details.missing) && details.missing.length) {
+        blocks.push(`
+          <div class="health-item-detail">
+            <div class="health-detail-label">Missing</div>
+            <ul class="health-detail-list">
+              ${details.missing.map(entry => `<li>${escapeHtml(entry)}</li>`).join("")}
+            </ul>
+          </div>
+        `);
+      }
+
+      if (details.error) {
+        blocks.push(`
+          <div class="health-item-detail">
+            <div class="health-detail-label">Error</div>
+            <span>${escapeHtml(details.error)}</span>
+          </div>
+        `);
+      }
+
+      if (!blocks.length) {
+        const fallback = formatHealthDetails(details);
+        return fallback ? `<div class="health-item-detail"><span>${escapeHtml(fallback)}</span></div>` : "";
+      }
+
+      return blocks.join("");
+    }
+
     async function refreshHealth() {
+      healthRefreshButton.disabled = true;
       const payload = await api("/api/health");
       const items = payload.items || [];
+      const passingCount = items.filter(item => item.ok).length;
+      const failingCount = items.length - passingCount;
 
-      healthSummary.textContent = payload.ok
-        ? `Backend ready. ${items.length} checks passed.`
-        : `Backend needs attention. ${items.filter(item => item.ok).length}/${items.length} checks passed.`;
+      healthSummary.innerHTML = `
+        <div>${payload.ok
+          ? `Backend ready. ${items.length} checks passed.`
+          : `Backend needs attention. ${passingCount}/${items.length} checks passed.`}</div>
+        <div class="health-summary-pills">
+          <span class="health-summary-pill ok">${escapeHtml(String(passingCount))} passing</span>
+          <span class="health-summary-pill ${failingCount ? "fail" : ""}">${escapeHtml(String(failingCount))} issues</span>
+        </div>
+      `;
+      healthCheckedAt.textContent = `Last checked at ${new Date().toLocaleTimeString()}.`;
 
       healthOutput.innerHTML = items.map(item => {
         const itemClass = item.ok ? "ok" : "fail";
-        const details = formatHealthDetails(item.details);
+        const detailMarkup = renderHealthItemDetails(item);
         return `
           <div class="health-item ${itemClass}">
-            <strong>${item.ok ? "OK" : "Issue"} | ${escapeHtml(item.name || "")}</strong>
-            <span>${escapeHtml(item.message || "")}</span>
-            ${details ? `<span>${escapeHtml(details)}</span>` : ""}
+            <div class="health-item-head">
+              <div class="health-item-title">${escapeHtml(formatHealthName(item.name || ""))}</div>
+              <span class="job-badge ${item.ok ? "completed" : "failed"}">${item.ok ? "OK" : "Issue"}</span>
+            </div>
+            <div class="health-item-body">
+              <span>${escapeHtml(item.message || "")}</span>
+              ${detailMarkup}
+            </div>
           </div>
         `;
       }).join("");
+      healthRefreshButton.disabled = false;
     }
 
     function setActionMessage(message, tone = "") {
@@ -1177,6 +1369,16 @@ def render_index_html() -> str:
     refreshHealth().catch(error => {
       healthSummary.textContent = "Backend health could not be loaded.";
       healthOutput.innerHTML = `<div class="status">${escapeHtml(String(error))}</div>`;
+      healthCheckedAt.textContent = "Health refresh failed.";
+      healthRefreshButton.disabled = false;
+    });
+    healthRefreshButton.addEventListener("click", () => {
+      refreshHealth().catch(error => {
+        healthSummary.textContent = "Backend health could not be loaded.";
+        healthOutput.innerHTML = `<div class="status">${escapeHtml(String(error))}</div>`;
+        healthCheckedAt.textContent = "Health refresh failed.";
+        healthRefreshButton.disabled = false;
+      });
     });
     updateUrlControls();
     loadSessionState().catch(error => { inspectOutput.textContent = String(error); });
