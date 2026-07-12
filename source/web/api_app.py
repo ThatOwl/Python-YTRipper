@@ -69,7 +69,11 @@ def create_app(
             raise HTTPException(status_code=400, detail="save_config is required")
         try:
             save_path = runtime_service.save_config(save_value)
-            return {"saved": bool(save_path), "path": str(save_path or "")}
+            return {
+                "saved": bool(save_path),
+                "path": str(save_path or ""),
+                "state": runtime_service.get_state().to_dict(),
+            }
         except (ValueError, IOError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

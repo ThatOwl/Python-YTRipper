@@ -14,12 +14,16 @@ class SessionConfigState:
     preferences: dict[str, Any] = field(default_factory=dict)
     options: DownloadOptions = field(default_factory=DownloadOptions)
     loaded_preset_path: Path | None = None
+    preset_details: dict[str, Any] = field(default_factory=dict)
+    config_sync: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "preferences": dict(self.preferences),
             "options": self.options.to_dict(),
             "loaded_preset_path": str(self.loaded_preset_path) if self.loaded_preset_path else "",
+            "preset_details": dict(self.preset_details),
+            "config_sync": dict(self.config_sync),
         }
 
     @classmethod
@@ -31,6 +35,8 @@ class SessionConfigState:
             preferences=preferences,
             options=DownloadOptions.from_preferences(options_payload),
             loaded_preset_path=Path(loaded_path) if loaded_path else None,
+            preset_details=dict(payload.get("preset_details", {}) or {}),
+            config_sync=dict(payload.get("config_sync", {}) or {}),
         )
 
 

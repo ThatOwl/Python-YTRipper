@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Any
 
 import utility.preferences as preferences
 from application.state_models import SessionConfigState
@@ -23,6 +24,14 @@ logger = get_logger(__name__, "session_config_service_debug.log")
 
 class SessionConfigService:
     """Shared config/preset behavior for CLI and future GUI adapters."""
+
+    IMMUTABLE_PRESET_DISPLAY_NAMES: dict[str, str] = {
+        "vh": "Video High",
+        "vl": "Video Low",
+        "ah": "Audio High",
+        "test": "Test Mode",
+        "ds": "Data Saver",
+    }
 
     def __init__(self, os_handler: OSInteractions | None = None):
         self.os = os_handler or OSInteractions()
@@ -62,24 +71,78 @@ class SessionConfigService:
     def list_available_presets() -> list[dict[str, str]]:
         presets: list[dict[str, str]] = []
         for preset_id, preset_path in enumerate(preferences.PATHS_TO_CUSTOM_PRESETS):
+            metadata = SessionConfigService.describe_preset_path(preset_path)
             presets.append(
                 {
+                    **metadata,
                     "id": str(preset_id),
-                    "kind": "custom",
-                    "label": f"Custom {preset_id}",
-                    "path": str(preset_path),
                 }
             )
         for preset_id, preset_path in preferences.PATHS_TO_IMMUTABLE_PRESETS.items():
+            metadata = SessionConfigService.describe_preset_path(preset_path)
             presets.append(
                 {
+                    **metadata,
                     "id": preset_id,
-                    "kind": "immutable",
-                    "label": preset_id,
-                    "path": str(preset_path),
                 }
             )
         return presets
+
+    @classmethod
+    def describe_preset_path(
+        cls,
+        preset_path: Path | None,
+        *,
+        treat_none_as_default: bool = False,
+    ) -> dict[str, str]:
+        if preset_path is None and treat_none_as_default:
+            preset_path = preferences.PATH_TO_DEFAULT_PREFERENCES
+
+        if preset_path is None:
+            return {
+                "id": "",
+                "kind": "default",
+                "label": "Default profile",
+                "short_label": "default",
+                "path": str(preferences.PATH_TO_DEFAULT_PREFERENCES),
+            }
+
+        if preset_path == preferences.PATH_TO_DEFAULT_PREFERENCES:
+            return {
+                "id": "default",
+                "kind": "default",
+                "label": "Default profile",
+                "short_label": "default",
+                "path": str(preset_path),
+            }
+
+        for preset_id, custom_path in enumerate(preferences.PATHS_TO_CUSTOM_PRESETS):
+            if preset_path == custom_path:
+                return {
+                    "id": str(preset_id),
+                    "kind": "custom",
+                    "label": f"Custom Preset {preset_id}",
+                    "short_label": str(preset_id),
+                    "path": str(preset_path),
+                }
+
+        for preset_id, immutable_path in preferences.PATHS_TO_IMMUTABLE_PRESETS.items():
+            if preset_path == immutable_path:
+                return {
+                    "id": preset_id,
+                    "kind": "immutable",
+                    "label": cls.IMMUTABLE_PRESET_DISPLAY_NAMES.get(preset_id, preset_id.upper()),
+                    "short_label": preset_id,
+                    "path": str(preset_path),
+                }
+
+        return {
+            "id": preset_path.stem,
+            "kind": "external",
+            "label": preset_path.stem,
+            "short_label": preset_path.name,
+            "path": str(preset_path),
+        }
 
     @staticmethod
     def clone_options(options: DownloadOptions) -> DownloadOptions:
@@ -106,7 +169,7 @@ class SessionConfigService:
             return None
 
         normalized = value.strip().lower()
-        if not normalized:
+        if not normalized or normalized in ("default", "defaults"):
             return None
 
         if normalized.isdigit() and len(normalized) == 1:
@@ -116,7 +179,9 @@ class SessionConfigService:
         if preset_path is not None:
             return preset_path
 
-        raise ValueError("Unknown preset identifier. Use custom ids 0-9 or immutable presets ah/vh/vl/t.")
+        raise ValueError(
+            "Unknown preset identifier. Use default, custom ids 0-9, or immutable presets ah/vh/vl/test/ds."
+        )
 
     @staticmethod
     def resolve_save_config_path(
@@ -148,6 +213,50 @@ class SessionConfigService:
             return preferences.PATHS_TO_CUSTOM_PRESETS[int(normalized)]
 
         raise ValueError("Unknown save-config value. Use true/false or a custom preset id 0-9.")
+
+    def describe_runtime_state(
+        self,
+        options: DownloadOptions,
+        *,
+        loaded_preset_path: Path | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        loaded_details = self.describe_preset_path(
+            loaded_preset_path,
+            treat_none_as_default=True,
+        )
+        save_target_path = self.resolve_save_config_path(
+            "true",
+            loaded_preset_path=loaded_preset_path,
+        )
+        save_target_details = self.describe_preset_path(
+            save_target_path,
+            treat_none_as_default=True,
+        )
+        persisted_state = self.read_state(
+            prefs_path=save_target_path,
+            apply_runtime=False,
+        )
+        has_unsaved_changes = options.to_dict() != persisted_state.options.to_dict()
+
+        preset_details = {
+            "loaded_id": loaded_details["id"],
+            "loaded_kind": loaded_details["kind"],
+            "loaded_label": loaded_details["label"],
+            "loaded_path": loaded_details["path"],
+            "save_target_id": save_target_details["id"],
+            "save_target_kind": save_target_details["kind"],
+            "save_target_label": save_target_details["label"],
+            "save_target_path": save_target_details["path"],
+        }
+        config_sync = {
+            "has_unsaved_changes": has_unsaved_changes,
+            "status_label": (
+                f"Session differs from {save_target_details['label']} and can be saved now."
+                if has_unsaved_changes
+                else f"Session already matches {save_target_details['label']} on disk."
+            ),
+        }
+        return preset_details, config_sync
 
     def apply_args(
         self,

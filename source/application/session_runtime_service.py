@@ -23,10 +23,16 @@ class SessionRuntimeService:
 
     def get_state(self) -> SessionConfigState:
         options_copy = self.config_service.clone_options(self._state.options)
+        preset_details, config_sync = self.config_service.describe_runtime_state(
+            options_copy,
+            loaded_preset_path=self._state.loaded_preset_path,
+        )
         return SessionConfigState(
             preferences=dict(self._state.preferences),
             options=options_copy,
             loaded_preset_path=self._state.loaded_preset_path,
+            preset_details=preset_details,
+            config_sync=config_sync,
         )
 
     def update_options(self, updates: dict[str, object]) -> SessionConfigState:

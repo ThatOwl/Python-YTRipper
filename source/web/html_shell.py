@@ -352,6 +352,12 @@ def render_index_html() -> str:
       background: #fbefef;
       color: #7a3030;
     }
+    .field-note.ok {
+      color: #184d3b;
+    }
+    .field-note.warn {
+      color: #765c22;
+    }
     .inspector-shell {
       display: grid;
       gap: 10px;
@@ -451,6 +457,8 @@ def render_index_html() -> str:
 
       <div class="panel stack">
         <h2>Session Config</h2>
+        <div id="config-source-banner" class="action-banner">Loading config source...</div>
+        <div id="config-sync-banner" class="action-banner">Checking save target state...</div>
         <div class="toggles-grid">
           <label><input id="audio-only" type="checkbox" /> Audio only</label>
           <label><input id="audio-mp3" type="checkbox" /> Convert to MP3</label>
@@ -519,6 +527,7 @@ def render_index_html() -> str:
           <button id="save-config-btn" class="secondary" type="button">Save Config</button>
           <button id="apply-session-btn" type="button">Apply Session Settings</button>
         </div>
+        <div id="config-form-note" class="field-note">Loading session config...</div>
       </div>
     </section>
 
@@ -570,8 +579,26 @@ def render_index_html() -> str:
     const jobsOutput = document.getElementById("jobs-output");
     const jobDetailOutput = document.getElementById("job-detail-output");
     const presetSelect = document.getElementById("preset-select");
+    const configSourceBanner = document.getElementById("config-source-banner");
+    const configSyncBanner = document.getElementById("config-sync-banner");
+    const configFormNote = document.getElementById("config-form-note");
+    const applySessionButton = document.getElementById("apply-session-btn");
+    const saveConfigButton = document.getElementById("save-config-btn");
+    const sessionFieldIds = [
+      "audio-only",
+      "audio-mp3",
+      "autotag",
+      "save-results",
+      "no-dir-date",
+      "download-dir",
+      "quality-select",
+      "resolution-select",
+      "abr-select",
+      "fps-select",
+    ];
     let selectedJobId = "";
     let validationTimer = null;
+    let currentSessionState = null;
     let currentUrlValidation = {
       url: "",
       valid: false,
@@ -607,7 +634,90 @@ def render_index_html() -> str:
       };
     }
 
+    function normalizeAbrSelectValue(value) {
+      const normalized = String(value || "").trim();
+      if (!normalized) {
+        return "";
+      }
+      return normalized.endsWith("kbps")
+        ? `${normalized.replace(/kbps$/, "")}k`
+        : normalized;
+    }
+
+    function sessionUpdatesFromOptions(options = {}) {
+      const qualityValue = options.preferred_video_quality || options.preferred_audio_quality || "";
+      return {
+        audio_only: !!options.audio_only,
+        audio_mp3: !!options.audio_mp3,
+        autotag: !!options.autotag,
+        save_results: !!options.save_results,
+        no_dir_date: !!options.no_dir_date,
+        preferred_video_quality: qualityValue,
+        preferred_audio_quality: qualityValue,
+        preferred_resolution: options.preferred_resolution || "",
+        preferred_abr: normalizeAbrSelectValue(options.preferred_abr || ""),
+        preferred_fps: Number(options.preferred_fps || 0),
+        default_download_directory: options.default_download_directory || ""
+      };
+    }
+
+    function setBanner(element, message, tone = "") {
+      element.className = tone ? `action-banner ${tone}` : "action-banner";
+      element.textContent = message;
+    }
+
+    function syncPresetSelection() {
+      if (!currentSessionState) {
+        return;
+      }
+      const loadedId = currentSessionState.preset_details?.loaded_id || "default";
+      presetSelect.value = loadedId;
+    }
+
+    function refreshConfigFormState() {
+      if (!currentSessionState) {
+        configFormNote.className = "field-note";
+        configFormNote.textContent = "Loading session config...";
+        applySessionButton.disabled = true;
+        return;
+      }
+
+      const formSnapshot = JSON.stringify(collectSessionUpdates());
+      const sessionSnapshot = JSON.stringify(sessionUpdatesFromOptions(currentSessionState.options || {}));
+      const hasLocalChanges = formSnapshot !== sessionSnapshot;
+
+      configFormNote.className = hasLocalChanges ? "field-note warn" : "field-note ok";
+      configFormNote.textContent = hasLocalChanges
+        ? "Local form changes are waiting to be applied to this session."
+        : "Form matches the current in-memory session settings.";
+      applySessionButton.disabled = !hasLocalChanges;
+    }
+
+    function renderConfigState(state) {
+      const presetDetails = state.preset_details || {};
+      const configSync = state.config_sync || {};
+      const loadedLabel = presetDetails.loaded_label || "Default profile";
+      const loadedKind = presetDetails.loaded_kind || "default";
+      const saveTargetLabel = presetDetails.save_target_label || "Default profile";
+      const sourceMessage = loadedKind === "immutable"
+        ? `Loaded source: ${loadedLabel} preset. Save Config will not overwrite immutable presets.`
+        : `Loaded source: ${loadedLabel}.`;
+      const saveTone = configSync.has_unsaved_changes ? "warn" : "ok";
+      const savePath = presetDetails.save_target_path || "";
+
+      setBanner(configSourceBanner, sourceMessage, "ok");
+      setBanner(
+        configSyncBanner,
+        `${configSync.status_label || `Save Config writes to ${saveTargetLabel}.`}${savePath ? ` Target: ${savePath}` : ""}`,
+        saveTone
+      );
+      saveConfigButton.disabled = false;
+      syncPresetSelection();
+      refreshConfigFormState();
+    }
+
     function applySessionState(state) {
+      currentSessionState = state;
       const options = state.options || {};
       document.getElementById("audio-only").checked = !!options.audio_only;
       document.getElementById("audio-mp3").checked = !!options.audio_mp3;
@@ -615,17 +725,11 @@ def render_index_html() -> str:
       document.getElementById("save-results").checked = !!options.save_results;
       document.getElementById("no-dir-date").checked = !!options.no_dir_date;
       document.getElementById("download-dir").value = options.default_download_directory || "";
-      document.getElementById("quality-select").value = options.preferred_video_quality || "";
+      document.getElementById("quality-select").value = options.preferred_video_quality || options.preferred_audio_quality || "";
       document.getElementById("resolution-select").value = options.preferred_resolution || "";
-      if (options.preferred_abr) {
-        const normalizedAbr = String(options.preferred_abr);
-        document.getElementById("abr-select").value = normalizedAbr.endsWith("kbps")
-          ? normalizedAbr
-          : `${normalizedAbr.replace(/k$/, "")}kbps`;
-      } else {
-        document.getElementById("abr-select").value = "";
-      }
+      document.getElementById("abr-select").value = normalizeAbrSelectValue(options.preferred_abr || "");
       document.getElementById("fps-select").value = String(options.preferred_fps || 0);
+      renderConfigState(state);
     }
 
     async function loadSessionState() {
@@ -790,12 +894,17 @@ def render_index_html() -> str:
     async function loadPresets() {
       const presets = await api("/api/presets");
       presetSelect.innerHTML = "";
+      const defaultOption = document.createElement("option");
+      defaultOption.value = "default";
+      defaultOption.textContent = "default: Default profile";
+      presetSelect.appendChild(defaultOption);
       for (const preset of presets) {
         const option = document.createElement("option");
         option.value = preset.id;
         option.textContent = `${preset.kind}: ${preset.label}`;
         presetSelect.appendChild(option);
       }
+      syncPresetSelection();
     }
 
     async function renderJobDetail(jobId) {
@@ -899,19 +1008,29 @@ def render_index_html() -> str:
       }
     }
 
-    document.getElementById("apply-session-btn").addEventListener("click", async () => {
+    applySessionButton.addEventListener("click", async () => {
       const state = await api("/api/session-config", {
         method: "POST",
         body: JSON.stringify({ updates: collectSessionUpdates() })
       });
       applySessionState(state);
+      setActionMessage("Applied current form values to the session. Save Config if you want them written to disk.", "ok");
     });
 
-    document.getElementById("save-config-btn").addEventListener("click", async () => {
-      await api("/api/presets/save", {
+    saveConfigButton.addEventListener("click", async () => {
+      const payload = await api("/api/presets/save", {
         method: "POST",
         body: JSON.stringify({ save_config: "true" })
       });
+      if (payload.state) {
+        applySessionState(payload.state);
+      }
+      setActionMessage(
+        payload.path
+          ? `Saved session config to ${payload.path}.`
+          : "Session config did not need to be written.",
+        "ok"
+      );
     });
 
     presetSelect.addEventListener("change", async () => {
@@ -920,7 +1039,13 @@ def render_index_html() -> str:
         body: JSON.stringify({ preset_id: presetSelect.value })
       });
       applySessionState(state);
+      setActionMessage(`Loaded ${state.preset_details?.loaded_label || "default profile"} into the session.`, "ok");
     });
+
+    for (const fieldId of sessionFieldIds) {
+      document.getElementById(fieldId).addEventListener("input", refreshConfigFormState);
+      document.getElementById(fieldId).addEventListener("change", refreshConfigFormState);
+    }
 
     urlInput.addEventListener("input", () => {
       clearTimeout(validationTimer);

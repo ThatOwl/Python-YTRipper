@@ -49,6 +49,7 @@ class TestSessionConfigService(unittest.TestCase):
     def test_resolve_load_preset_supports_custom_and_immutable_ids(self):
         self.assertTrue(str(SessionConfigService.resolve_load_preset("0")).endswith("0__custom_preset.json"))
         self.assertTrue(str(SessionConfigService.resolve_load_preset("ah")).endswith("ah__audio_high.json"))
+        self.assertIsNone(SessionConfigService.resolve_load_preset("default"))
 
     def test_resolve_save_config_path_true_prefers_loaded_custom_preset(self):
         custom_path = SessionConfigService.resolve_load_preset("3")
@@ -113,6 +114,39 @@ class TestSessionConfigService(unittest.TestCase):
 
         self.assertEqual(options.preferred_abr, "128kbps")
 
+    def test_describe_runtime_state_reports_custom_save_target_and_dirty_state(self):
+        fake_os = FakeOSInteractions()
+        service = SessionConfigService(os_handler=fake_os)
+        custom_path = SessionConfigService.resolve_load_preset("2")
+        fake_os.prefs_by_path[custom_path] = {
+            **fake_os.prefs_by_path[None],
+            "audio_only": False,
+        }
+        options = DownloadOptions(audio_only=True)
+
+        preset_details, config_sync = service.describe_runtime_state(
+            options,
+            loaded_preset_path=custom_path,
+        )
+
+        self.assertEqual(preset_details["loaded_label"], "Custom Preset 2")
+        self.assertEqual(preset_details["save_target_label"], "Custom Preset 2")
+        self.assertTrue(config_sync["has_unsaved_changes"])
+
+    def test_describe_runtime_state_redirects_immutable_save_target_to_default(self):
+        fake_os = FakeOSInteractions()
+        service = SessionConfigService(os_handler=fake_os)
+        options = DownloadOptions(audio_only=True)
+
+        preset_details, config_sync = service.describe_runtime_state(
+            options,
+            loaded_preset_path=SessionConfigService.resolve_load_preset("ah"),
+        )
+
+        self.assertEqual(preset_details["loaded_label"], "Audio High")
+        self.assertEqual(preset_details["save_target_label"], "Default profile")
+        self.assertTrue(config_sync["has_unsaved_changes"])
+
 
 class TestStateModels(unittest.TestCase):
     def test_session_config_state_round_trip(self):
@@ -120,12 +154,16 @@ class TestStateModels(unittest.TestCase):
             preferences={"audio_only": True},
             options=DownloadOptions(audio_only=True),
             loaded_preset_path=Path("/tmp/preset.json"),
+            preset_details={"loaded_label": "Audio High"},
+            config_sync={"has_unsaved_changes": True},
         )
 
         restored = SessionConfigState.from_dict(state.to_dict())
 
         self.assertTrue(restored.options.audio_only)
         self.assertEqual(restored.loaded_preset_path, Path("/tmp/preset.json"))
+        self.assertEqual(restored.preset_details["loaded_label"], "Audio High")
+        self.assertTrue(restored.config_sync["has_unsaved_changes"])
 
     def test_job_detail_round_trip(self):
         detail = JobDetail(

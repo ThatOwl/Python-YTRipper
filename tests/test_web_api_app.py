@@ -175,6 +175,9 @@ class TestWebApiApp(unittest.TestCase):
         self.assertIn("Audio bitrate", index_response)
         self.assertIn("Frame rate", index_response)
         self.assertIn("Do not prefix playlist folder with date", index_response)
+        self.assertIn("Loading config source...", index_response)
+        self.assertIn("Checking save target state...", index_response)
+        self.assertIn("Loading session config...", index_response)
         self.assertIn("Job Detail", index_response)
         self.assertIn("Raw inspection payload", index_response)
         self.assertIn("No additional media info lines were returned yet.", index_response)
@@ -184,6 +187,8 @@ class TestWebApiApp(unittest.TestCase):
         self.assertNotIn('"<div class="status">', index_response)
         self.assertTrue(health_payload["ok"])
         self.assertIn("options", config_payload)
+        self.assertEqual(config_payload["preset_details"]["loaded_label"], "Default profile")
+        self.assertFalse(config_payload["config_sync"]["has_unsaved_changes"])
 
     def test_update_session_and_start_job(self):
         app, job_service, runner_continue, _ = self._build_app()
@@ -252,6 +257,7 @@ class TestWebApiApp(unittest.TestCase):
             {"save_config": "true"},
         )
         self.assertTrue(save_payload["saved"])
+        self.assertIn("state", save_payload)
         self.assertEqual(len(os_handler.saved), 1)
 
     def test_missing_url_payload_raises_http_exception(self):
