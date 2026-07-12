@@ -1,6 +1,5 @@
 from pathlib import Path
 from typing import List
-import re
 import uuid
 
 import pytubefix as ptf
@@ -18,6 +17,7 @@ from utility.utils import (
     sanitize_filename,
 )
 from autotagging.runtime_tagging.package_builder import TaggingPackageBuilder, TaggingQueueStore
+from application.media_info_service import MediaInfoService
 from infrastructure.media_assembler import MediaAssembler
 from infrastructure.stream_converter import StreamConverter
 from infrastructure.url_handler import URLHandler
@@ -55,6 +55,10 @@ class DownloadOrchestrator:
         self.stream_download = stream_download or StreamDownloadService()
         self.tagging_package_builder = tagging_package_builder or TaggingPackageBuilder()
         self.tagging_queue_store = tagging_queue_store or TaggingQueueStore() # base-dir location should be managed by ? (user facing relevance?)
+        self.media_info_service = MediaInfoService(
+            url_handler=self.urlh,
+            video_fetcher=self.vid_fetcher,
+        )
         self.tagging_session_id = str(uuid.uuid4())
         self.tagging_sequence_no = 0
 
@@ -74,13 +78,11 @@ class DownloadOrchestrator:
                 playlist_obj.title,
                 options.no_dir_date,
             )
+            videos = self.media_info_service.get_playlist_videos(playlist_url, playlist=playlist_obj)
+            logger.debug("Found %s videos in playlist %s", len(videos), playlist_obj.title)
 
-            # Existing pytubefix workaround retained.
-            playlist_obj._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
-            logger.debug("Found %s videos in playlist %s", len(playlist_obj.video_urls), playlist_obj.title)
-
-            for i, video in enumerate(playlist_obj.videos):
-                logger.info("[%s/%s] Processing: %s", i + 1, len(playlist_obj.videos), video.title)
+            for i, video in enumerate(videos):
+                logger.info("[%s/%s] Processing: %s", i + 1, len(videos), video.title)
                 results.append(
                     self.download_single(
                         download_dir=playlist_dir,
